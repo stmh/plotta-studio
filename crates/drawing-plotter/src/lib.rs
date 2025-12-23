@@ -201,17 +201,358 @@ mod tests {
     use super::*;
     use drawing_core::{Point, Style};
 
+    const EPSILON: f64 = 1e-10;
+
+    fn approx_eq(a: f64, b: f64) -> bool {
+        (a - b).abs() < EPSILON
+    }
+
+    // ========================================================================
+    // optimize_strokes tests
+    // ========================================================================
+
     #[test]
-    fn test_optimize_strokes() {
+    fn test_optimize_strokes_empty() {
+        let strokes: Vec<Stroke> = vec![];
+        let optimized = optimize_strokes(&strokes);
+        assert!(optimized.is_empty());
+    }
+
+    #[test]
+    fn test_optimize_strokes_single() {
+        let strokes = vec![Stroke::line(
+            Point::new(50.0, 50.0),
+            Point::new(100.0, 100.0),
+            Style::default(),
+        )];
+        let optimized = optimize_strokes(&strokes);
+        assert_eq!(optimized.len(), 1);
+        assert_eq!(optimized[0].points[0], Point::new(50.0, 50.0));
+    }
+
+    #[test]
+    fn test_optimize_strokes_nearest_neighbor() {
         let strokes = vec![
-            Stroke::line(Point::new(100.0, 100.0), Point::new(150.0, 150.0), Style::default()),
-            Stroke::line(Point::new(0.0, 0.0), Point::new(50.0, 50.0), Style::default()),
-            Stroke::line(Point::new(50.0, 50.0), Point::new(100.0, 100.0), Style::default()),
+            Stroke::line(
+                Point::new(100.0, 100.0),
+                Point::new(150.0, 150.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(0.0, 0.0),
+                Point::new(50.0, 50.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(50.0, 50.0),
+                Point::new(100.0, 100.0),
+                Style::default(),
+            ),
         ];
 
         let optimized = optimize_strokes(&strokes);
 
-        // Should start with stroke closest to origin
+        // Should start with stroke closest to origin (0,0)
         assert_eq!(optimized[0].points[0], Point::new(0.0, 0.0));
+        // Second stroke should start where first ended (50, 50)
+        assert_eq!(optimized[1].points[0], Point::new(50.0, 50.0));
+        // Third stroke should start where second ended (100, 100)
+        assert_eq!(optimized[2].points[0], Point::new(100.0, 100.0));
+    }
+
+    #[test]
+    fn test_optimize_strokes_already_optimal() {
+        let strokes = vec![
+            Stroke::line(
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 10.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(10.0, 10.0),
+                Point::new(20.0, 20.0),
+                Style::default(),
+            ),
+        ];
+
+        let optimized = optimize_strokes(&strokes);
+
+        // Order should remain the same
+        assert_eq!(optimized[0].points[0], Point::new(0.0, 0.0));
+        assert_eq!(optimized[1].points[0], Point::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn test_optimize_strokes_reverse_order() {
+        // Strokes in reverse order should be reordered
+        let strokes = vec![
+            Stroke::line(
+                Point::new(100.0, 0.0),
+                Point::new(110.0, 0.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(50.0, 0.0),
+                Point::new(60.0, 0.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),
+                Style::default(),
+            ),
+        ];
+
+        let optimized = optimize_strokes(&strokes);
+
+        // Should be reordered to start from origin
+        assert_eq!(optimized[0].points[0], Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn test_optimize_strokes_preserves_count() {
+        let strokes = vec![
+            Stroke::line(
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 10.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(20.0, 20.0),
+                Point::new(30.0, 30.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(40.0, 40.0),
+                Point::new(50.0, 50.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(60.0, 60.0),
+                Point::new(70.0, 70.0),
+                Style::default(),
+            ),
+        ];
+
+        let optimized = optimize_strokes(&strokes);
+        assert_eq!(optimized.len(), strokes.len());
+    }
+
+    // ========================================================================
+    // total_travel_distance tests
+    // ========================================================================
+
+    #[test]
+    fn test_total_travel_distance_empty() {
+        let strokes: Vec<&Stroke> = vec![];
+        assert!(approx_eq(total_travel_distance(&strokes), 0.0));
+    }
+
+    #[test]
+    fn test_total_travel_distance_single_stroke() {
+        let stroke = Stroke::line(Point::new(0.0, 0.0), Point::new(3.0, 4.0), Style::default());
+        let strokes = vec![&stroke];
+        // Pen-up from origin (0) + pen-down distance (5) = 5
+        assert!(approx_eq(total_travel_distance(&strokes), 5.0));
+    }
+
+    #[test]
+    fn test_total_travel_distance_includes_pen_up() {
+        let stroke = Stroke::line(
+            Point::new(10.0, 0.0), // 10 units from origin
+            Point::new(13.0, 4.0), // 5 unit stroke (3-4-5)
+            Style::default(),
+        );
+        let strokes = vec![&stroke];
+        // Pen-up travel (10) + pen-down travel (5) = 15
+        assert!(approx_eq(total_travel_distance(&strokes), 15.0));
+    }
+
+    #[test]
+    fn test_total_travel_distance_multiple_strokes() {
+        let stroke1 = Stroke::line(
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Style::default(),
+        );
+        let stroke2 = Stroke::line(
+            Point::new(10.0, 0.0), // No pen-up travel from stroke1 end
+            Point::new(20.0, 0.0),
+            Style::default(),
+        );
+        let strokes = vec![&stroke1, &stroke2];
+        // Pen-up from origin (0) + stroke1 (10) + pen-up (0) + stroke2 (10) = 20
+        assert!(approx_eq(total_travel_distance(&strokes), 20.0));
+    }
+
+    #[test]
+    fn test_total_travel_distance_with_gap() {
+        let stroke1 = Stroke::line(
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Style::default(),
+        );
+        let stroke2 = Stroke::line(
+            Point::new(20.0, 0.0), // 10 units gap
+            Point::new(30.0, 0.0),
+            Style::default(),
+        );
+        let strokes = vec![&stroke1, &stroke2];
+        // Pen-up from origin (0) + stroke1 (10) + pen-up (10) + stroke2 (10) = 30
+        assert!(approx_eq(total_travel_distance(&strokes), 30.0));
+    }
+
+    #[test]
+    fn test_total_travel_distance_multi_point_stroke() {
+        let stroke = Stroke::new(
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(3.0, 4.0), // 5 units
+                Point::new(3.0, 0.0), // 4 units
+            ],
+            Style::default(),
+        );
+        let strokes = vec![&stroke];
+        // Pen-up from origin (0) + 5 + 4 = 9
+        assert!(approx_eq(total_travel_distance(&strokes), 9.0));
+    }
+
+    // ========================================================================
+    // pen_down_distance tests
+    // ========================================================================
+
+    #[test]
+    fn test_pen_down_distance_empty() {
+        let strokes: Vec<&Stroke> = vec![];
+        assert!(approx_eq(pen_down_distance(&strokes), 0.0));
+    }
+
+    #[test]
+    fn test_pen_down_distance_single_stroke() {
+        let stroke = Stroke::line(
+            Point::new(100.0, 100.0), // Far from origin
+            Point::new(103.0, 104.0), // 5 unit stroke
+            Style::default(),
+        );
+        let strokes = vec![&stroke];
+        // Only pen-down distance, ignores position
+        assert!(approx_eq(pen_down_distance(&strokes), 5.0));
+    }
+
+    #[test]
+    fn test_pen_down_distance_multiple_strokes() {
+        let stroke1 = Stroke::line(
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Style::default(),
+        );
+        let stroke2 = Stroke::line(
+            Point::new(100.0, 100.0), // Position doesn't matter
+            Point::new(100.0, 120.0), // 20 units
+            Style::default(),
+        );
+        let strokes = vec![&stroke1, &stroke2];
+        assert!(approx_eq(pen_down_distance(&strokes), 30.0));
+    }
+
+    #[test]
+    fn test_pen_down_distance_multi_point_stroke() {
+        let stroke = Stroke::new(
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),  // 10 units
+                Point::new(10.0, 10.0), // 10 units
+                Point::new(0.0, 10.0),  // 10 units
+            ],
+            Style::default(),
+        );
+        let strokes = vec![&stroke];
+        assert!(approx_eq(pen_down_distance(&strokes), 30.0));
+    }
+
+    #[test]
+    fn test_pen_down_distance_ignores_pen_up_travel() {
+        // Two strokes far apart
+        let stroke1 = Stroke::line(Point::new(0.0, 0.0), Point::new(5.0, 0.0), Style::default());
+        let stroke2 = Stroke::line(
+            Point::new(1000.0, 1000.0), // Very far away
+            Point::new(1005.0, 1000.0), // 5 units
+            Style::default(),
+        );
+        let strokes = vec![&stroke1, &stroke2];
+        // Should only count pen-down: 5 + 5 = 10
+        assert!(approx_eq(pen_down_distance(&strokes), 10.0));
+    }
+
+    // ========================================================================
+    // Optimization verification tests
+    // ========================================================================
+
+    #[test]
+    fn test_optimized_has_less_or_equal_travel() {
+        let strokes = vec![
+            Stroke::line(
+                Point::new(100.0, 0.0),
+                Point::new(110.0, 0.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(50.0, 0.0),
+                Point::new(60.0, 0.0),
+                Style::default(),
+            ),
+        ];
+
+        let unoptimized: Vec<_> = strokes.iter().collect();
+        let optimized = optimize_strokes(&strokes);
+
+        let unoptimized_distance = total_travel_distance(&unoptimized);
+        let optimized_distance = total_travel_distance(&optimized);
+
+        // Optimized should have less or equal travel distance
+        assert!(optimized_distance <= unoptimized_distance);
+    }
+
+    #[test]
+    fn test_optimization_preserves_pen_down_distance() {
+        let strokes = vec![
+            Stroke::line(
+                Point::new(100.0, 0.0),
+                Point::new(110.0, 0.0),
+                Style::default(),
+            ),
+            Stroke::line(
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),
+                Style::default(),
+            ),
+        ];
+
+        let unoptimized: Vec<_> = strokes.iter().collect();
+        let optimized = optimize_strokes(&strokes);
+
+        // Pen-down distance should be the same regardless of order
+        assert!(approx_eq(
+            pen_down_distance(&unoptimized),
+            pen_down_distance(&optimized)
+        ));
+    }
+
+    // ========================================================================
+    // PlotConfig tests
+    // ========================================================================
+
+    #[test]
+    fn test_plot_config_default() {
+        let config = PlotConfig::default();
+        assert!(config.pen_down_speed > 0.0);
+        assert!(config.pen_up_speed > 0.0);
+        assert!(config.pen_up_speed > config.pen_down_speed); // Up should be faster
+        assert!(config.pen_up_pos > config.pen_down_pos);
     }
 }
