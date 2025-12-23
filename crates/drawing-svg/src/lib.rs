@@ -69,7 +69,10 @@ fn stroke_to_svg(stroke: &Stroke) -> String {
     let mut d = String::new();
 
     // Move to first point
-    d.push_str(&format!("M{:.3},{:.3}", stroke.points[0].x, stroke.points[0].y));
+    d.push_str(&format!(
+        "M{:.3},{:.3}",
+        stroke.points[0].x, stroke.points[0].y
+    ));
 
     // Line to remaining points
     for pt in &stroke.points[1..] {
@@ -111,16 +114,264 @@ pub fn write_svg<W: Write>(drawing: &Drawing, writer: &mut W) -> Result<(), SvgE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use drawing_core::{Element, Point};
+    use drawing_core::{Element, Point, Style};
+
+    // ========================================================================
+    // color_to_hex tests
+    // ========================================================================
+
+    #[test]
+    fn test_color_to_hex_rgb() {
+        let color = Color::rgb(255, 128, 0);
+        assert_eq!(color_to_hex(color), "#ff8000");
+    }
+
+    #[test]
+    fn test_color_to_hex_black() {
+        assert_eq!(color_to_hex(Color::BLACK), "#000000");
+    }
+
+    #[test]
+    fn test_color_to_hex_white() {
+        assert_eq!(color_to_hex(Color::WHITE), "#ffffff");
+    }
+
+    #[test]
+    fn test_color_to_hex_with_alpha() {
+        let color = Color::rgba(255, 0, 0, 128);
+        let result = color_to_hex(color);
+        assert!(result.starts_with("rgba("));
+        assert!(result.contains("255,0,0,"));
+        // Alpha should be approximately 0.502
+        assert!(result.contains("0.5"));
+    }
+
+    #[test]
+    fn test_color_to_hex_transparent() {
+        let color = Color::rgba(100, 150, 200, 0);
+        let result = color_to_hex(color);
+        assert!(result.starts_with("rgba("));
+        assert!(result.contains(",0.000)"));
+    }
+
+    #[test]
+    fn test_color_to_hex_full_alpha_uses_hex() {
+        // Full alpha (255) should use hex format, not rgba
+        let color = Color::rgba(128, 64, 32, 255);
+        let result = color_to_hex(color);
+        assert!(result.starts_with("#"));
+        assert_eq!(result, "#804020");
+    }
+
+    // ========================================================================
+    // stroke_to_svg tests
+    // ========================================================================
+
+    #[test]
+    fn test_stroke_to_svg_simple_line() {
+        let stroke = Stroke::new(
+            vec![Point::new(0.0, 0.0), Point::new(100.0, 50.0)],
+            Style::default(),
+        );
+        let svg = stroke_to_svg(&stroke);
+
+        assert!(svg.contains("M0.000,0.000"));
+        assert!(svg.contains("L100.000,50.000"));
+        assert!(svg.contains("fill=\"none\""));
+        assert!(svg.contains("stroke="));
+    }
+
+    #[test]
+    fn test_stroke_to_svg_closed_path() {
+        let stroke = Stroke::new(
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(100.0, 0.0),
+                Point::new(50.0, 100.0),
+            ],
+            Style::default(),
+        )
+        .closed();
+        let svg = stroke_to_svg(&stroke);
+
+        assert!(svg.contains(" Z"));
+    }
+
+    #[test]
+    fn test_stroke_to_svg_open_path() {
+        let stroke = Stroke::new(
+            vec![Point::new(0.0, 0.0), Point::new(100.0, 0.0)],
+            Style::default(),
+        );
+        let svg = stroke_to_svg(&stroke);
+
+        assert!(!svg.contains(" Z"));
+    }
+
+    #[test]
+    fn test_stroke_to_svg_stroke_width() {
+        let stroke = Stroke::new(
+            vec![Point::new(0.0, 0.0), Point::new(10.0, 10.0)],
+            Style::new(2.5, Color::BLACK),
+        );
+        let svg = stroke_to_svg(&stroke);
+
+        assert!(svg.contains("stroke-width=\"2.500\""));
+    }
+
+    #[test]
+    fn test_stroke_to_svg_stroke_color() {
+        let stroke = Stroke::new(
+            vec![Point::new(0.0, 0.0), Point::new(10.0, 10.0)],
+            Style::new(1.0, Color::RED),
+        );
+        let svg = stroke_to_svg(&stroke);
+
+        assert!(svg.contains("stroke=\"#ff0000\""));
+    }
+
+    #[test]
+    fn test_stroke_to_svg_negative_coordinates() {
+        let stroke = Stroke::new(
+            vec![Point::new(-10.0, -20.0), Point::new(10.0, 20.0)],
+            Style::default(),
+        );
+        let svg = stroke_to_svg(&stroke);
+
+        assert!(svg.contains("M-10.000,-20.000"));
+        assert!(svg.contains("L10.000,20.000"));
+    }
+
+    // ========================================================================
+    // drawing_to_svg_string tests
+    // ========================================================================
 
     #[test]
     fn test_basic_export() {
         let mut drawing = Drawing::new(100.0, 100.0);
-        drawing.add(Element::line(Point::new(0.0, 0.0), Point::new(100.0, 100.0)));
+        drawing.add(Element::line(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 100.0),
+        ));
 
         let svg = drawing_to_svg_string(&drawing);
         assert!(svg.contains("svg"));
         assert!(svg.contains("path"));
         assert!(svg.contains("M0.000,0.000"));
+    }
+
+    #[test]
+    fn test_drawing_dimensions() {
+        let drawing = Drawing::new(297.0, 210.0);
+        let svg = drawing_to_svg_string(&drawing);
+
+        assert!(svg.contains("width=\"297mm\""));
+        assert!(svg.contains("height=\"210mm\""));
+        assert!(svg.contains("viewBox=\"0 0 297 210\""));
+    }
+
+    #[test]
+    fn test_drawing_empty() {
+        let drawing = Drawing::new(100.0, 100.0);
+        let svg = drawing_to_svg_string(&drawing);
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+        // Should not contain any path elements
+        assert!(!svg.contains("<path"));
+    }
+
+    #[test]
+    fn test_drawing_white_background_omitted() {
+        let drawing = Drawing::new(100.0, 100.0).with_background(Color::WHITE);
+        let svg = drawing_to_svg_string(&drawing);
+
+        // White background should not create a rect element
+        assert!(!svg.contains("<rect"));
+    }
+
+    #[test]
+    fn test_drawing_non_white_background() {
+        let drawing = Drawing::new(100.0, 100.0).with_background(Color::BLACK);
+        let svg = drawing_to_svg_string(&drawing);
+
+        assert!(svg.contains("<rect"));
+        assert!(svg.contains("fill=\"#000000\""));
+    }
+
+    #[test]
+    fn test_drawing_colored_background() {
+        let drawing = Drawing::new(100.0, 100.0).with_background(Color::rgb(200, 220, 240));
+        let svg = drawing_to_svg_string(&drawing);
+
+        assert!(svg.contains("<rect"));
+        assert!(svg.contains("fill=\"#c8dcf0\""));
+    }
+
+    #[test]
+    fn test_drawing_multiple_elements() {
+        let mut drawing = Drawing::new(100.0, 100.0);
+        drawing.add(Element::line(Point::new(0.0, 0.0), Point::new(50.0, 50.0)));
+        drawing.add(Element::line(
+            Point::new(50.0, 50.0),
+            Point::new(100.0, 0.0),
+        ));
+
+        let svg = drawing_to_svg_string(&drawing);
+
+        // Should contain two path elements
+        let path_count = svg.matches("<path").count();
+        assert_eq!(path_count, 2);
+    }
+
+    #[test]
+    fn test_drawing_circle() {
+        let mut drawing = Drawing::new(100.0, 100.0);
+        drawing.add(Element::circle(Point::new(50.0, 50.0), 25.0));
+
+        let svg = drawing_to_svg_string(&drawing);
+
+        // Circle is flattened to a path with many points
+        assert!(svg.contains("<path"));
+        // Path should start with M (move to) and contain multiple L (line to)
+        assert!(svg.contains(" L"));
+        // Circle path should be closed
+        assert!(svg.contains(" Z"));
+    }
+
+    #[test]
+    fn test_drawing_xml_header() {
+        let drawing = Drawing::new(100.0, 100.0);
+        let svg = drawing_to_svg_string(&drawing);
+
+        assert!(svg.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+    }
+
+    #[test]
+    fn test_drawing_xmlns() {
+        let drawing = Drawing::new(100.0, 100.0);
+        let svg = drawing_to_svg_string(&drawing);
+
+        assert!(svg.contains("xmlns=\"http://www.w3.org/2000/svg\""));
+    }
+
+    // ========================================================================
+    // Integration tests
+    // ========================================================================
+
+    #[test]
+    fn test_write_svg_to_buffer() {
+        let mut drawing = Drawing::new(100.0, 100.0);
+        drawing.add(Element::line(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 100.0),
+        ));
+
+        let mut buffer = Vec::new();
+        write_svg(&drawing, &mut buffer).unwrap();
+
+        let svg = String::from_utf8(buffer).unwrap();
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("<path"));
     }
 }
