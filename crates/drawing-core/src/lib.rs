@@ -432,10 +432,7 @@ impl Stroke {
 
     /// Total length of this stroke
     pub fn length(&self) -> f64 {
-        self.points
-            .windows(2)
-            .map(|w| w[0].distance(w[1]))
-            .sum()
+        self.points.windows(2).map(|w| w[0].distance(w[1])).sum()
     }
 
     /// Bounding box (min, max)
@@ -463,8 +460,15 @@ impl Stroke {
 pub enum PathSegment {
     MoveTo(Point),
     LineTo(Point),
-    QuadTo { ctrl: Point, to: Point },
-    CubicTo { ctrl1: Point, ctrl2: Point, to: Point },
+    QuadTo {
+        ctrl: Point,
+        to: Point,
+    },
+    CubicTo {
+        ctrl1: Point,
+        ctrl2: Point,
+        to: Point,
+    },
     Close,
 }
 
@@ -843,12 +847,7 @@ impl Element {
         Self::new(Rect::centered(center, w, h))
     }
 
-    pub fn arc(
-        center: impl Into<Point>,
-        radius: f64,
-        start_angle: f64,
-        end_angle: f64,
-    ) -> Self {
+    pub fn arc(center: impl Into<Point>, radius: f64, start_angle: f64, end_angle: f64) -> Self {
         Self::new(Arc::new(center, radius, start_angle, end_angle))
     }
 
@@ -1277,6 +1276,307 @@ impl Drawing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+
+    const EPSILON: f64 = 1e-10;
+
+    fn approx_eq(a: f64, b: f64) -> bool {
+        (a - b).abs() < EPSILON
+    }
+
+    fn point_approx_eq(a: Point, b: Point) -> bool {
+        approx_eq(a.x, b.x) && approx_eq(a.y, b.y)
+    }
+
+    // ========================================================================
+    // Point::distance tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_distance_basic() {
+        let a = Point::new(0.0, 0.0);
+        let b = Point::new(3.0, 4.0);
+        assert!(approx_eq(a.distance(b), 5.0)); // 3-4-5 triangle
+    }
+
+    #[test]
+    fn test_point_distance_same_point() {
+        let a = Point::new(5.0, 10.0);
+        assert!(approx_eq(a.distance(a), 0.0));
+    }
+
+    #[test]
+    fn test_point_distance_negative_coords() {
+        let a = Point::new(-3.0, -4.0);
+        let b = Point::new(0.0, 0.0);
+        assert!(approx_eq(a.distance(b), 5.0));
+    }
+
+    #[test]
+    fn test_point_distance_symmetric() {
+        let a = Point::new(1.0, 2.0);
+        let b = Point::new(4.0, 6.0);
+        assert!(approx_eq(a.distance(b), b.distance(a)));
+    }
+
+    // ========================================================================
+    // Point::length tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_length_unit_vectors() {
+        assert!(approx_eq(Point::new(1.0, 0.0).length(), 1.0));
+        assert!(approx_eq(Point::new(0.0, 1.0).length(), 1.0));
+        assert!(approx_eq(Point::new(-1.0, 0.0).length(), 1.0));
+    }
+
+    #[test]
+    fn test_point_length_zero() {
+        assert!(approx_eq(Point::ZERO.length(), 0.0));
+    }
+
+    #[test]
+    fn test_point_length_pythagorean() {
+        assert!(approx_eq(Point::new(3.0, 4.0).length(), 5.0));
+    }
+
+    // ========================================================================
+    // Point::normalize tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_normalize_unit_length() {
+        let p = Point::new(3.0, 4.0).normalize();
+        assert!(approx_eq(p.length(), 1.0));
+    }
+
+    #[test]
+    fn test_point_normalize_direction_preserved() {
+        let p = Point::new(10.0, 0.0).normalize();
+        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
+
+        let p = Point::new(0.0, -5.0).normalize();
+        assert!(point_approx_eq(p, Point::new(0.0, -1.0)));
+    }
+
+    #[test]
+    fn test_point_normalize_zero_vector() {
+        let p = Point::ZERO.normalize();
+        assert!(point_approx_eq(p, Point::ZERO));
+    }
+
+    #[test]
+    fn test_point_normalize_already_unit() {
+        let p = Point::new(1.0, 0.0).normalize();
+        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
+    }
+
+    // ========================================================================
+    // Point::lerp tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_lerp_endpoints() {
+        let a = Point::new(0.0, 0.0);
+        let b = Point::new(10.0, 20.0);
+        assert!(point_approx_eq(a.lerp(b, 0.0), a));
+        assert!(point_approx_eq(a.lerp(b, 1.0), b));
+    }
+
+    #[test]
+    fn test_point_lerp_midpoint() {
+        let a = Point::new(0.0, 0.0);
+        let b = Point::new(10.0, 20.0);
+        assert!(point_approx_eq(a.lerp(b, 0.5), Point::new(5.0, 10.0)));
+    }
+
+    #[test]
+    fn test_point_lerp_quarter() {
+        let a = Point::new(0.0, 0.0);
+        let b = Point::new(100.0, 100.0);
+        assert!(point_approx_eq(a.lerp(b, 0.25), Point::new(25.0, 25.0)));
+    }
+
+    #[test]
+    fn test_point_lerp_extrapolate() {
+        let a = Point::new(0.0, 0.0);
+        let b = Point::new(10.0, 10.0);
+        // t > 1 extrapolates beyond b
+        assert!(point_approx_eq(a.lerp(b, 2.0), Point::new(20.0, 20.0)));
+        // t < 0 extrapolates before a
+        assert!(point_approx_eq(a.lerp(b, -1.0), Point::new(-10.0, -10.0)));
+    }
+
+    // ========================================================================
+    // Point::dot tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_dot_parallel() {
+        let a = Point::new(1.0, 0.0);
+        let b = Point::new(5.0, 0.0);
+        assert!(approx_eq(a.dot(b), 5.0));
+    }
+
+    #[test]
+    fn test_point_dot_perpendicular() {
+        let a = Point::new(1.0, 0.0);
+        let b = Point::new(0.0, 1.0);
+        assert!(approx_eq(a.dot(b), 0.0));
+    }
+
+    #[test]
+    fn test_point_dot_opposite() {
+        let a = Point::new(1.0, 0.0);
+        let b = Point::new(-1.0, 0.0);
+        assert!(approx_eq(a.dot(b), -1.0));
+    }
+
+    #[test]
+    fn test_point_dot_general() {
+        let a = Point::new(2.0, 3.0);
+        let b = Point::new(4.0, 5.0);
+        // 2*4 + 3*5 = 8 + 15 = 23
+        assert!(approx_eq(a.dot(b), 23.0));
+    }
+
+    #[test]
+    fn test_point_dot_commutative() {
+        let a = Point::new(2.0, 3.0);
+        let b = Point::new(4.0, 5.0);
+        assert!(approx_eq(a.dot(b), b.dot(a)));
+    }
+
+    // ========================================================================
+    // Point::angle tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_angle_zero() {
+        let p = Point::new(1.0, 0.0);
+        assert!(approx_eq(p.angle(), 0.0));
+    }
+
+    #[test]
+    fn test_point_angle_pi_over_2() {
+        let p = Point::new(0.0, 1.0);
+        assert!(approx_eq(p.angle(), FRAC_PI_2));
+    }
+
+    #[test]
+    fn test_point_angle_pi() {
+        let p = Point::new(-1.0, 0.0);
+        assert!(approx_eq(p.angle(), PI));
+    }
+
+    #[test]
+    fn test_point_angle_negative_pi_over_2() {
+        let p = Point::new(0.0, -1.0);
+        assert!(approx_eq(p.angle(), -FRAC_PI_2));
+    }
+
+    #[test]
+    fn test_point_angle_45_degrees() {
+        let p = Point::new(1.0, 1.0);
+        assert!(approx_eq(p.angle(), FRAC_PI_4));
+    }
+
+    // ========================================================================
+    // Point::from_angle tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_from_angle_zero() {
+        let p = Point::from_angle(0.0);
+        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_point_from_angle_pi_over_2() {
+        let p = Point::from_angle(FRAC_PI_2);
+        assert!(point_approx_eq(p, Point::new(0.0, 1.0)));
+    }
+
+    #[test]
+    fn test_point_from_angle_pi() {
+        let p = Point::from_angle(PI);
+        assert!(point_approx_eq(p, Point::new(-1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_point_from_angle_2pi() {
+        let p = Point::from_angle(TAU);
+        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_point_from_angle_unit_length() {
+        for angle in [0.0, 0.5, 1.0, 2.0, 3.0, -1.0, -2.0] {
+            let p = Point::from_angle(angle);
+            assert!(approx_eq(p.length(), 1.0));
+        }
+    }
+
+    #[test]
+    fn test_point_from_angle_roundtrip() {
+        for angle in [0.0, FRAC_PI_4, FRAC_PI_2, PI, -FRAC_PI_4] {
+            let p = Point::from_angle(angle);
+            assert!(approx_eq(p.angle(), angle));
+        }
+    }
+
+    // ========================================================================
+    // Point::rotate tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_rotate_zero() {
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(p.rotate(0.0), p));
+    }
+
+    #[test]
+    fn test_point_rotate_90_degrees() {
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(p.rotate(FRAC_PI_2), Point::new(0.0, 1.0)));
+    }
+
+    #[test]
+    fn test_point_rotate_180_degrees() {
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(p.rotate(PI), Point::new(-1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_point_rotate_360_degrees() {
+        let p = Point::new(3.0, 4.0);
+        assert!(point_approx_eq(p.rotate(TAU), p));
+    }
+
+    #[test]
+    fn test_point_rotate_negative() {
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(p.rotate(-FRAC_PI_2), Point::new(0.0, -1.0)));
+    }
+
+    #[test]
+    fn test_point_rotate_preserves_length() {
+        let p = Point::new(3.0, 4.0);
+        let original_length = p.length();
+        for angle in [0.5, 1.0, 2.0, PI, -1.0] {
+            assert!(approx_eq(p.rotate(angle).length(), original_length));
+        }
+    }
+
+    #[test]
+    fn test_point_rotate_zero_vector() {
+        let p = Point::ZERO;
+        assert!(point_approx_eq(p.rotate(PI), Point::ZERO));
+    }
+
+    // ========================================================================
+    // Point operator tests
+    // ========================================================================
 
     #[test]
     fn test_point_ops() {
@@ -1285,6 +1585,68 @@ mod tests {
         assert_eq!(a + b, Point::new(4.0, 6.0));
         assert_eq!(b - a, Point::new(2.0, 2.0));
         assert_eq!(a * 2.0, Point::new(2.0, 4.0));
+    }
+
+    #[test]
+    fn test_point_div() {
+        let p = Point::new(10.0, 20.0);
+        assert_eq!(p / 2.0, Point::new(5.0, 10.0));
+    }
+
+    #[test]
+    fn test_point_neg() {
+        let p = Point::new(3.0, -4.0);
+        assert_eq!(-p, Point::new(-3.0, 4.0));
+    }
+
+    #[test]
+    fn test_point_add_assign() {
+        let mut p = Point::new(1.0, 2.0);
+        p += Point::new(3.0, 4.0);
+        assert_eq!(p, Point::new(4.0, 6.0));
+    }
+
+    // ========================================================================
+    // Point conversion tests
+    // ========================================================================
+
+    #[test]
+    fn test_point_from_tuple() {
+        let p: Point = (3.0, 4.0).into();
+        assert_eq!(p, Point::new(3.0, 4.0));
+    }
+
+    #[test]
+    fn test_point_from_array() {
+        let p: Point = [3.0, 4.0].into();
+        assert_eq!(p, Point::new(3.0, 4.0));
+    }
+
+    // ========================================================================
+    // Point edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_point_zero_constant() {
+        assert_eq!(Point::ZERO, Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn test_point_default() {
+        assert_eq!(Point::default(), Point::ZERO);
+    }
+
+    #[test]
+    fn test_point_very_small_values() {
+        let p = Point::new(1e-15, 1e-15);
+        assert!(p.length() > 0.0);
+    }
+
+    #[test]
+    fn test_point_very_large_values() {
+        let p = Point::new(1e15, 1e15);
+        let normalized = p.normalize();
+        assert!(approx_eq(normalized.length(), 1.0));
     }
 
     #[test]

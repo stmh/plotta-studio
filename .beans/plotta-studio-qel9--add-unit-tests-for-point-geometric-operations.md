@@ -1,10 +1,11 @@
 ---
 # plotta-studio-qel9
 title: Add unit tests for Point geometric operations
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T18:35:45Z
-updated_at: 2025-12-23T18:35:45Z
+updated_at: 2025-12-23T18:49:55Z
 parent: plotta-studio-gfob
 ---
 
