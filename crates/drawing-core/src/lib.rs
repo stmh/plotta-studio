@@ -2424,6 +2424,210 @@ mod tests {
         assert!(point_approx_eq(end, p2));
     }
 
+    // ========================================================================
+    // Stroke tests
+    // ========================================================================
+
+    #[test]
+    fn test_stroke_new() {
+        let points = vec![Point::new(0.0, 0.0), Point::new(10.0, 10.0)];
+        let style = Style::default();
+        let stroke = Stroke::new(points.clone(), style);
+
+        assert_eq!(stroke.points.len(), 2);
+        assert!(!stroke.closed);
+    }
+
+    #[test]
+    fn test_stroke_closed() {
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Point::new(10.0, 10.0),
+        ];
+        let stroke = Stroke::new(points, Style::default()).closed();
+        assert!(stroke.closed);
+    }
+
+    #[test]
+    fn test_stroke_line() {
+        let from = Point::new(0.0, 0.0);
+        let to = Point::new(10.0, 10.0);
+        let stroke = Stroke::line(from, to, Style::default());
+
+        assert_eq!(stroke.points.len(), 2);
+        assert_eq!(stroke.points[0], from);
+        assert_eq!(stroke.points[1], to);
+    }
+
+    #[test]
+    fn test_stroke_length_simple_line() {
+        let stroke = Stroke::line(Point::new(0.0, 0.0), Point::new(3.0, 4.0), Style::default());
+        assert!(approx_eq(stroke.length(), 5.0)); // 3-4-5 triangle
+    }
+
+    #[test]
+    fn test_stroke_length_multiple_segments() {
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(3.0, 4.0), // distance 5
+            Point::new(3.0, 0.0), // distance 4
+        ];
+        let stroke = Stroke::new(points, Style::default());
+        assert!(approx_eq(stroke.length(), 9.0)); // 5 + 4
+    }
+
+    #[test]
+    fn test_stroke_length_empty() {
+        let stroke = Stroke::new(vec![], Style::default());
+        assert!(approx_eq(stroke.length(), 0.0));
+    }
+
+    #[test]
+    fn test_stroke_length_single_point() {
+        let stroke = Stroke::new(vec![Point::new(5.0, 5.0)], Style::default());
+        assert!(approx_eq(stroke.length(), 0.0));
+    }
+
+    #[test]
+    fn test_stroke_bounds_simple() {
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 5.0),
+            Point::new(5.0, 10.0),
+        ];
+        let stroke = Stroke::new(points, Style::default());
+        let (min, max) = stroke.bounds().unwrap();
+
+        assert!(point_approx_eq(min, Point::new(0.0, 0.0)));
+        assert!(point_approx_eq(max, Point::new(10.0, 10.0)));
+    }
+
+    #[test]
+    fn test_stroke_bounds_empty() {
+        let stroke = Stroke::new(vec![], Style::default());
+        assert!(stroke.bounds().is_none());
+    }
+
+    #[test]
+    fn test_stroke_bounds_single_point() {
+        let stroke = Stroke::new(vec![Point::new(5.0, 10.0)], Style::default());
+        let (min, max) = stroke.bounds().unwrap();
+
+        assert!(point_approx_eq(min, Point::new(5.0, 10.0)));
+        assert!(point_approx_eq(max, Point::new(5.0, 10.0)));
+    }
+
+    #[test]
+    fn test_stroke_bounds_negative_coords() {
+        let points = vec![
+            Point::new(-10.0, -5.0),
+            Point::new(5.0, 10.0),
+            Point::new(-3.0, 0.0),
+        ];
+        let stroke = Stroke::new(points, Style::default());
+        let (min, max) = stroke.bounds().unwrap();
+
+        assert!(point_approx_eq(min, Point::new(-10.0, -5.0)));
+        assert!(point_approx_eq(max, Point::new(5.0, 10.0)));
+    }
+
+    // ========================================================================
+    // Rect tests
+    // ========================================================================
+
+    #[test]
+    fn test_rect_new() {
+        let rect = Rect::new(10.0, 20.0, 100.0, 50.0);
+        assert!(point_approx_eq(rect.origin, Point::new(10.0, 20.0)));
+        assert!(approx_eq(rect.width, 100.0));
+        assert!(approx_eq(rect.height, 50.0));
+    }
+
+    #[test]
+    fn test_rect_from_origin() {
+        let rect = Rect::from_origin((10.0, 20.0), 100.0, 50.0);
+        assert!(point_approx_eq(rect.origin, Point::new(10.0, 20.0)));
+        assert!(approx_eq(rect.width, 100.0));
+        assert!(approx_eq(rect.height, 50.0));
+    }
+
+    #[test]
+    fn test_rect_centered() {
+        let rect = Rect::centered((50.0, 50.0), 100.0, 60.0);
+        // Origin should be at center - half dimensions
+        assert!(point_approx_eq(rect.origin, Point::new(0.0, 20.0)));
+        assert!(approx_eq(rect.width, 100.0));
+        assert!(approx_eq(rect.height, 60.0));
+    }
+
+    #[test]
+    fn test_rect_centered_at_origin() {
+        let rect = Rect::centered(Point::ZERO, 20.0, 10.0);
+        assert!(point_approx_eq(rect.origin, Point::new(-10.0, -5.0)));
+    }
+
+    #[test]
+    fn test_rect_center() {
+        let rect = Rect::new(0.0, 0.0, 100.0, 50.0);
+        let center = rect.center();
+        assert!(point_approx_eq(center, Point::new(50.0, 25.0)));
+    }
+
+    #[test]
+    fn test_rect_center_negative_origin() {
+        let rect = Rect::new(-50.0, -25.0, 100.0, 50.0);
+        let center = rect.center();
+        assert!(point_approx_eq(center, Point::new(0.0, 0.0)));
+    }
+
+    #[test]
+    fn test_rect_centered_and_center_roundtrip() {
+        let original_center = Point::new(100.0, 200.0);
+        let rect = Rect::centered(original_center, 50.0, 30.0);
+        assert!(point_approx_eq(rect.center(), original_center));
+    }
+
+    #[test]
+    fn test_rect_corners() {
+        let rect = Rect::new(10.0, 20.0, 100.0, 50.0);
+        let corners = rect.corners();
+
+        // Corners in order: origin, +x, +x+y, +y
+        assert!(point_approx_eq(corners[0], Point::new(10.0, 20.0)));
+        assert!(point_approx_eq(corners[1], Point::new(110.0, 20.0)));
+        assert!(point_approx_eq(corners[2], Point::new(110.0, 70.0)));
+        assert!(point_approx_eq(corners[3], Point::new(10.0, 70.0)));
+    }
+
+    #[test]
+    fn test_rect_corners_zero_dimensions() {
+        let rect = Rect::new(5.0, 5.0, 0.0, 0.0);
+        let corners = rect.corners();
+
+        // All corners should be at the same point
+        for corner in &corners {
+            assert!(point_approx_eq(*corner, Point::new(5.0, 5.0)));
+        }
+    }
+
+    #[test]
+    fn test_rect_corners_negative_origin() {
+        let rect = Rect::new(-10.0, -20.0, 20.0, 40.0);
+        let corners = rect.corners();
+
+        assert!(point_approx_eq(corners[0], Point::new(-10.0, -20.0)));
+        assert!(point_approx_eq(corners[1], Point::new(10.0, -20.0)));
+        assert!(point_approx_eq(corners[2], Point::new(10.0, 20.0)));
+        assert!(point_approx_eq(corners[3], Point::new(-10.0, 20.0)));
+    }
+
+    #[test]
+    fn test_rect_center_zero_dimensions() {
+        let rect = Rect::new(10.0, 20.0, 0.0, 0.0);
+        assert!(point_approx_eq(rect.center(), Point::new(10.0, 20.0)));
+    }
+
     #[test]
     fn test_circle_flatten() {
         let circle = Circle::new(Point::ZERO, 10.0).with_segments(4);

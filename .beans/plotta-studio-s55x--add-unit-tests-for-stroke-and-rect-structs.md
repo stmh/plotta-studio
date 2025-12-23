@@ -1,10 +1,11 @@
 ---
 # plotta-studio-s55x
 title: Add unit tests for Stroke and Rect structs
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T18:35:54Z
-updated_at: 2025-12-23T18:35:54Z
+updated_at: 2025-12-23T19:00:19Z
 parent: plotta-studio-gfob
 ---
 
