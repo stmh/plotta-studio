@@ -1169,7 +1169,10 @@ fn flatten_path(path: &Path, transform: &Transform, style: Style) -> Vec<Stroke>
     strokes
 }
 
-fn quad_bezier(p0: Point, p1: Point, p2: Point, t: f64) -> Point {
+/// Evaluate a quadratic Bezier curve at parameter t
+/// p0: start point, p1: control point, p2: end point
+/// t: parameter from 0.0 (start) to 1.0 (end)
+pub fn quad_bezier(p0: Point, p1: Point, p2: Point, t: f64) -> Point {
     let mt = 1.0 - t;
     Point::new(
         mt * mt * p0.x + 2.0 * mt * t * p1.x + t * t * p2.x,
@@ -1177,7 +1180,10 @@ fn quad_bezier(p0: Point, p1: Point, p2: Point, t: f64) -> Point {
     )
 }
 
-fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f64) -> Point {
+/// Evaluate a cubic Bezier curve at parameter t
+/// p0: start point, p1: first control point, p2: second control point, p3: end point
+/// t: parameter from 0.0 (start) to 1.0 (end)
+pub fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f64) -> Point {
     let mt = 1.0 - t;
     let mt2 = mt * mt;
     let t2 = t * t;
@@ -2233,6 +2239,189 @@ mod tests {
         // Light red should have higher g and b than mid (more white)
         assert!(light.g > mid.g);
         assert!(light.b > mid.b);
+    }
+
+    // ========================================================================
+    // Bezier curve tests
+    // ========================================================================
+
+    // --- Quadratic Bezier tests ---
+
+    #[test]
+    fn test_quad_bezier_at_t0_returns_start() {
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(50.0, 100.0);
+        let p2 = Point::new(100.0, 0.0);
+        let result = quad_bezier(p0, p1, p2, 0.0);
+        assert!(point_approx_eq(result, p0));
+    }
+
+    #[test]
+    fn test_quad_bezier_at_t1_returns_end() {
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(50.0, 100.0);
+        let p2 = Point::new(100.0, 0.0);
+        let result = quad_bezier(p0, p1, p2, 1.0);
+        assert!(point_approx_eq(result, p2));
+    }
+
+    #[test]
+    fn test_quad_bezier_at_midpoint() {
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(50.0, 100.0);
+        let p2 = Point::new(100.0, 0.0);
+        let result = quad_bezier(p0, p1, p2, 0.5);
+        // At t=0.5: (1-t)^2 = 0.25, 2*(1-t)*t = 0.5, t^2 = 0.25
+        // x = 0.25*0 + 0.5*50 + 0.25*100 = 0 + 25 + 25 = 50
+        // y = 0.25*0 + 0.5*100 + 0.25*0 = 0 + 50 + 0 = 50
+        assert!(point_approx_eq(result, Point::new(50.0, 50.0)));
+    }
+
+    #[test]
+    fn test_quad_bezier_straight_line() {
+        // When control point is on the line, result should be linear
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(50.0, 50.0); // On the line from p0 to p2
+        let p2 = Point::new(100.0, 100.0);
+
+        // At t=0.5, should be exactly at midpoint
+        let result = quad_bezier(p0, p1, p2, 0.5);
+        assert!(point_approx_eq(result, Point::new(50.0, 50.0)));
+
+        // At t=0.25
+        let result = quad_bezier(p0, p1, p2, 0.25);
+        assert!(point_approx_eq(result, Point::new(25.0, 25.0)));
+    }
+
+    #[test]
+    fn test_quad_bezier_control_point_influence() {
+        let p0 = Point::new(0.0, 0.0);
+        let p2 = Point::new(100.0, 0.0);
+
+        // Control point above the line
+        let p1_above = Point::new(50.0, 100.0);
+        let result_above = quad_bezier(p0, p1_above, p2, 0.5);
+
+        // Control point below the line
+        let p1_below = Point::new(50.0, -100.0);
+        let result_below = quad_bezier(p0, p1_below, p2, 0.5);
+
+        // y should be positive when control is above
+        assert!(result_above.y > 0.0);
+        // y should be negative when control is below
+        assert!(result_below.y < 0.0);
+        // They should be symmetric
+        assert!(approx_eq(result_above.y, -result_below.y));
+    }
+
+    // --- Cubic Bezier tests ---
+
+    #[test]
+    fn test_cubic_bezier_at_t0_returns_start() {
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(25.0, 100.0);
+        let p2 = Point::new(75.0, 100.0);
+        let p3 = Point::new(100.0, 0.0);
+        let result = cubic_bezier(p0, p1, p2, p3, 0.0);
+        assert!(point_approx_eq(result, p0));
+    }
+
+    #[test]
+    fn test_cubic_bezier_at_t1_returns_end() {
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(25.0, 100.0);
+        let p2 = Point::new(75.0, 100.0);
+        let p3 = Point::new(100.0, 0.0);
+        let result = cubic_bezier(p0, p1, p2, p3, 1.0);
+        assert!(point_approx_eq(result, p3));
+    }
+
+    #[test]
+    fn test_cubic_bezier_at_midpoint() {
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(0.0, 100.0);
+        let p2 = Point::new(100.0, 100.0);
+        let p3 = Point::new(100.0, 0.0);
+        let result = cubic_bezier(p0, p1, p2, p3, 0.5);
+        // At t=0.5: (1-t)^3 = 0.125, 3*(1-t)^2*t = 0.375, 3*(1-t)*t^2 = 0.375, t^3 = 0.125
+        // x = 0.125*0 + 0.375*0 + 0.375*100 + 0.125*100 = 0 + 0 + 37.5 + 12.5 = 50
+        // y = 0.125*0 + 0.375*100 + 0.375*100 + 0.125*0 = 0 + 37.5 + 37.5 + 0 = 75
+        assert!(point_approx_eq(result, Point::new(50.0, 75.0)));
+    }
+
+    #[test]
+    fn test_cubic_bezier_straight_line() {
+        // When all points are collinear, result should be linear
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(33.33, 33.33);
+        let p2 = Point::new(66.67, 66.67);
+        let p3 = Point::new(100.0, 100.0);
+
+        // At t=0.5, should be close to midpoint
+        let result = cubic_bezier(p0, p1, p2, p3, 0.5);
+        assert!(approx_eq(result.x, 50.0));
+        assert!((result.y - 50.0).abs() < 0.1); // Allow small error due to non-perfect control points
+    }
+
+    #[test]
+    fn test_cubic_bezier_s_curve() {
+        // S-curve: control points on opposite sides
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(0.0, 100.0); // Pull up
+        let p2 = Point::new(100.0, -100.0); // Pull down
+        let p3 = Point::new(100.0, 0.0);
+
+        // At t=0.25, should be above the x-axis (influenced by p1)
+        let result_early = cubic_bezier(p0, p1, p2, p3, 0.25);
+        assert!(result_early.y > 0.0);
+
+        // At t=0.75, should be below the x-axis (influenced by p2)
+        let result_late = cubic_bezier(p0, p1, p2, p3, 0.75);
+        assert!(result_late.y < 0.0);
+    }
+
+    #[test]
+    fn test_cubic_bezier_control_points_symmetry() {
+        // Symmetric curve should have symmetric midpoint
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(25.0, 50.0);
+        let p2 = Point::new(75.0, 50.0);
+        let p3 = Point::new(100.0, 0.0);
+
+        let result = cubic_bezier(p0, p1, p2, p3, 0.5);
+        // x should be exactly at midpoint
+        assert!(approx_eq(result.x, 50.0));
+    }
+
+    #[test]
+    fn test_cubic_bezier_parameter_progression() {
+        // x should increase monotonically for this curve
+        let p0 = Point::new(0.0, 0.0);
+        let p1 = Point::new(33.0, 50.0);
+        let p2 = Point::new(66.0, 50.0);
+        let p3 = Point::new(100.0, 0.0);
+
+        let mut prev_x = -1.0;
+        for i in 0..=10 {
+            let t = i as f64 / 10.0;
+            let result = cubic_bezier(p0, p1, p2, p3, t);
+            assert!(result.x > prev_x, "x should increase at t={}", t);
+            prev_x = result.x;
+        }
+    }
+
+    #[test]
+    fn test_bezier_negative_coordinates() {
+        // Test with negative coordinates
+        let p0 = Point::new(-100.0, -100.0);
+        let p1 = Point::new(-50.0, 0.0);
+        let p2 = Point::new(0.0, -100.0);
+
+        let start = quad_bezier(p0, p1, p2, 0.0);
+        let end = quad_bezier(p0, p1, p2, 1.0);
+
+        assert!(point_approx_eq(start, p0));
+        assert!(point_approx_eq(end, p2));
     }
 
     #[test]

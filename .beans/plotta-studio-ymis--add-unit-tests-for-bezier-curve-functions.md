@@ -1,10 +1,11 @@
 ---
 # plotta-studio-ymis
 title: Add unit tests for Bezier curve functions
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T18:35:52Z
-updated_at: 2025-12-23T18:35:52Z
+updated_at: 2025-12-23T18:58:59Z
 parent: plotta-studio-gfob
 ---
 
