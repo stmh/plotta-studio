@@ -1,0 +1,12 @@
+[package]
+name = "drawing-plotter"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+drawing-core = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+# Serial communication for AxiDraw
+# serialport = "4.3"  # Uncomment when implementing

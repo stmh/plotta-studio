@@ -1,0 +1,8 @@
+[package]
+name = "sketch-001"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sketch-runner = { workspace = true }
+drawing-svg = { workspace = true }
