@@ -1,5 +1,5 @@
 ---
-# n2l2
+# plotta-studio-n2l2
 title: Investigate Single Line Font (SLF) support
 status: draft
 type: epic

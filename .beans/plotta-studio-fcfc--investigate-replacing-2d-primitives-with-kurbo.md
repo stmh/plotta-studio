@@ -1,5 +1,5 @@
 ---
-# fcfc
+# plotta-studio-fcfc
 title: Investigate replacing 2D primitives with kurbo
 status: todo
 type: task
