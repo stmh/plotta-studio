@@ -2006,6 +2006,235 @@ mod tests {
         assert!(transformed.is_empty());
     }
 
+    // ========================================================================
+    // Color tests
+    // ========================================================================
+
+    #[test]
+    fn test_color_constants() {
+        assert_eq!(Color::BLACK, Color::rgb(0, 0, 0));
+        assert_eq!(Color::WHITE, Color::rgb(255, 255, 255));
+        assert_eq!(Color::RED, Color::rgb(255, 0, 0));
+        assert_eq!(Color::GREEN, Color::rgb(0, 255, 0));
+        assert_eq!(Color::BLUE, Color::rgb(0, 0, 255));
+        assert_eq!(Color::TRANSPARENT, Color::rgba(0, 0, 0, 0));
+    }
+
+    #[test]
+    fn test_color_default() {
+        assert_eq!(Color::default(), Color::BLACK);
+    }
+
+    #[test]
+    fn test_color_rgb() {
+        let c = Color::rgb(100, 150, 200);
+        assert_eq!(c.r, 100);
+        assert_eq!(c.g, 150);
+        assert_eq!(c.b, 200);
+        assert_eq!(c.a, 255);
+    }
+
+    #[test]
+    fn test_color_rgba() {
+        let c = Color::rgba(100, 150, 200, 128);
+        assert_eq!(c.r, 100);
+        assert_eq!(c.g, 150);
+        assert_eq!(c.b, 200);
+        assert_eq!(c.a, 128);
+    }
+
+    #[test]
+    fn test_color_gray() {
+        let c = Color::gray(128);
+        assert_eq!(c.r, 128);
+        assert_eq!(c.g, 128);
+        assert_eq!(c.b, 128);
+        assert_eq!(c.a, 255);
+    }
+
+    #[test]
+    fn test_color_with_alpha() {
+        let c = Color::RED.with_alpha(128);
+        assert_eq!(c.r, 255);
+        assert_eq!(c.g, 0);
+        assert_eq!(c.b, 0);
+        assert_eq!(c.a, 128);
+    }
+
+    // === HSL tests ===
+
+    #[test]
+    fn test_color_hsl_red() {
+        // Red: h=0, s=1, l=0.5
+        let c = Color::hsl(0.0, 1.0, 0.5);
+        assert_eq!(c.r, 255);
+        assert_eq!(c.g, 0);
+        assert_eq!(c.b, 0);
+    }
+
+    #[test]
+    fn test_color_hsl_green() {
+        // Green: h=120, s=1, l=0.5
+        let c = Color::hsl(120.0, 1.0, 0.5);
+        assert_eq!(c.r, 0);
+        assert_eq!(c.g, 255);
+        assert_eq!(c.b, 0);
+    }
+
+    #[test]
+    fn test_color_hsl_blue() {
+        // Blue: h=240, s=1, l=0.5
+        let c = Color::hsl(240.0, 1.0, 0.5);
+        assert_eq!(c.r, 0);
+        assert_eq!(c.g, 0);
+        assert_eq!(c.b, 255);
+    }
+
+    #[test]
+    fn test_color_hsl_yellow() {
+        // Yellow: h=60, s=1, l=0.5
+        let c = Color::hsl(60.0, 1.0, 0.5);
+        assert_eq!(c.r, 255);
+        assert_eq!(c.g, 255);
+        assert_eq!(c.b, 0);
+    }
+
+    #[test]
+    fn test_color_hsl_cyan() {
+        // Cyan: h=180, s=1, l=0.5
+        let c = Color::hsl(180.0, 1.0, 0.5);
+        assert_eq!(c.r, 0);
+        assert_eq!(c.g, 255);
+        assert_eq!(c.b, 255);
+    }
+
+    #[test]
+    fn test_color_hsl_magenta() {
+        // Magenta: h=300, s=1, l=0.5
+        let c = Color::hsl(300.0, 1.0, 0.5);
+        assert_eq!(c.r, 255);
+        assert_eq!(c.g, 0);
+        assert_eq!(c.b, 255);
+    }
+
+    #[test]
+    fn test_color_hsl_lightness_zero_is_black() {
+        // Any hue with l=0 should be black
+        for h in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0] {
+            let c = Color::hsl(h, 1.0, 0.0);
+            assert_eq!(c.r, 0, "h={} should have r=0", h);
+            assert_eq!(c.g, 0, "h={} should have g=0", h);
+            assert_eq!(c.b, 0, "h={} should have b=0", h);
+        }
+    }
+
+    #[test]
+    fn test_color_hsl_lightness_one_is_white() {
+        // Any hue with l=1 should be white
+        for h in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0] {
+            let c = Color::hsl(h, 1.0, 1.0);
+            assert_eq!(c.r, 255, "h={} should have r=255", h);
+            assert_eq!(c.g, 255, "h={} should have g=255", h);
+            assert_eq!(c.b, 255, "h={} should have b=255", h);
+        }
+    }
+
+    #[test]
+    fn test_color_hsl_saturation_zero_is_gray() {
+        // s=0 should give grayscale regardless of hue
+        let c1 = Color::hsl(0.0, 0.0, 0.5);
+        let c2 = Color::hsl(180.0, 0.0, 0.5);
+
+        // Both should be the same gray
+        assert_eq!(c1.r, c1.g);
+        assert_eq!(c1.g, c1.b);
+        assert_eq!(c1, c2);
+    }
+
+    #[test]
+    fn test_color_hsl_saturation_zero_lightness_levels() {
+        // s=0 should give gray at different lightness levels
+        let black = Color::hsl(0.0, 0.0, 0.0);
+        let mid_gray = Color::hsl(0.0, 0.0, 0.5);
+        let white = Color::hsl(0.0, 0.0, 1.0);
+
+        assert_eq!(black, Color::rgb(0, 0, 0));
+        assert_eq!(white, Color::rgb(255, 255, 255));
+        // Mid gray should have equal r, g, b around 127-128
+        assert_eq!(mid_gray.r, mid_gray.g);
+        assert_eq!(mid_gray.g, mid_gray.b);
+        assert!(mid_gray.r >= 127 && mid_gray.r <= 128);
+    }
+
+    #[test]
+    fn test_color_hsl_hue_ranges() {
+        // Test each hue sector (0-60, 60-120, etc.)
+        // Sector 0-60: red to yellow
+        let c = Color::hsl(30.0, 1.0, 0.5);
+        assert_eq!(c.r, 255);
+        assert!(c.g > 0 && c.g < 255);
+        assert_eq!(c.b, 0);
+
+        // Sector 60-120: yellow to green
+        let c = Color::hsl(90.0, 1.0, 0.5);
+        assert!(c.r > 0 && c.r < 255);
+        assert_eq!(c.g, 255);
+        assert_eq!(c.b, 0);
+
+        // Sector 120-180: green to cyan
+        let c = Color::hsl(150.0, 1.0, 0.5);
+        assert_eq!(c.r, 0);
+        assert_eq!(c.g, 255);
+        assert!(c.b > 0 && c.b < 255);
+
+        // Sector 180-240: cyan to blue
+        let c = Color::hsl(210.0, 1.0, 0.5);
+        assert_eq!(c.r, 0);
+        assert!(c.g > 0 && c.g < 255);
+        assert_eq!(c.b, 255);
+
+        // Sector 240-300: blue to magenta
+        let c = Color::hsl(270.0, 1.0, 0.5);
+        assert!(c.r > 0 && c.r < 255);
+        assert_eq!(c.g, 0);
+        assert_eq!(c.b, 255);
+
+        // Sector 300-360: magenta to red
+        let c = Color::hsl(330.0, 1.0, 0.5);
+        assert_eq!(c.r, 255);
+        assert_eq!(c.g, 0);
+        assert!(c.b > 0 && c.b < 255);
+    }
+
+    #[test]
+    fn test_color_hsl_partial_saturation() {
+        // Reduced saturation should give muted colors
+        let full = Color::hsl(0.0, 1.0, 0.5);
+        let half = Color::hsl(0.0, 0.5, 0.5);
+
+        // Full saturation red
+        assert_eq!(full.r, 255);
+        assert_eq!(full.g, 0);
+
+        // Half saturation should have higher green/blue (more grayish)
+        assert!(half.r > half.g);
+        assert!(half.g > 0); // Not pure red anymore
+    }
+
+    #[test]
+    fn test_color_hsl_lightness_range() {
+        // l=0.25 should be darker, l=0.75 should be lighter
+        let dark = Color::hsl(0.0, 1.0, 0.25);
+        let mid = Color::hsl(0.0, 1.0, 0.5);
+        let light = Color::hsl(0.0, 1.0, 0.75);
+
+        // Dark red should have lower r than mid red
+        assert!(dark.r < mid.r);
+        // Light red should have higher g and b than mid (more white)
+        assert!(light.g > mid.g);
+        assert!(light.b > mid.b);
+    }
+
     #[test]
     fn test_circle_flatten() {
         let circle = Circle::new(Point::ZERO, 10.0).with_segments(4);
