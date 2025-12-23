@@ -5,27 +5,35 @@
 //! - Call `run()` with your sketch and config
 //!
 //! Built-in controls:
-//! - Middle mouse drag: Pan
+//! - Option+Left mouse drag (or Middle mouse): Pan
 //! - Scroll wheel: Zoom (toward cursor)
-//! - Space: Reset view
+//! - Space: Fit drawing to window
+//! - R: Reset view
 //! - S: Save to drawing.json
 //! - Escape: Quit
 
-use drawing_core::{Color, Drawing, Point, Stroke};
+#![allow(hidden_glob_reexports)]
+
 use std::sync::Arc;
 use std::time::Instant;
-use vello::kurbo::{Affine, BezPath, Rect as KurboRect};
-use vello::peniko::{Brush, Fill, Stroke as VelloStroke};
+use vello::kurbo::{Affine, BezPath, Rect as KurboRect, Stroke as VelloStroke};
+use vello::peniko::{Brush, Fill};
+use vello::wgpu;
 use vello::{AaConfig, RenderParams, Renderer, RendererOptions, Scene};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
 // Re-export drawing-core for convenience
 pub use drawing_core::*;
+
+// Re-export keyboard types from winit for sketches to use
+pub use winit::keyboard::{Key, NamedKey};
+
+// Re-export log crate for sketches to use
+pub use log;
 
 // ============================================================================
 // Sketch trait
@@ -200,6 +208,8 @@ struct AppState<S: Sketch> {
     needs_initial_fit: bool,
     cached_strokes: Vec<Stroke>,
     strokes_dirty: bool,
+    /// Track if Alt/Option key is held for pan mode
+    alt_held: bool,
 }
 
 impl<S: Sketch> AppState<S> {
@@ -225,14 +235,8 @@ impl<S: Sketch> AppState<S> {
             needs_initial_fit: true,
             cached_strokes: Vec::new(),
             strokes_dirty: true,
+            alt_held: false,
         }
-    }
-
-    fn screen_to_drawing(&self, screen: Point) -> Point {
-        Point::new(
-            (screen.x - self.view.pan.x) / self.view.zoom,
-            (screen.y - self.view.pan.y) / self.view.zoom,
-        )
     }
 
     fn refresh_strokes(&mut self) {
@@ -240,10 +244,6 @@ impl<S: Sketch> AppState<S> {
             self.cached_strokes = self.drawing.flatten();
             self.strokes_dirty = false;
         }
-    }
-
-    fn mark_dirty(&mut self) {
-        self.strokes_dirty = true;
     }
 
     fn render(&mut self, state: &mut RenderState) {
@@ -305,17 +305,14 @@ impl<S: Sketch> AppState<S> {
 
         // Render
         let surface_texture = state.surface.get_current_texture().unwrap();
-        let texture_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
 
         state
             .renderer
-            .render_to_texture(
+            .render_to_surface(
                 &state.device,
                 &state.queue,
                 &scene,
-                &texture_view,
+                &surface_texture,
                 &RenderParams {
                     base_color: vello::peniko::Color::WHITE,
                     width: state.surface_config.width,
@@ -370,9 +367,30 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
         .expect("Failed to create device");
 
         let size = window.inner_size();
+        let surface_caps = surface.get_capabilities(&adapter);
+
+        // Vello only supports Rgba8Unorm and Bgra8Unorm (not sRGB variants)
+        // Find a compatible format from the available surface formats
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .find(|f| {
+                matches!(
+                    f,
+                    wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+                )
+            })
+            .copied()
+            .unwrap_or_else(|| {
+                panic!(
+                    "No compatible surface format found. Available: {:?}",
+                    surface_caps.formats
+                );
+            });
+
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: wgpu::TextureFormat::Bgra8Unorm,
+            format: surface_format,
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::AutoVsync,
@@ -385,7 +403,7 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
         let renderer = Renderer::new(
             &device,
             RendererOptions {
-                surface_format: Some(surface_config.format),
+                surface_format: Some(surface_format),
                 use_cpu: false,
                 antialiasing_support: vello::AaSupport::all(),
                 num_init_threads: None,
@@ -404,18 +422,25 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let Some(state) = &mut self.render_state else {
+        if self.render_state.is_none() {
             return;
-        };
+        }
+
+        // Track if we need to request a redraw at the end
+        let mut needs_redraw = false;
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
             WindowEvent::Resized(size) => {
                 if size.width > 0 && size.height > 0 {
-                    state.surface_config.width = size.width;
-                    state.surface_config.height = size.height;
-                    state.surface.configure(&state.device, &state.surface_config);
+                    if let Some(state) = &mut self.render_state {
+                        state.surface_config.width = size.width;
+                        state.surface_config.height = size.height;
+                        state
+                            .surface
+                            .configure(&state.device, &state.surface_config);
+                    }
 
                     if self.needs_initial_fit {
                         self.view
@@ -423,8 +448,12 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                         self.needs_initial_fit = false;
                     }
 
-                    state.window.request_redraw();
+                    needs_redraw = true;
                 }
+            }
+
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.alt_held = modifiers.state().alt_key();
             }
 
             WindowEvent::MouseInput {
@@ -432,22 +461,24 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                 button,
                 ..
             } => {
-                if button == MouseButton::Middle {
+                // Middle mouse or Option+Left mouse for panning
+                if button == MouseButton::Middle || (button == MouseButton::Left && self.alt_held) {
                     self.view.dragging = btn_state == ElementState::Pressed;
                 }
-                if button == MouseButton::Left {
+                // Left mouse without Option for sketch interaction
+                if button == MouseButton::Left && !self.alt_held {
                     let was_pressed = self.ctx.mouse_pressed;
                     self.ctx.mouse_pressed = btn_state == ElementState::Pressed;
 
                     if self.ctx.mouse_pressed && !was_pressed {
                         self.sketch.mouse_pressed(self.ctx.mouse, &mut self.drawing);
-                        self.mark_dirty();
-                        state.window.request_redraw();
+                        self.strokes_dirty = true;
+                        needs_redraw = true;
                     } else if !self.ctx.mouse_pressed && was_pressed {
                         self.sketch
                             .mouse_released(self.ctx.mouse, &mut self.drawing);
-                        self.mark_dirty();
-                        state.window.request_redraw();
+                        self.strokes_dirty = true;
+                        needs_redraw = true;
                     }
                 }
             }
@@ -458,16 +489,20 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                 if self.view.dragging {
                     self.view.pan.x += mouse.x - self.view.last_mouse.x;
                     self.view.pan.y += mouse.y - self.view.last_mouse.y;
-                    state.window.request_redraw();
+                    needs_redraw = true;
                 }
 
                 self.view.last_mouse = mouse;
-                self.ctx.mouse = self.screen_to_drawing(mouse);
+                // Inline screen_to_drawing calculation to avoid borrow conflict
+                self.ctx.mouse = Point::new(
+                    (mouse.x - self.view.pan.x) / self.view.zoom,
+                    (mouse.y - self.view.pan.y) / self.view.zoom,
+                );
 
                 if self.ctx.mouse_pressed {
                     self.sketch.mouse_dragged(self.ctx.mouse, &mut self.drawing);
-                    self.mark_dirty();
-                    state.window.request_redraw();
+                    self.strokes_dirty = true;
+                    needs_redraw = true;
                 }
             }
 
@@ -487,7 +522,7 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                 self.view.pan.y =
                     self.view.last_mouse.y - (self.view.last_mouse.y - self.view.pan.y) * factor;
 
-                state.window.request_redraw();
+                needs_redraw = true;
             }
 
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
@@ -496,10 +531,12 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
 
                     Key::Named(NamedKey::Space) => {
                         // Fit drawing to window
-                        let width = state.surface_config.width as f64;
-                        let height = state.surface_config.height as f64;
-                        self.view.fit_drawing(&self.drawing, width, height);
-                        state.window.request_redraw();
+                        if let Some(state) = &self.render_state {
+                            let width = state.surface_config.width as f64;
+                            let height = state.surface_config.height as f64;
+                            self.view.fit_drawing(&self.drawing, width, height);
+                        }
+                        needs_redraw = true;
                     }
 
                     Key::Character(c) if c.as_str() == "s" => {
@@ -514,40 +551,50 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                     Key::Character(c) if c.as_str() == "r" => {
                         // Reset view
                         self.view.reset();
-                        state.window.request_redraw();
+                        needs_redraw = true;
                     }
 
                     key => {
                         self.sketch.key_pressed(key, &mut self.drawing);
-                        self.mark_dirty();
-                        state.window.request_redraw();
+                        self.strokes_dirty = true;
+                        needs_redraw = true;
                     }
                 }
             }
 
             WindowEvent::RedrawRequested => {
-                self.render(state);
-
-                if self.config.animate {
-                    state.window.request_redraw();
+                // Take ownership of render_state temporarily to avoid borrow conflict
+                if let Some(mut state) = self.render_state.take() {
+                    self.render(&mut state);
+                    if self.config.animate {
+                        state.window.request_redraw();
+                    }
+                    self.render_state = Some(state);
                 }
             }
 
             _ => {}
         }
+
+        // Request redraw if needed
+        if needs_redraw {
+            if let Some(state) = &self.render_state {
+                state.window.request_redraw();
+            }
+        }
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if self.config.animate {
-            if let Some(state) = &self.render_state {
-                let now = Instant::now();
-                self.ctx.delta = now.duration_since(self.last_frame_time).as_secs_f64();
-                self.ctx.time = now.duration_since(self.start_time).as_secs_f64();
-                self.ctx.frame += 1;
-                self.last_frame_time = now;
+        if self.config.animate && self.render_state.is_some() {
+            let now = Instant::now();
+            self.ctx.delta = now.duration_since(self.last_frame_time).as_secs_f64();
+            self.ctx.time = now.duration_since(self.start_time).as_secs_f64();
+            self.ctx.frame += 1;
+            self.last_frame_time = now;
 
-                if self.sketch.update(&mut self.drawing, &self.ctx) {
-                    self.mark_dirty();
+            if self.sketch.update(&mut self.drawing, &self.ctx) {
+                self.strokes_dirty = true;
+                if let Some(state) = &self.render_state {
                     state.window.request_redraw();
                 }
             }
@@ -560,7 +607,12 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
 // ============================================================================
 
 fn color_to_vello(c: Color) -> vello::peniko::Color {
-    vello::peniko::Color::rgba8(c.r, c.g, c.b, c.a)
+    vello::peniko::Color::new([
+        c.r as f32 / 255.0,
+        c.g as f32 / 255.0,
+        c.b as f32 / 255.0,
+        c.a as f32 / 255.0,
+    ])
 }
 
 // ============================================================================

@@ -3,7 +3,7 @@
 //! Note: Import is lossy - only path/line data is preserved.
 //! Complex SVG features (gradients, filters, text, etc.) are ignored.
 
-use drawing_core::{Color, Drawing, Stroke, Style};
+use drawing_core::{Color, Drawing, Stroke};
 use std::io::Write;
 use std::path::Path;
 use thiserror::Error;
