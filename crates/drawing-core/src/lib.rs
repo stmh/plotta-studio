@@ -204,9 +204,12 @@ impl Transform {
 
     /// Rotate around a specific point
     pub fn rotate_around(angle: f64, center: Point) -> Self {
-        Self::translate(center.x, center.y)
+        // 1. Translate so center is at origin
+        // 2. Rotate
+        // 3. Translate back
+        Self::translate(-center.x, -center.y)
             .then(Self::rotate(angle))
-            .then(Self::translate(-center.x, -center.y))
+            .then(Self::translate(center.x, center.y))
     }
 
     /// Skew/shear transformation
@@ -222,14 +225,16 @@ impl Transform {
     }
 
     /// Combine transforms: self then other
+    /// Returns a transform that first applies self, then applies other.
+    /// In matrix terms: other * self (since transforms apply right-to-left)
     pub fn then(self, other: Self) -> Self {
         Self {
-            a: self.a * other.a + self.b * other.c,
-            b: self.a * other.b + self.b * other.d,
-            c: self.c * other.a + self.d * other.c,
-            d: self.c * other.b + self.d * other.d,
-            tx: self.tx * other.a + self.ty * other.c + other.tx,
-            ty: self.tx * other.b + self.ty * other.d + other.ty,
+            a: other.a * self.a + other.b * self.c,
+            b: other.a * self.b + other.b * self.d,
+            c: other.c * self.a + other.d * self.c,
+            d: other.c * self.b + other.d * self.d,
+            tx: other.a * self.tx + other.b * self.ty + other.tx,
+            ty: other.c * self.tx + other.d * self.ty + other.ty,
         }
     }
 
@@ -1649,11 +1654,29 @@ mod tests {
         assert!(approx_eq(normalized.length(), 1.0));
     }
 
+    // ========================================================================
+    // Transform tests
+    // ========================================================================
+
+    fn transform_approx_eq(a: Transform, b: Transform) -> bool {
+        approx_eq(a.a, b.a)
+            && approx_eq(a.b, b.b)
+            && approx_eq(a.c, b.c)
+            && approx_eq(a.d, b.d)
+            && approx_eq(a.tx, b.tx)
+            && approx_eq(a.ty, b.ty)
+    }
+
     #[test]
     fn test_transform_identity() {
         let t = Transform::IDENTITY;
         let p = Point::new(10.0, 20.0);
         assert_eq!(t.apply(p), p);
+    }
+
+    #[test]
+    fn test_transform_identity_default() {
+        assert_eq!(Transform::default(), Transform::IDENTITY);
     }
 
     #[test]
@@ -1664,10 +1687,323 @@ mod tests {
     }
 
     #[test]
+    fn test_transform_translate_negative() {
+        let t = Transform::translate(-5.0, -10.0);
+        let p = Point::new(10.0, 20.0);
+        assert_eq!(t.apply(p), Point::new(5.0, 10.0));
+    }
+
+    #[test]
+    fn test_transform_translate_zero() {
+        let t = Transform::translate(0.0, 0.0);
+        assert!(transform_approx_eq(t, Transform::IDENTITY));
+    }
+
+    // === Rotation tests ===
+
+    #[test]
+    fn test_transform_rotate_zero() {
+        let t = Transform::rotate(0.0);
+        assert!(transform_approx_eq(t, Transform::IDENTITY));
+    }
+
+    #[test]
+    fn test_transform_rotate_90() {
+        let t = Transform::rotate(FRAC_PI_2);
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(t.apply(p), Point::new(0.0, 1.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_180() {
+        let t = Transform::rotate(PI);
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(t.apply(p), Point::new(-1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_360() {
+        let t = Transform::rotate(TAU);
+        let p = Point::new(3.0, 4.0);
+        assert!(point_approx_eq(t.apply(p), p));
+    }
+
+    #[test]
+    fn test_transform_rotate_negative() {
+        let t = Transform::rotate(-FRAC_PI_2);
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(t.apply(p), Point::new(0.0, -1.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_preserves_length() {
+        let t = Transform::rotate(1.234);
+        let p = Point::new(3.0, 4.0);
+        let rotated = t.apply(p);
+        assert!(approx_eq(rotated.length(), p.length()));
+    }
+
+    #[test]
+    fn test_transform_rotate_deg() {
+        let t = Transform::rotate_deg(90.0);
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(t.apply(p), Point::new(0.0, 1.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_deg_180() {
+        let t = Transform::rotate_deg(180.0);
+        let p = Point::new(1.0, 0.0);
+        assert!(point_approx_eq(t.apply(p), Point::new(-1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_deg_45() {
+        let t = Transform::rotate_deg(45.0);
+        let p = Point::new(1.0, 0.0);
+        let sqrt2_over_2 = std::f64::consts::FRAC_1_SQRT_2;
+        assert!(point_approx_eq(
+            t.apply(p),
+            Point::new(sqrt2_over_2, sqrt2_over_2)
+        ));
+    }
+
+    // === Scale tests ===
+
+    #[test]
+    fn test_transform_scale() {
+        let t = Transform::scale(2.0, 3.0);
+        let p = Point::new(5.0, 10.0);
+        assert_eq!(t.apply(p), Point::new(10.0, 30.0));
+    }
+
+    #[test]
+    fn test_transform_scale_identity() {
+        let t = Transform::scale(1.0, 1.0);
+        assert!(transform_approx_eq(t, Transform::IDENTITY));
+    }
+
+    #[test]
+    fn test_transform_scale_zero() {
+        let t = Transform::scale(0.0, 0.0);
+        let p = Point::new(100.0, 200.0);
+        assert_eq!(t.apply(p), Point::ZERO);
+    }
+
+    #[test]
+    fn test_transform_scale_negative() {
+        let t = Transform::scale(-1.0, -1.0);
+        let p = Point::new(5.0, 10.0);
+        assert_eq!(t.apply(p), Point::new(-5.0, -10.0));
+    }
+
+    #[test]
+    fn test_transform_scale_non_uniform() {
+        let t = Transform::scale(2.0, 0.5);
+        let p = Point::new(10.0, 10.0);
+        assert_eq!(t.apply(p), Point::new(20.0, 5.0));
+    }
+
+    #[test]
+    fn test_transform_scale_uniform() {
+        let t = Transform::scale_uniform(3.0);
+        let p = Point::new(5.0, 10.0);
+        assert_eq!(t.apply(p), Point::new(15.0, 30.0));
+    }
+
+    #[test]
+    fn test_transform_scale_uniform_preserves_angles() {
+        let t = Transform::scale_uniform(2.0);
+        let p = Point::new(1.0, 1.0);
+        let scaled = t.apply(p);
+        assert!(approx_eq(p.angle(), scaled.angle()));
+    }
+
+    // === Skew tests ===
+
+    #[test]
+    fn test_transform_skew_zero() {
+        let t = Transform::skew(0.0, 0.0);
+        assert!(transform_approx_eq(t, Transform::IDENTITY));
+    }
+
+    #[test]
+    fn test_transform_skew_x() {
+        let t = Transform::skew(FRAC_PI_4, 0.0); // 45 degree skew in x
+        let p = Point::new(0.0, 1.0);
+        // With 45 degree skew, y=1 adds tan(45)=1 to x
+        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
+    }
+
+    #[test]
+    fn test_transform_skew_y() {
+        let t = Transform::skew(0.0, FRAC_PI_4); // 45 degree skew in y
+        let p = Point::new(1.0, 0.0);
+        // With 45 degree skew, x=1 adds tan(45)=1 to y
+        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
+    }
+
+    // === Rotate around tests ===
+
+    #[test]
+    fn test_transform_rotate_around_origin() {
+        let t = Transform::rotate_around(FRAC_PI_2, Point::ZERO);
+        let p = Point::new(1.0, 0.0);
+        // Same as regular rotation when center is origin
+        assert!(point_approx_eq(t.apply(p), Point::new(0.0, 1.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_around_point() {
+        let center = Point::new(1.0, 0.0);
+        let t = Transform::rotate_around(FRAC_PI_2, center);
+        let p = Point::new(2.0, 0.0); // 1 unit to the right of center
+                                      // After 90 degree rotation around (1,0), should be at (1,1)
+        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
+    }
+
+    #[test]
+    fn test_transform_rotate_around_center_unchanged() {
+        let center = Point::new(5.0, 5.0);
+        let t = Transform::rotate_around(PI, center);
+        // The center point should remain unchanged
+        assert!(point_approx_eq(t.apply(center), center));
+    }
+
+    // === Composition tests ===
+
+    #[test]
     fn test_transform_chain() {
         let t = Transform::translate(10.0, 0.0).then(Transform::scale(2.0, 2.0));
         let p = Point::new(0.0, 0.0);
         assert_eq!(t.apply(p), Point::new(20.0, 0.0));
+    }
+
+    #[test]
+    fn test_transform_chain_order_matters() {
+        let p = Point::new(1.0, 0.0);
+
+        // Translate then scale
+        let t1 = Transform::translate(1.0, 0.0).then(Transform::scale(2.0, 2.0));
+        // Scale then translate
+        let t2 = Transform::scale(2.0, 2.0).then(Transform::translate(1.0, 0.0));
+
+        // Results should be different
+        let r1 = t1.apply(p);
+        let r2 = t2.apply(p);
+
+        // t1: (1,0) -> translate -> (2,0) -> scale -> (4,0)
+        assert!(point_approx_eq(r1, Point::new(4.0, 0.0)));
+        // t2: (1,0) -> scale -> (2,0) -> translate -> (3,0)
+        assert!(point_approx_eq(r2, Point::new(3.0, 0.0)));
+    }
+
+    #[test]
+    fn test_transform_chain_identity() {
+        let t = Transform::translate(5.0, 5.0);
+        let chained = t.then(Transform::IDENTITY);
+        assert!(transform_approx_eq(t, chained));
+    }
+
+    #[test]
+    fn test_transform_mul_operator() {
+        let t1 = Transform::translate(10.0, 0.0);
+        let t2 = Transform::scale(2.0, 2.0);
+        let combined = t1 * t2;
+        assert!(transform_approx_eq(combined, t1.then(t2)));
+    }
+
+    #[test]
+    fn test_transform_chain_rotate_translate() {
+        let t = Transform::rotate(FRAC_PI_2).then(Transform::translate(1.0, 0.0));
+        let p = Point::new(1.0, 0.0);
+        // (1,0) -> rotate 90 -> (0,1) -> translate -> (1,1)
+        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
+    }
+
+    // === Inverse tests ===
+
+    #[test]
+    fn test_transform_inverse_identity() {
+        let t = Transform::IDENTITY;
+        let inv = t.inverse().unwrap();
+        assert!(transform_approx_eq(inv, Transform::IDENTITY));
+    }
+
+    #[test]
+    fn test_transform_inverse_translate() {
+        let t = Transform::translate(5.0, 10.0);
+        let inv = t.inverse().unwrap();
+        let p = Point::new(1.0, 2.0);
+        let transformed = t.apply(p);
+        let back = inv.apply(transformed);
+        assert!(point_approx_eq(back, p));
+    }
+
+    #[test]
+    fn test_transform_inverse_scale() {
+        let t = Transform::scale(2.0, 4.0);
+        let inv = t.inverse().unwrap();
+        let p = Point::new(10.0, 20.0);
+        let back = inv.apply(t.apply(p));
+        assert!(point_approx_eq(back, p));
+    }
+
+    #[test]
+    fn test_transform_inverse_rotate() {
+        let t = Transform::rotate(1.234);
+        let inv = t.inverse().unwrap();
+        let p = Point::new(3.0, 4.0);
+        let back = inv.apply(t.apply(p));
+        assert!(point_approx_eq(back, p));
+    }
+
+    #[test]
+    fn test_transform_inverse_composed() {
+        let t = Transform::translate(5.0, 10.0)
+            .then(Transform::rotate(FRAC_PI_4))
+            .then(Transform::scale(2.0, 3.0));
+        let inv = t.inverse().unwrap();
+        let p = Point::new(7.0, 11.0);
+        let back = inv.apply(t.apply(p));
+        assert!(point_approx_eq(back, p));
+    }
+
+    #[test]
+    fn test_transform_inverse_singular_zero_scale() {
+        let t = Transform::scale(0.0, 1.0);
+        assert!(t.inverse().is_none());
+    }
+
+    #[test]
+    fn test_transform_inverse_singular_both_zero() {
+        let t = Transform::scale(0.0, 0.0);
+        assert!(t.inverse().is_none());
+    }
+
+    // === Apply all tests ===
+
+    #[test]
+    fn test_transform_apply_all() {
+        let t = Transform::translate(10.0, 20.0);
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 1.0),
+            Point::new(2.0, 2.0),
+        ];
+        let transformed = t.apply_all(&points);
+        assert_eq!(transformed.len(), 3);
+        assert_eq!(transformed[0], Point::new(10.0, 20.0));
+        assert_eq!(transformed[1], Point::new(11.0, 21.0));
+        assert_eq!(transformed[2], Point::new(12.0, 22.0));
+    }
+
+    #[test]
+    fn test_transform_apply_all_empty() {
+        let t = Transform::translate(10.0, 20.0);
+        let points: Vec<Point> = vec![];
+        let transformed = t.apply_all(&points);
+        assert!(transformed.is_empty());
     }
 
     #[test]

@@ -1,10 +1,11 @@
 ---
 # plotta-studio-1rnf
 title: Add unit tests for Transform operations
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T18:35:47Z
-updated_at: 2025-12-23T18:35:47Z
+updated_at: 2025-12-23T18:55:49Z
 parent: plotta-studio-gfob
 ---
 
