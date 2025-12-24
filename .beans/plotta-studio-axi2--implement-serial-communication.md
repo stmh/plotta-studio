@@ -72,6 +72,16 @@ Look for USB devices with specific VID/PID:
 - Vendor ID: 0x04D8 (Microchip)
 - Product ID: 0xFD92 (EiBotBoard)
 
+## Subtasks
+
+Implementation is broken into focused child beans:
+
+1. **axi2a** - Add serialport dependency and update types
+2. **axi2b** - Port discovery and auto-detection (VID/PID)
+3. **axi2c** - Connection with EBB handshake
+4. **axi2d** - Send/receive command protocol
+
 ## Files to Modify
+
 - `crates/drawing-plotter/Cargo.toml`
 - `crates/drawing-plotter/src/lib.rs`
