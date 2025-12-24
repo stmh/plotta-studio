@@ -1,6 +1,6 @@
 ---
 # plotta-studio-fcfc
-title: Investigate replacing 2D primitives with kurbo
+title: Replace 2D primitives with kurbo
 status: completed
 type: task
 created_at: 2025-12-23T19:19:35Z
@@ -8,7 +8,7 @@ updated_at: 2025-12-24T00:00:00Z
 parent: n2l2
 ---
 
-Evaluate whether we can replace our custom 2D geometry types in drawing-core with kurbo, the 2D geometry library from Linebender.
+Replaced custom 2D geometry types in drawing-core with kurbo, the 2D geometry library from Linebender.
 
 ## Background
 
@@ -128,8 +128,24 @@ However, full migration would be a breaking change affecting user code. The reco
 2. **Now**: Use kurbo internally for complex geometry operations
 3. **Later**: Consider full migration when implementing SLF support (natural break point)
 
-## Files Analyzed
-- `crates/drawing-core/src/lib.rs` - Our current types (~1200 lines)
-- `crates/sketch-runner/src/lib.rs` - Already uses vello::kurbo
-- `sketches/sketch-001/src/main.rs` - Example of user-facing API
-- kurbo 0.11.3 source (via cargo registry)
+## Implementation Summary
+
+The refactor was completed with the following changes:
+
+### Changes Made
+1. Added `kurbo = { version = "0.11", features = ["serde"] }` to drawing-core
+2. Re-exported kurbo types: `Point`, `Affine`, `Rect`, `Line`, `Vec2`, `BezPath`, `PathEl`
+3. Added `Transform` type alias for `Affine` for API clarity
+4. Updated flatten logic to use `Affine * Point` multiplication
+5. Updated `Path::to_bezpath()` to convert to kurbo's BezPath
+6. Used `kurbo::ParamCurve` trait for bezier evaluation
+
+### Results
+- **Lines removed**: ~1737
+- **Lines added**: ~183
+- **All 56 tests pass**
+- No changes needed to downstream crates (drawing-svg, drawing-plotter, sketch-runner)
+
+### Files Modified
+- `crates/drawing-core/Cargo.toml` - Added kurbo dependency
+- `crates/drawing-core/src/lib.rs` - Replaced custom types with kurbo
