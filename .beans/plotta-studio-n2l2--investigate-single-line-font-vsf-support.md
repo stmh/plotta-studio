@@ -1,13 +1,13 @@
 ---
 # plotta-studio-n2l2
-title: Investigate Single Line Font (SLF) support
+title: Investigate Single Line Font (VSF) support
 status: in-progress
 type: epic
 created_at: 2025-12-23T19:14:41Z
 updated_at: 2025-12-24T00:00:00Z
 ---
 
-Research and plan Single Line Font support for plotta-studio. SLFs are essential for pen plotters as they draw text with single strokes rather than filled outlines.
+Research and plan Single Line Font support for plotta-studio. Vector Stroke Fonts (VSF) are essential for pen plotters as they draw text with single strokes rather than filled outlines.
 
 ## Background
 
@@ -119,7 +119,7 @@ myfont.ufo/
 - `qcurve`: Quadratic bezier (TrueType style)
 - `offcurve`: Control point for curves
 
-**Key for SLF:**
+**Key for single-line fonts:**
 - Open contours start with `type="move"`
 - Closed contours do NOT start with move (cyclic)
 - UFO supports open contours, OpenType does NOT
@@ -150,7 +150,7 @@ The creative coding community (Processing, p5.js) has developed extensive single
 | Crate | Purpose | Notes |
 |-------|---------|-------|
 | `norad` | UFO 3 parsing | From Linebender, kurbo compatible |
-| `fontdue` | TTF/OTF rasterization | Not suitable for SLF (raster output) |
+| `fontdue` | TTF/OTF rasterization | Not suitable for stroke fonts (raster output) |
 | `font-kit` | Font loading | Cross-platform, outline access |
 | `rusttype` | TTF/OTF parsing | Glyph shape access |
 | `fonterator` | Path-based rendering | Outputs path ops, not strokes |
@@ -328,7 +328,7 @@ pub enum FontFormat {
     Hershey,    // .jhf or inline Hershey data
     Ufo,        // .ufo directory
     SvgFont,    // .svg font file
-    Slf,        // .slf (our custom format)
+    Vsf,        // .vsf (our custom format)
 }
 ```
 
@@ -357,9 +357,9 @@ impl Text {
 }
 ```
 
-## Proposed SLF (Single Line Font) File Format
+## Proposed VSF (Vector Stroke Font) File Format
 
-A simple, JSON-based format optimized for single-line fonts:
+A simple, JSON-based format optimized for single-line/stroke fonts:
 
 ```json
 {
@@ -441,7 +441,7 @@ A simple, JSON-based format optimized for single-line fonts:
 For larger fonts, a binary format could be used:
 ```
 Header (32 bytes):
-  - Magic: "SLF1" (4 bytes)
+  - Magic: "VSF1" (4 bytes)
   - Version: u16 (2 bytes)
   - Flags: u16 (2 bytes)
   - Glyph count: u32 (4 bytes)
@@ -493,10 +493,10 @@ Contour:
 3. Convert `norad::Contour` → our `Contour`
 4. Handle kerning from UFO
 
-### Phase 4: SLF Format
-1. Define SLF JSON schema
-2. Implement SLF parser
-3. Create SLF exporter (convert other formats to SLF)
+### Phase 4: VSF Format
+1. Define VSF JSON schema
+2. Implement VSF parser
+3. Create VSF exporter (convert other formats to VSF)
 4. Document format specification
 
 ### Phase 5: Text Rendering
@@ -517,7 +517,7 @@ Contour:
 [dependencies]
 norad = "0.17"              # UFO parsing
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"          # SLF format
+serde_json = "1.0"          # VSF format
 thiserror = "1.0"           # Error handling
 kurbo = { version = "0.11", features = ["serde"] }  # Already used
 ```
@@ -530,6 +530,6 @@ kurbo = { version = "0.11", features = ["serde"] }  # Already used
 - [UFO Specification](https://unifiedfontobject.org/versions/ufo3/)
 - [GLIF Specification](https://unifiedfontobject.org/versions/ufo3/glyphs/glif/)
 - [norad crate](https://github.com/linebender/norad) - Rust UFO library
-- [Relief SingleLine](https://github.com/isdat-type/Relief-SingleLine) - Open-source SLF
+- [Relief SingleLine](https://github.com/isdat-type/Relief-SingleLine) - Open-source single-line font
 - [hershey-fonts](https://github.com/kamalmostafa/hershey-fonts) - C library and JHF files
 - [single-line-font-renderer](https://github.com/jvolker/single-line-font-renderer) - Browser tool
