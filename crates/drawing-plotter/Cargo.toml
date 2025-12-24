@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = []
+default = ["hardware"]
 # Enable hardware serial communication (requires libudev on Linux)
 hardware = ["serialport"]
 
