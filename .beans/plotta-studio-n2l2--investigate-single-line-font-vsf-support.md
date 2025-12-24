@@ -180,14 +180,15 @@ The creative coding community (Processing, p5.js) has developed extensive single
 │  - has_glyph(char) → bool                                      │
 └─────────────────────────────────────────────────────────────────┘
                               │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  HersheyFont    │ │    UfoFont      │ │   SvgFont       │
-│  (lines only)   │ │  (bezier curves)│ │  (bezier curves)│
-└─────────────────┘ └─────────────────┘ └─────────────────┘
-          │                   │                   │
-          └───────────────────┼───────────────────┘
+     ┌────────────┬───────────┼───────────┬────────────┐
+     ▼            ▼           ▼           ▼            ▼
+┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌───────────┐
+│ Hershey │ │   Ufo   │ │   Vsf   │ │   Svg   │ │  Custom/  │
+│  Font   │ │  Font   │ │  Font   │ │  Font   │ │ Computed  │
+│ (lines) │ │ (bezier)│ │ (JSON)  │ │ (bezier)│ │  (future) │
+└─────────┘ └─────────┘ └─────────┘ └─────────┘ └───────────┘
+     │            │           │           │            │
+     └────────────┴───────────┴───────────┴────────────┘
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Glyph                                   │
@@ -493,19 +494,30 @@ Contour:
 3. Convert `norad::Contour` → our `Contour`
 4. Handle kerning from UFO
 
-### Phase 4: VSF Format
+### Phase 4: VSF Format & Loader
 1. Define VSF JSON schema
-2. Implement VSF parser
-3. Create VSF exporter (convert other formats to VSF)
+2. Implement `VsfFont` implementing `Font` trait
+3. Add VSF parser (serde deserialization)
 4. Document format specification
 
-### Phase 5: Text Rendering
+### Phase 5: vsf-convert CLI Tool
+1. Create `vsf-convert` binary crate
+2. Implement Hershey → VSF converter
+   - Parse Hershey ASCII format
+   - Map character sets to Unicode
+   - Generate VSF JSON output
+3. Implement UFO → VSF converter
+   - Use existing `UfoFont` loader
+   - Export to VSF format
+4. Convert and bundle common Hershey fonts as `.vsf`
+
+### Phase 6: Text Rendering
 1. Implement `TextRenderer`
 2. Add text layout with kerning
 3. Create `Text` shape type
 4. Integrate with `Drawing`
 
-### Phase 6: Integration
+### Phase 7: Integration
 1. Add to sketch-runner preview
 2. SVG export support
 3. Plotter optimization for text paths
@@ -513,6 +525,7 @@ Contour:
 
 ## Dependencies
 
+### drawing-text crate
 ```toml
 [dependencies]
 norad = "0.17"              # UFO parsing
@@ -520,6 +533,13 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"          # VSF format
 thiserror = "1.0"           # Error handling
 kurbo = { version = "0.11", features = ["serde"] }  # Already used
+```
+
+### vsf-convert CLI tool
+```toml
+[dependencies]
+drawing-text = { path = "../drawing-text" }  # Reuse font loaders
+clap = { version = "4.0", features = ["derive"] }  # CLI argument parsing
 ```
 
 ## References
