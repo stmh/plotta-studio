@@ -8,8 +8,11 @@
 //! - S: Save to drawing.json
 //! - E: Export to drawing.svg
 //! - G: Regenerate drawing
+//! - P: Plot to AxiDraw (requires `hardware` feature)
 //! - Escape: Quit
 
+#[cfg(feature = "hardware")]
+use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 use sketch_runner::*;
 use std::f64::consts::{PI, TAU};
 
@@ -17,6 +20,8 @@ struct RadialSketch {
     num_circles: usize,
     num_rays: usize,
     seed: u64,
+    #[cfg(feature = "hardware")]
+    plot_handle: Option<PlotHandle>,
 }
 
 impl Default for RadialSketch {
@@ -25,6 +30,8 @@ impl Default for RadialSketch {
             num_circles: 8,
             num_rays: 24,
             seed: 42,
+            #[cfg(feature = "hardware")]
+            plot_handle: None,
         }
     }
 }
@@ -37,7 +44,44 @@ impl Sketch for RadialSketch {
     }
 
     fn update(&mut self, _drawing: &mut Drawing, _ctx: &UpdateContext) -> bool {
-        // Could animate here
+        #[cfg(feature = "hardware")]
+        {
+            // Check for plot events
+            if let Some(ref handle) = self.plot_handle {
+                for event in handle.drain_events() {
+                    match event {
+                        PlotEvent::Started { total_strokes } => {
+                            log::info!("Plotting started: {} strokes", total_strokes);
+                        }
+                        PlotEvent::StrokeStart { index, total } => {
+                            log::debug!("Starting stroke {}/{}", index + 1, total);
+                        }
+                        PlotEvent::StrokeComplete { index, total } => {
+                            log::info!("Stroke {}/{} complete", index + 1, total);
+                        }
+                        PlotEvent::MoveTo { position, pen_down } => {
+                            log::trace!(
+                                "Move to ({:.1}, {:.1}) pen {}",
+                                position.x,
+                                position.y,
+                                if pen_down { "down" } else { "up" }
+                            );
+                        }
+                        PlotEvent::Completed => {
+                            log::info!("Plotting completed!");
+                        }
+                        PlotEvent::Error(e) => {
+                            log::error!("Plotting error: {}", e);
+                        }
+                    }
+                }
+
+                // Clean up finished handle
+                if !handle.is_running() {
+                    self.plot_handle = None;
+                }
+            }
+        }
         false
     }
 
@@ -55,6 +99,28 @@ impl Sketch for RadialSketch {
                 } else {
                     log::info!("Exported to drawing.svg");
                 }
+            }
+            #[cfg(feature = "hardware")]
+            Key::Character(c) if c.as_str() == "p" => {
+                // Plot to AxiDraw
+                if self.plot_handle.is_some() {
+                    log::warn!("Plotting already in progress");
+                } else {
+                    log::info!("Starting plot...");
+                    match plot_in_background(drawing.clone(), PlotConfig::default(), None) {
+                        Ok(handle) => {
+                            self.plot_handle = Some(handle);
+                            log::info!("Plot started in background thread");
+                        }
+                        Err(e) => {
+                            log::error!("Failed to start plot: {e}");
+                        }
+                    }
+                }
+            }
+            #[cfg(not(feature = "hardware"))]
+            Key::Character(c) if c.as_str() == "p" => {
+                log::warn!("Plotting requires the 'hardware' feature. Run with: cargo run --features hardware");
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.num_circles += 1;
