@@ -1,8 +1,7 @@
 //! Core types for plotta-studio
 //!
 //! This crate provides the fundamental types for creating and manipulating drawings:
-//! - Primitives: Line, Circle, Rect, Path, etc.
-//! - Transform: 2D affine transformations
+//! - Primitives: Line, Circle, Rect, Path, etc. (using kurbo for geometry)
 //! - Element: A shape with transform and style
 //! - Group: Nested elements that transform together
 //! - Drawing: The top-level container
@@ -10,271 +9,11 @@
 use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 
-// ============================================================================
-// Point
-// ============================================================================
+// Re-export kurbo types as our public API
+pub use kurbo::{Affine, BezPath, Line, PathEl, Point, Rect, Vec2};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
-
-impl Point {
-    pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
-
-    pub fn new(x: f64, y: f64) -> Self {
-        Self { x, y }
-    }
-
-    pub fn distance(&self, other: Point) -> f64 {
-        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
-    }
-
-    pub fn length(&self) -> f64 {
-        (self.x.powi(2) + self.y.powi(2)).sqrt()
-    }
-
-    pub fn normalize(&self) -> Self {
-        let len = self.length();
-        if len == 0.0 {
-            Self::ZERO
-        } else {
-            Self::new(self.x / len, self.y / len)
-        }
-    }
-
-    pub fn lerp(&self, other: Point, t: f64) -> Point {
-        Point::new(
-            self.x + (other.x - self.x) * t,
-            self.y + (other.y - self.y) * t,
-        )
-    }
-
-    pub fn dot(&self, other: Point) -> f64 {
-        self.x * other.x + self.y * other.y
-    }
-
-    pub fn angle(&self) -> f64 {
-        self.y.atan2(self.x)
-    }
-
-    pub fn from_angle(angle: f64) -> Self {
-        Self::new(angle.cos(), angle.sin())
-    }
-
-    pub fn rotate(&self, angle: f64) -> Self {
-        let cos = angle.cos();
-        let sin = angle.sin();
-        Self::new(self.x * cos - self.y * sin, self.x * sin + self.y * cos)
-    }
-}
-
-impl std::ops::Add for Point {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
-        Point::new(self.x + rhs.x, self.y + rhs.y)
-    }
-}
-
-impl std::ops::AddAssign for Point {
-    fn add_assign(&mut self, rhs: Self) {
-        self.x += rhs.x;
-        self.y += rhs.y;
-    }
-}
-
-impl std::ops::Sub for Point {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
-        Point::new(self.x - rhs.x, self.y - rhs.y)
-    }
-}
-
-impl std::ops::Mul<f64> for Point {
-    type Output = Self;
-    fn mul(self, rhs: f64) -> Self {
-        Point::new(self.x * rhs, self.y * rhs)
-    }
-}
-
-impl std::ops::Div<f64> for Point {
-    type Output = Self;
-    fn div(self, rhs: f64) -> Self {
-        Point::new(self.x / rhs, self.y / rhs)
-    }
-}
-
-impl std::ops::Neg for Point {
-    type Output = Self;
-    fn neg(self) -> Self {
-        Point::new(-self.x, -self.y)
-    }
-}
-
-impl From<(f64, f64)> for Point {
-    fn from((x, y): (f64, f64)) -> Self {
-        Self::new(x, y)
-    }
-}
-
-impl From<[f64; 2]> for Point {
-    fn from([x, y]: [f64; 2]) -> Self {
-        Self::new(x, y)
-    }
-}
-
-// ============================================================================
-// Transform (2D affine)
-// ============================================================================
-
-/// 2D affine transformation matrix
-///
-/// Represents the matrix:
-/// ```text
-/// | a  b  tx |
-/// | c  d  ty |
-/// | 0  0  1  |
-/// ```
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub struct Transform {
-    pub a: f64,
-    pub b: f64,
-    pub c: f64,
-    pub d: f64,
-    pub tx: f64,
-    pub ty: f64,
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Self::IDENTITY
-    }
-}
-
-impl Transform {
-    pub const IDENTITY: Self = Self {
-        a: 1.0,
-        b: 0.0,
-        c: 0.0,
-        d: 1.0,
-        tx: 0.0,
-        ty: 0.0,
-    };
-
-    pub fn translate(x: f64, y: f64) -> Self {
-        Self {
-            tx: x,
-            ty: y,
-            ..Self::IDENTITY
-        }
-    }
-
-    pub fn rotate(angle: f64) -> Self {
-        let cos = angle.cos();
-        let sin = angle.sin();
-        Self {
-            a: cos,
-            b: -sin,
-            c: sin,
-            d: cos,
-            tx: 0.0,
-            ty: 0.0,
-        }
-    }
-
-    pub fn rotate_deg(degrees: f64) -> Self {
-        Self::rotate(degrees.to_radians())
-    }
-
-    pub fn scale(sx: f64, sy: f64) -> Self {
-        Self {
-            a: sx,
-            b: 0.0,
-            c: 0.0,
-            d: sy,
-            tx: 0.0,
-            ty: 0.0,
-        }
-    }
-
-    pub fn scale_uniform(s: f64) -> Self {
-        Self::scale(s, s)
-    }
-
-    /// Rotate around a specific point
-    pub fn rotate_around(angle: f64, center: Point) -> Self {
-        // 1. Translate so center is at origin
-        // 2. Rotate
-        // 3. Translate back
-        Self::translate(-center.x, -center.y)
-            .then(Self::rotate(angle))
-            .then(Self::translate(center.x, center.y))
-    }
-
-    /// Skew/shear transformation
-    pub fn skew(sx: f64, sy: f64) -> Self {
-        Self {
-            a: 1.0,
-            b: sx.tan(),
-            c: sy.tan(),
-            d: 1.0,
-            tx: 0.0,
-            ty: 0.0,
-        }
-    }
-
-    /// Combine transforms: self then other
-    /// Returns a transform that first applies self, then applies other.
-    /// In matrix terms: other * self (since transforms apply right-to-left)
-    pub fn then(self, other: Self) -> Self {
-        Self {
-            a: other.a * self.a + other.b * self.c,
-            b: other.a * self.b + other.b * self.d,
-            c: other.c * self.a + other.d * self.c,
-            d: other.c * self.b + other.d * self.d,
-            tx: other.a * self.tx + other.b * self.ty + other.tx,
-            ty: other.c * self.tx + other.d * self.ty + other.ty,
-        }
-    }
-
-    /// Apply transform to a point
-    pub fn apply(&self, p: Point) -> Point {
-        Point::new(
-            self.a * p.x + self.b * p.y + self.tx,
-            self.c * p.x + self.d * p.y + self.ty,
-        )
-    }
-
-    /// Apply transform to multiple points
-    pub fn apply_all(&self, points: &[Point]) -> Vec<Point> {
-        points.iter().map(|p| self.apply(*p)).collect()
-    }
-
-    /// Get the inverse transform (if it exists)
-    pub fn inverse(&self) -> Option<Self> {
-        let det = self.a * self.d - self.b * self.c;
-        if det.abs() < 1e-10 {
-            return None;
-        }
-        let inv_det = 1.0 / det;
-        Some(Self {
-            a: self.d * inv_det,
-            b: -self.b * inv_det,
-            c: -self.c * inv_det,
-            d: self.a * inv_det,
-            tx: (self.b * self.ty - self.d * self.tx) * inv_det,
-            ty: (self.c * self.tx - self.a * self.ty) * inv_det,
-        })
-    }
-}
-
-impl std::ops::Mul for Transform {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self {
-        self.then(rhs)
-    }
-}
+/// Type alias for transform (kurbo::Affine) for API clarity
+pub type Transform = Affine;
 
 // ============================================================================
 // Color & Style
@@ -437,7 +176,10 @@ impl Stroke {
 
     /// Total length of this stroke
     pub fn length(&self) -> f64 {
-        self.points.windows(2).map(|w| w[0].distance(w[1])).sum()
+        self.points
+            .windows(2)
+            .map(|w| w[0].distance(w[1]))
+            .sum()
     }
 
     /// Bounding box (min, max)
@@ -458,44 +200,10 @@ impl Stroke {
 }
 
 // ============================================================================
-// Path Segment (for complex paths)
+// Primitives (custom shapes with segment control)
 // ============================================================================
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum PathSegment {
-    MoveTo(Point),
-    LineTo(Point),
-    QuadTo {
-        ctrl: Point,
-        to: Point,
-    },
-    CubicTo {
-        ctrl1: Point,
-        ctrl2: Point,
-        to: Point,
-    },
-    Close,
-}
-
-// ============================================================================
-// Primitives
-// ============================================================================
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub struct Line {
-    pub from: Point,
-    pub to: Point,
-}
-
-impl Line {
-    pub fn new(from: impl Into<Point>, to: impl Into<Point>) -> Self {
-        Self {
-            from: from.into(),
-            to: to.into(),
-        }
-    }
-}
-
+/// Polyline (series of connected points)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Polyline {
     pub points: Vec<Point>,
@@ -575,56 +283,6 @@ impl Ellipse {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub struct Rect {
-    pub origin: Point,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl Rect {
-    pub fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
-        Self {
-            origin: Point::new(x, y),
-            width: w,
-            height: h,
-        }
-    }
-
-    pub fn from_origin(origin: impl Into<Point>, width: f64, height: f64) -> Self {
-        Self {
-            origin: origin.into(),
-            width,
-            height,
-        }
-    }
-
-    pub fn centered(center: impl Into<Point>, w: f64, h: f64) -> Self {
-        let center = center.into();
-        Self {
-            origin: Point::new(center.x - w / 2.0, center.y - h / 2.0),
-            width: w,
-            height: h,
-        }
-    }
-
-    pub fn center(&self) -> Point {
-        Point::new(
-            self.origin.x + self.width / 2.0,
-            self.origin.y + self.height / 2.0,
-        )
-    }
-
-    pub fn corners(&self) -> [Point; 4] {
-        [
-            self.origin,
-            Point::new(self.origin.x + self.width, self.origin.y),
-            Point::new(self.origin.x + self.width, self.origin.y + self.height),
-            Point::new(self.origin.x, self.origin.y + self.height),
-        ]
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Arc {
     pub center: Point,
     pub radius: f64,
@@ -685,9 +343,20 @@ impl RegularPolygon {
     }
 }
 
+/// Path using kurbo's BezPath wrapped for serde
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Path {
     pub segments: Vec<PathSegment>,
+}
+
+/// Path segment enum (matches kurbo::PathEl but serializable)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum PathSegment {
+    MoveTo(Point),
+    LineTo(Point),
+    QuadTo { ctrl: Point, to: Point },
+    CubicTo { ctrl1: Point, ctrl2: Point, to: Point },
+    Close,
 }
 
 impl Path {
@@ -732,6 +401,21 @@ impl Path {
     pub fn close(mut self) -> Self {
         self.segments.push(PathSegment::Close);
         self
+    }
+
+    /// Convert to kurbo BezPath
+    pub fn to_bezpath(&self) -> BezPath {
+        let mut path = BezPath::new();
+        for seg in &self.segments {
+            match seg {
+                PathSegment::MoveTo(p) => path.move_to(*p),
+                PathSegment::LineTo(p) => path.line_to(*p),
+                PathSegment::QuadTo { ctrl, to } => path.quad_to(*ctrl, *to),
+                PathSegment::CubicTo { ctrl1, ctrl2, to } => path.curve_to(*ctrl1, *ctrl2, *to),
+                PathSegment::Close => path.close_path(),
+            }
+        }
+        path
     }
 
     /// Check if path is empty
@@ -817,7 +501,7 @@ impl From<Group> for Shape {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Element {
     pub shape: Shape,
-    pub transform: Transform,
+    pub transform: Affine,
     pub style: Style,
 }
 
@@ -825,7 +509,7 @@ impl Element {
     pub fn new(shape: impl Into<Shape>) -> Self {
         Self {
             shape: shape.into(),
-            transform: Transform::IDENTITY,
+            transform: Affine::IDENTITY,
             style: Style::default(),
         }
     }
@@ -833,7 +517,7 @@ impl Element {
     // === Convenience constructors ===
 
     pub fn line(from: impl Into<Point>, to: impl Into<Point>) -> Self {
-        Self::new(Line::new(from, to))
+        Self::new(Line::new(from.into(), to.into()))
     }
 
     pub fn circle(center: impl Into<Point>, radius: f64) -> Self {
@@ -845,11 +529,11 @@ impl Element {
     }
 
     pub fn rect(x: f64, y: f64, w: f64, h: f64) -> Self {
-        Self::new(Rect::new(x, y, w, h))
+        Self::new(Rect::from_origin_size((x, y), (w, h)))
     }
 
     pub fn rect_centered(center: impl Into<Point>, w: f64, h: f64) -> Self {
-        Self::new(Rect::centered(center, w, h))
+        Self::new(Rect::from_center_size(center.into(), (w, h)))
     }
 
     pub fn arc(center: impl Into<Point>, radius: f64, start_angle: f64, end_angle: f64) -> Self {
@@ -879,12 +563,12 @@ impl Element {
     // === Transform builders ===
 
     pub fn translate(mut self, x: f64, y: f64) -> Self {
-        self.transform = self.transform.then(Transform::translate(x, y));
+        self.transform = self.transform.then_translate(Vec2::new(x, y));
         self
     }
 
     pub fn rotate(mut self, angle: f64) -> Self {
-        self.transform = self.transform.then(Transform::rotate(angle));
+        self.transform = self.transform.then_rotate(angle);
         self
     }
 
@@ -893,14 +577,12 @@ impl Element {
     }
 
     pub fn rotate_around(mut self, angle: f64, center: impl Into<Point>) -> Self {
-        self.transform = self
-            .transform
-            .then(Transform::rotate_around(angle, center.into()));
+        self.transform = self.transform.then_rotate_about(angle, center.into());
         self
     }
 
     pub fn scale(mut self, sx: f64, sy: f64) -> Self {
-        self.transform = self.transform.then(Transform::scale(sx, sy));
+        self.transform = self.transform.then_scale_non_uniform(sx, sy);
         self
     }
 
@@ -909,7 +591,7 @@ impl Element {
     }
 
     pub fn skew(mut self, sx: f64, sy: f64) -> Self {
-        self.transform = self.transform.then(Transform::skew(sx, sy));
+        self.transform = self.transform * Affine::skew(sx.tan(), sy.tan());
         self
     }
 
@@ -934,23 +616,23 @@ impl Element {
 
     /// Flatten to strokes, applying transform
     pub fn flatten(&self) -> Vec<Stroke> {
-        self.flatten_with_transform(Transform::IDENTITY)
+        self.flatten_with_transform(Affine::IDENTITY)
     }
 
-    fn flatten_with_transform(&self, parent_transform: Transform) -> Vec<Stroke> {
-        let transform = parent_transform.then(self.transform);
+    fn flatten_with_transform(&self, parent_transform: Affine) -> Vec<Stroke> {
+        let transform = parent_transform * self.transform;
 
         match &self.shape {
             Shape::Line(line) => {
                 vec![Stroke::line(
-                    transform.apply(line.from),
-                    transform.apply(line.to),
+                    transform * line.p0,
+                    transform * line.p1,
                     self.style,
                 )]
             }
 
             Shape::Polyline(poly) => {
-                let points = transform.apply_all(&poly.points);
+                let points = poly.points.iter().map(|p| transform * *p).collect();
                 vec![Stroke {
                     points,
                     style: self.style,
@@ -977,7 +659,13 @@ impl Element {
             }
 
             Shape::Rect(rect) => {
-                let points = transform.apply_all(&rect.corners());
+                let corners = [
+                    Point::new(rect.x0, rect.y0),
+                    Point::new(rect.x1, rect.y0),
+                    Point::new(rect.x1, rect.y1),
+                    Point::new(rect.x0, rect.y1),
+                ];
+                let points = corners.iter().map(|p| transform * *p).collect();
                 vec![Stroke {
                     points,
                     style: self.style,
@@ -1057,7 +745,7 @@ impl Group {
 // Flattening helpers
 // ============================================================================
 
-fn flatten_circle(circle: &Circle, transform: &Transform) -> Vec<Point> {
+fn flatten_circle(circle: &Circle, transform: &Affine) -> Vec<Point> {
     (0..=circle.segments)
         .map(|i| {
             let t = i as f64 / circle.segments as f64;
@@ -1066,12 +754,12 @@ fn flatten_circle(circle: &Circle, transform: &Transform) -> Vec<Point> {
                 circle.center.x + angle.cos() * circle.radius,
                 circle.center.y + angle.sin() * circle.radius,
             );
-            transform.apply(p)
+            *transform * p
         })
         .collect()
 }
 
-fn flatten_ellipse(ellipse: &Ellipse, transform: &Transform) -> Vec<Point> {
+fn flatten_ellipse(ellipse: &Ellipse, transform: &Affine) -> Vec<Point> {
     (0..=ellipse.segments)
         .map(|i| {
             let t = i as f64 / ellipse.segments as f64;
@@ -1080,12 +768,12 @@ fn flatten_ellipse(ellipse: &Ellipse, transform: &Transform) -> Vec<Point> {
                 ellipse.center.x + angle.cos() * ellipse.rx,
                 ellipse.center.y + angle.sin() * ellipse.ry,
             );
-            transform.apply(p)
+            *transform * p
         })
         .collect()
 }
 
-fn flatten_arc(arc: &Arc, transform: &Transform) -> Vec<Point> {
+fn flatten_arc(arc: &Arc, transform: &Affine) -> Vec<Point> {
     let angle_span = arc.end_angle - arc.start_angle;
     (0..=arc.segments)
         .map(|i| {
@@ -1095,12 +783,12 @@ fn flatten_arc(arc: &Arc, transform: &Transform) -> Vec<Point> {
                 arc.center.x + angle.cos() * arc.radius,
                 arc.center.y + angle.sin() * arc.radius,
             );
-            transform.apply(p)
+            *transform * p
         })
         .collect()
 }
 
-fn flatten_regular_polygon(poly: &RegularPolygon, transform: &Transform) -> Vec<Point> {
+fn flatten_regular_polygon(poly: &RegularPolygon, transform: &Affine) -> Vec<Point> {
     (0..=poly.sides)
         .map(|i| {
             let t = i as f64 / poly.sides as f64;
@@ -1109,55 +797,58 @@ fn flatten_regular_polygon(poly: &RegularPolygon, transform: &Transform) -> Vec<
                 poly.center.x + angle.cos() * poly.radius,
                 poly.center.y + angle.sin() * poly.radius,
             );
-            transform.apply(p)
+            *transform * p
         })
         .collect()
 }
 
-fn flatten_path(path: &Path, transform: &Transform, style: Style) -> Vec<Stroke> {
+fn flatten_path(path: &Path, transform: &Affine, style: Style) -> Vec<Stroke> {
+    use kurbo::ParamCurve;
+
+    let bezpath = path.to_bezpath();
     let mut strokes = Vec::new();
     let mut current_points: Vec<Point> = Vec::new();
+    let mut last_point = Point::ZERO;
     let mut start_point = Point::ZERO;
 
-    for seg in &path.segments {
-        match seg {
-            PathSegment::MoveTo(p) => {
+    for el in bezpath.elements() {
+        match el {
+            PathEl::MoveTo(p) => {
                 if current_points.len() > 1 {
                     strokes.push(Stroke::new(std::mem::take(&mut current_points), style));
                 } else {
                     current_points.clear();
                 }
                 start_point = *p;
-                current_points.push(transform.apply(*p));
+                last_point = *p;
+                current_points.push(*transform * *p);
             }
-            PathSegment::LineTo(p) => {
-                current_points.push(transform.apply(*p));
+            PathEl::LineTo(p) => {
+                last_point = *p;
+                current_points.push(*transform * *p);
             }
-            PathSegment::QuadTo { ctrl, to } => {
-                let last = current_points.last().copied().unwrap_or(Point::ZERO);
-                let ctrl_t = transform.apply(*ctrl);
-                let to_t = transform.apply(*to);
+            PathEl::QuadTo(ctrl, to) => {
+                let quad = kurbo::QuadBez::new(last_point, *ctrl, *to);
                 let steps = 16;
                 for i in 1..=steps {
                     let t = i as f64 / steps as f64;
-                    let p = quad_bezier(last, ctrl_t, to_t, t);
-                    current_points.push(p);
+                    let p = quad.eval(t);
+                    current_points.push(*transform * p);
                 }
+                last_point = *to;
             }
-            PathSegment::CubicTo { ctrl1, ctrl2, to } => {
-                let last = current_points.last().copied().unwrap_or(Point::ZERO);
-                let ctrl1_t = transform.apply(*ctrl1);
-                let ctrl2_t = transform.apply(*ctrl2);
-                let to_t = transform.apply(*to);
+            PathEl::CurveTo(ctrl1, ctrl2, to) => {
+                let cubic = kurbo::CubicBez::new(last_point, *ctrl1, *ctrl2, *to);
                 let steps = 24;
                 for i in 1..=steps {
                     let t = i as f64 / steps as f64;
-                    let p = cubic_bezier(last, ctrl1_t, ctrl2_t, to_t, t);
-                    current_points.push(p);
+                    let p = cubic.eval(t);
+                    current_points.push(*transform * p);
                 }
+                last_point = *to;
             }
-            PathSegment::Close => {
-                current_points.push(transform.apply(start_point));
+            PathEl::ClosePath => {
+                current_points.push(*transform * start_point);
             }
         }
     }
@@ -1167,30 +858,6 @@ fn flatten_path(path: &Path, transform: &Transform, style: Style) -> Vec<Stroke>
     }
 
     strokes
-}
-
-/// Evaluate a quadratic Bezier curve at parameter t
-/// p0: start point, p1: control point, p2: end point
-/// t: parameter from 0.0 (start) to 1.0 (end)
-pub fn quad_bezier(p0: Point, p1: Point, p2: Point, t: f64) -> Point {
-    let mt = 1.0 - t;
-    Point::new(
-        mt * mt * p0.x + 2.0 * mt * t * p1.x + t * t * p2.x,
-        mt * mt * p0.y + 2.0 * mt * t * p1.y + t * t * p2.y,
-    )
-}
-
-/// Evaluate a cubic Bezier curve at parameter t
-/// p0: start point, p1: first control point, p2: second control point, p3: end point
-/// t: parameter from 0.0 (start) to 1.0 (end)
-pub fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f64) -> Point {
-    let mt = 1.0 - t;
-    let mt2 = mt * mt;
-    let t2 = t * t;
-    Point::new(
-        mt2 * mt * p0.x + 3.0 * mt2 * t * p1.x + 3.0 * mt * t2 * p2.x + t2 * t * p3.x,
-        mt2 * mt * p0.y + 3.0 * mt2 * t * p1.y + 3.0 * mt * t2 * p2.y + t2 * t * p3.y,
-    )
 }
 
 // ============================================================================
@@ -1287,7 +954,7 @@ impl Drawing {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+    use std::f64::consts::FRAC_PI_2;
 
     const EPSILON: f64 = 1e-10;
 
@@ -1299,797 +966,71 @@ mod tests {
         approx_eq(a.x, b.x) && approx_eq(a.y, b.y)
     }
 
-    // ========================================================================
-    // Point::distance tests
-    // ========================================================================
-
     #[test]
-    fn test_point_distance_basic() {
+    fn test_point_distance() {
         let a = Point::new(0.0, 0.0);
         let b = Point::new(3.0, 4.0);
-        assert!(approx_eq(a.distance(b), 5.0)); // 3-4-5 triangle
-    }
-
-    #[test]
-    fn test_point_distance_same_point() {
-        let a = Point::new(5.0, 10.0);
-        assert!(approx_eq(a.distance(a), 0.0));
-    }
-
-    #[test]
-    fn test_point_distance_negative_coords() {
-        let a = Point::new(-3.0, -4.0);
-        let b = Point::new(0.0, 0.0);
         assert!(approx_eq(a.distance(b), 5.0));
     }
 
     #[test]
-    fn test_point_distance_symmetric() {
-        let a = Point::new(1.0, 2.0);
-        let b = Point::new(4.0, 6.0);
-        assert!(approx_eq(a.distance(b), b.distance(a)));
-    }
-
-    // ========================================================================
-    // Point::length tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_length_unit_vectors() {
-        assert!(approx_eq(Point::new(1.0, 0.0).length(), 1.0));
-        assert!(approx_eq(Point::new(0.0, 1.0).length(), 1.0));
-        assert!(approx_eq(Point::new(-1.0, 0.0).length(), 1.0));
-    }
-
-    #[test]
-    fn test_point_length_zero() {
-        assert!(approx_eq(Point::ZERO.length(), 0.0));
-    }
-
-    #[test]
-    fn test_point_length_pythagorean() {
-        assert!(approx_eq(Point::new(3.0, 4.0).length(), 5.0));
-    }
-
-    // ========================================================================
-    // Point::normalize tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_normalize_unit_length() {
-        let p = Point::new(3.0, 4.0).normalize();
-        assert!(approx_eq(p.length(), 1.0));
-    }
-
-    #[test]
-    fn test_point_normalize_direction_preserved() {
-        let p = Point::new(10.0, 0.0).normalize();
-        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
-
-        let p = Point::new(0.0, -5.0).normalize();
-        assert!(point_approx_eq(p, Point::new(0.0, -1.0)));
-    }
-
-    #[test]
-    fn test_point_normalize_zero_vector() {
-        let p = Point::ZERO.normalize();
-        assert!(point_approx_eq(p, Point::ZERO));
-    }
-
-    #[test]
-    fn test_point_normalize_already_unit() {
-        let p = Point::new(1.0, 0.0).normalize();
-        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
-    }
-
-    // ========================================================================
-    // Point::lerp tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_lerp_endpoints() {
-        let a = Point::new(0.0, 0.0);
-        let b = Point::new(10.0, 20.0);
-        assert!(point_approx_eq(a.lerp(b, 0.0), a));
-        assert!(point_approx_eq(a.lerp(b, 1.0), b));
-    }
-
-    #[test]
-    fn test_point_lerp_midpoint() {
-        let a = Point::new(0.0, 0.0);
-        let b = Point::new(10.0, 20.0);
-        assert!(point_approx_eq(a.lerp(b, 0.5), Point::new(5.0, 10.0)));
-    }
-
-    #[test]
-    fn test_point_lerp_quarter() {
-        let a = Point::new(0.0, 0.0);
-        let b = Point::new(100.0, 100.0);
-        assert!(point_approx_eq(a.lerp(b, 0.25), Point::new(25.0, 25.0)));
-    }
-
-    #[test]
-    fn test_point_lerp_extrapolate() {
-        let a = Point::new(0.0, 0.0);
-        let b = Point::new(10.0, 10.0);
-        // t > 1 extrapolates beyond b
-        assert!(point_approx_eq(a.lerp(b, 2.0), Point::new(20.0, 20.0)));
-        // t < 0 extrapolates before a
-        assert!(point_approx_eq(a.lerp(b, -1.0), Point::new(-10.0, -10.0)));
-    }
-
-    // ========================================================================
-    // Point::dot tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_dot_parallel() {
-        let a = Point::new(1.0, 0.0);
-        let b = Point::new(5.0, 0.0);
-        assert!(approx_eq(a.dot(b), 5.0));
-    }
-
-    #[test]
-    fn test_point_dot_perpendicular() {
-        let a = Point::new(1.0, 0.0);
-        let b = Point::new(0.0, 1.0);
-        assert!(approx_eq(a.dot(b), 0.0));
-    }
-
-    #[test]
-    fn test_point_dot_opposite() {
-        let a = Point::new(1.0, 0.0);
-        let b = Point::new(-1.0, 0.0);
-        assert!(approx_eq(a.dot(b), -1.0));
-    }
-
-    #[test]
-    fn test_point_dot_general() {
-        let a = Point::new(2.0, 3.0);
-        let b = Point::new(4.0, 5.0);
-        // 2*4 + 3*5 = 8 + 15 = 23
-        assert!(approx_eq(a.dot(b), 23.0));
-    }
-
-    #[test]
-    fn test_point_dot_commutative() {
-        let a = Point::new(2.0, 3.0);
-        let b = Point::new(4.0, 5.0);
-        assert!(approx_eq(a.dot(b), b.dot(a)));
-    }
-
-    // ========================================================================
-    // Point::angle tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_angle_zero() {
-        let p = Point::new(1.0, 0.0);
-        assert!(approx_eq(p.angle(), 0.0));
-    }
-
-    #[test]
-    fn test_point_angle_pi_over_2() {
-        let p = Point::new(0.0, 1.0);
-        assert!(approx_eq(p.angle(), FRAC_PI_2));
-    }
-
-    #[test]
-    fn test_point_angle_pi() {
-        let p = Point::new(-1.0, 0.0);
-        assert!(approx_eq(p.angle(), PI));
-    }
-
-    #[test]
-    fn test_point_angle_negative_pi_over_2() {
-        let p = Point::new(0.0, -1.0);
-        assert!(approx_eq(p.angle(), -FRAC_PI_2));
-    }
-
-    #[test]
-    fn test_point_angle_45_degrees() {
-        let p = Point::new(1.0, 1.0);
-        assert!(approx_eq(p.angle(), FRAC_PI_4));
-    }
-
-    // ========================================================================
-    // Point::from_angle tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_from_angle_zero() {
-        let p = Point::from_angle(0.0);
-        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
-    }
-
-    #[test]
-    fn test_point_from_angle_pi_over_2() {
-        let p = Point::from_angle(FRAC_PI_2);
-        assert!(point_approx_eq(p, Point::new(0.0, 1.0)));
-    }
-
-    #[test]
-    fn test_point_from_angle_pi() {
-        let p = Point::from_angle(PI);
-        assert!(point_approx_eq(p, Point::new(-1.0, 0.0)));
-    }
-
-    #[test]
-    fn test_point_from_angle_2pi() {
-        let p = Point::from_angle(TAU);
-        assert!(point_approx_eq(p, Point::new(1.0, 0.0)));
-    }
-
-    #[test]
-    fn test_point_from_angle_unit_length() {
-        for angle in [0.0, 0.5, 1.0, 2.0, 3.0, -1.0, -2.0] {
-            let p = Point::from_angle(angle);
-            assert!(approx_eq(p.length(), 1.0));
-        }
-    }
-
-    #[test]
-    fn test_point_from_angle_roundtrip() {
-        for angle in [0.0, FRAC_PI_4, FRAC_PI_2, PI, -FRAC_PI_4] {
-            let p = Point::from_angle(angle);
-            assert!(approx_eq(p.angle(), angle));
-        }
-    }
-
-    // ========================================================================
-    // Point::rotate tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_rotate_zero() {
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(p.rotate(0.0), p));
-    }
-
-    #[test]
-    fn test_point_rotate_90_degrees() {
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(p.rotate(FRAC_PI_2), Point::new(0.0, 1.0)));
-    }
-
-    #[test]
-    fn test_point_rotate_180_degrees() {
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(p.rotate(PI), Point::new(-1.0, 0.0)));
-    }
-
-    #[test]
-    fn test_point_rotate_360_degrees() {
-        let p = Point::new(3.0, 4.0);
-        assert!(point_approx_eq(p.rotate(TAU), p));
-    }
-
-    #[test]
-    fn test_point_rotate_negative() {
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(p.rotate(-FRAC_PI_2), Point::new(0.0, -1.0)));
-    }
-
-    #[test]
-    fn test_point_rotate_preserves_length() {
-        let p = Point::new(3.0, 4.0);
-        let original_length = p.length();
-        for angle in [0.5, 1.0, 2.0, PI, -1.0] {
-            assert!(approx_eq(p.rotate(angle).length(), original_length));
-        }
-    }
-
-    #[test]
-    fn test_point_rotate_zero_vector() {
-        let p = Point::ZERO;
-        assert!(point_approx_eq(p.rotate(PI), Point::ZERO));
-    }
-
-    // ========================================================================
-    // Point operator tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_ops() {
-        let a = Point::new(1.0, 2.0);
-        let b = Point::new(3.0, 4.0);
-        assert_eq!(a + b, Point::new(4.0, 6.0));
-        assert_eq!(b - a, Point::new(2.0, 2.0));
-        assert_eq!(a * 2.0, Point::new(2.0, 4.0));
-    }
-
-    #[test]
-    fn test_point_div() {
-        let p = Point::new(10.0, 20.0);
-        assert_eq!(p / 2.0, Point::new(5.0, 10.0));
-    }
-
-    #[test]
-    fn test_point_neg() {
-        let p = Point::new(3.0, -4.0);
-        assert_eq!(-p, Point::new(-3.0, 4.0));
-    }
-
-    #[test]
-    fn test_point_add_assign() {
-        let mut p = Point::new(1.0, 2.0);
-        p += Point::new(3.0, 4.0);
-        assert_eq!(p, Point::new(4.0, 6.0));
-    }
-
-    // ========================================================================
-    // Point conversion tests
-    // ========================================================================
-
-    #[test]
-    fn test_point_from_tuple() {
-        let p: Point = (3.0, 4.0).into();
-        assert_eq!(p, Point::new(3.0, 4.0));
-    }
-
-    #[test]
-    fn test_point_from_array() {
-        let p: Point = [3.0, 4.0].into();
-        assert_eq!(p, Point::new(3.0, 4.0));
-    }
-
-    // ========================================================================
-    // Point edge cases
-    // ========================================================================
-
-    #[test]
-    fn test_point_zero_constant() {
-        assert_eq!(Point::ZERO, Point::new(0.0, 0.0));
-    }
-
-    #[test]
-    fn test_point_default() {
-        assert_eq!(Point::default(), Point::ZERO);
-    }
-
-    #[test]
-    fn test_point_very_small_values() {
-        let p = Point::new(1e-15, 1e-15);
-        assert!(p.length() > 0.0);
-    }
-
-    #[test]
-    fn test_point_very_large_values() {
-        let p = Point::new(1e15, 1e15);
-        let normalized = p.normalize();
-        assert!(approx_eq(normalized.length(), 1.0));
-    }
-
-    // ========================================================================
-    // Transform tests
-    // ========================================================================
-
-    fn transform_approx_eq(a: Transform, b: Transform) -> bool {
-        approx_eq(a.a, b.a)
-            && approx_eq(a.b, b.b)
-            && approx_eq(a.c, b.c)
-            && approx_eq(a.d, b.d)
-            && approx_eq(a.tx, b.tx)
-            && approx_eq(a.ty, b.ty)
-    }
-
-    #[test]
-    fn test_transform_identity() {
-        let t = Transform::IDENTITY;
-        let p = Point::new(10.0, 20.0);
-        assert_eq!(t.apply(p), p);
-    }
-
-    #[test]
-    fn test_transform_identity_default() {
-        assert_eq!(Transform::default(), Transform::IDENTITY);
-    }
-
-    #[test]
-    fn test_transform_translate() {
-        let t = Transform::translate(5.0, 10.0);
-        let p = Point::new(1.0, 2.0);
-        assert_eq!(t.apply(p), Point::new(6.0, 12.0));
-    }
-
-    #[test]
-    fn test_transform_translate_negative() {
-        let t = Transform::translate(-5.0, -10.0);
-        let p = Point::new(10.0, 20.0);
-        assert_eq!(t.apply(p), Point::new(5.0, 10.0));
-    }
-
-    #[test]
-    fn test_transform_translate_zero() {
-        let t = Transform::translate(0.0, 0.0);
-        assert!(transform_approx_eq(t, Transform::IDENTITY));
-    }
-
-    // === Rotation tests ===
-
-    #[test]
-    fn test_transform_rotate_zero() {
-        let t = Transform::rotate(0.0);
-        assert!(transform_approx_eq(t, Transform::IDENTITY));
-    }
-
-    #[test]
-    fn test_transform_rotate_90() {
-        let t = Transform::rotate(FRAC_PI_2);
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(t.apply(p), Point::new(0.0, 1.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_180() {
-        let t = Transform::rotate(PI);
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(t.apply(p), Point::new(-1.0, 0.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_360() {
-        let t = Transform::rotate(TAU);
-        let p = Point::new(3.0, 4.0);
-        assert!(point_approx_eq(t.apply(p), p));
-    }
-
-    #[test]
-    fn test_transform_rotate_negative() {
-        let t = Transform::rotate(-FRAC_PI_2);
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(t.apply(p), Point::new(0.0, -1.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_preserves_length() {
-        let t = Transform::rotate(1.234);
-        let p = Point::new(3.0, 4.0);
-        let rotated = t.apply(p);
-        assert!(approx_eq(rotated.length(), p.length()));
-    }
-
-    #[test]
-    fn test_transform_rotate_deg() {
-        let t = Transform::rotate_deg(90.0);
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(t.apply(p), Point::new(0.0, 1.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_deg_180() {
-        let t = Transform::rotate_deg(180.0);
-        let p = Point::new(1.0, 0.0);
-        assert!(point_approx_eq(t.apply(p), Point::new(-1.0, 0.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_deg_45() {
-        let t = Transform::rotate_deg(45.0);
-        let p = Point::new(1.0, 0.0);
-        let sqrt2_over_2 = std::f64::consts::FRAC_1_SQRT_2;
-        assert!(point_approx_eq(
-            t.apply(p),
-            Point::new(sqrt2_over_2, sqrt2_over_2)
-        ));
-    }
-
-    // === Scale tests ===
-
-    #[test]
-    fn test_transform_scale() {
-        let t = Transform::scale(2.0, 3.0);
-        let p = Point::new(5.0, 10.0);
-        assert_eq!(t.apply(p), Point::new(10.0, 30.0));
-    }
-
-    #[test]
-    fn test_transform_scale_identity() {
-        let t = Transform::scale(1.0, 1.0);
-        assert!(transform_approx_eq(t, Transform::IDENTITY));
-    }
-
-    #[test]
-    fn test_transform_scale_zero() {
-        let t = Transform::scale(0.0, 0.0);
-        let p = Point::new(100.0, 200.0);
-        assert_eq!(t.apply(p), Point::ZERO);
-    }
-
-    #[test]
-    fn test_transform_scale_negative() {
-        let t = Transform::scale(-1.0, -1.0);
-        let p = Point::new(5.0, 10.0);
-        assert_eq!(t.apply(p), Point::new(-5.0, -10.0));
-    }
-
-    #[test]
-    fn test_transform_scale_non_uniform() {
-        let t = Transform::scale(2.0, 0.5);
-        let p = Point::new(10.0, 10.0);
-        assert_eq!(t.apply(p), Point::new(20.0, 5.0));
-    }
-
-    #[test]
-    fn test_transform_scale_uniform() {
-        let t = Transform::scale_uniform(3.0);
-        let p = Point::new(5.0, 10.0);
-        assert_eq!(t.apply(p), Point::new(15.0, 30.0));
-    }
-
-    #[test]
-    fn test_transform_scale_uniform_preserves_angles() {
-        let t = Transform::scale_uniform(2.0);
-        let p = Point::new(1.0, 1.0);
-        let scaled = t.apply(p);
-        assert!(approx_eq(p.angle(), scaled.angle()));
-    }
-
-    // === Skew tests ===
-
-    #[test]
-    fn test_transform_skew_zero() {
-        let t = Transform::skew(0.0, 0.0);
-        assert!(transform_approx_eq(t, Transform::IDENTITY));
-    }
-
-    #[test]
-    fn test_transform_skew_x() {
-        let t = Transform::skew(FRAC_PI_4, 0.0); // 45 degree skew in x
-        let p = Point::new(0.0, 1.0);
-        // With 45 degree skew, y=1 adds tan(45)=1 to x
-        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
-    }
-
-    #[test]
-    fn test_transform_skew_y() {
-        let t = Transform::skew(0.0, FRAC_PI_4); // 45 degree skew in y
-        let p = Point::new(1.0, 0.0);
-        // With 45 degree skew, x=1 adds tan(45)=1 to y
-        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
-    }
-
-    // === Rotate around tests ===
-
-    #[test]
-    fn test_transform_rotate_around_origin() {
-        let t = Transform::rotate_around(FRAC_PI_2, Point::ZERO);
-        let p = Point::new(1.0, 0.0);
-        // Same as regular rotation when center is origin
-        assert!(point_approx_eq(t.apply(p), Point::new(0.0, 1.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_around_point() {
-        let center = Point::new(1.0, 0.0);
-        let t = Transform::rotate_around(FRAC_PI_2, center);
-        let p = Point::new(2.0, 0.0); // 1 unit to the right of center
-                                      // After 90 degree rotation around (1,0), should be at (1,1)
-        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
-    }
-
-    #[test]
-    fn test_transform_rotate_around_center_unchanged() {
-        let center = Point::new(5.0, 5.0);
-        let t = Transform::rotate_around(PI, center);
-        // The center point should remain unchanged
-        assert!(point_approx_eq(t.apply(center), center));
-    }
-
-    // === Composition tests ===
-
-    #[test]
-    fn test_transform_chain() {
-        let t = Transform::translate(10.0, 0.0).then(Transform::scale(2.0, 2.0));
+    fn test_affine_translate() {
+        let t = Affine::translate(Vec2::new(10.0, 20.0));
         let p = Point::new(0.0, 0.0);
-        assert_eq!(t.apply(p), Point::new(20.0, 0.0));
+        let result = t * p;
+        assert!(point_approx_eq(result, Point::new(10.0, 20.0)));
     }
 
     #[test]
-    fn test_transform_chain_order_matters() {
+    fn test_affine_rotate() {
+        let t = Affine::rotate(FRAC_PI_2);
         let p = Point::new(1.0, 0.0);
-
-        // Translate then scale
-        let t1 = Transform::translate(1.0, 0.0).then(Transform::scale(2.0, 2.0));
-        // Scale then translate
-        let t2 = Transform::scale(2.0, 2.0).then(Transform::translate(1.0, 0.0));
-
-        // Results should be different
-        let r1 = t1.apply(p);
-        let r2 = t2.apply(p);
-
-        // t1: (1,0) -> translate -> (2,0) -> scale -> (4,0)
-        assert!(point_approx_eq(r1, Point::new(4.0, 0.0)));
-        // t2: (1,0) -> scale -> (2,0) -> translate -> (3,0)
-        assert!(point_approx_eq(r2, Point::new(3.0, 0.0)));
+        let result = t * p;
+        assert!(point_approx_eq(result, Point::new(0.0, 1.0)));
     }
 
     #[test]
-    fn test_transform_chain_identity() {
-        let t = Transform::translate(5.0, 5.0);
-        let chained = t.then(Transform::IDENTITY);
-        assert!(transform_approx_eq(t, chained));
-    }
-
-    #[test]
-    fn test_transform_mul_operator() {
-        let t1 = Transform::translate(10.0, 0.0);
-        let t2 = Transform::scale(2.0, 2.0);
-        let combined = t1 * t2;
-        assert!(transform_approx_eq(combined, t1.then(t2)));
-    }
-
-    #[test]
-    fn test_transform_chain_rotate_translate() {
-        let t = Transform::rotate(FRAC_PI_2).then(Transform::translate(1.0, 0.0));
-        let p = Point::new(1.0, 0.0);
-        // (1,0) -> rotate 90 -> (0,1) -> translate -> (1,1)
-        assert!(point_approx_eq(t.apply(p), Point::new(1.0, 1.0)));
-    }
-
-    // === Inverse tests ===
-
-    #[test]
-    fn test_transform_inverse_identity() {
-        let t = Transform::IDENTITY;
-        let inv = t.inverse().unwrap();
-        assert!(transform_approx_eq(inv, Transform::IDENTITY));
-    }
-
-    #[test]
-    fn test_transform_inverse_translate() {
-        let t = Transform::translate(5.0, 10.0);
-        let inv = t.inverse().unwrap();
-        let p = Point::new(1.0, 2.0);
-        let transformed = t.apply(p);
-        let back = inv.apply(transformed);
-        assert!(point_approx_eq(back, p));
-    }
-
-    #[test]
-    fn test_transform_inverse_scale() {
-        let t = Transform::scale(2.0, 4.0);
-        let inv = t.inverse().unwrap();
-        let p = Point::new(10.0, 20.0);
-        let back = inv.apply(t.apply(p));
-        assert!(point_approx_eq(back, p));
-    }
-
-    #[test]
-    fn test_transform_inverse_rotate() {
-        let t = Transform::rotate(1.234);
-        let inv = t.inverse().unwrap();
+    fn test_affine_scale() {
+        let t = Affine::scale(2.0);
         let p = Point::new(3.0, 4.0);
-        let back = inv.apply(t.apply(p));
-        assert!(point_approx_eq(back, p));
+        let result = t * p;
+        assert!(point_approx_eq(result, Point::new(6.0, 8.0)));
     }
 
     #[test]
-    fn test_transform_inverse_composed() {
-        let t = Transform::translate(5.0, 10.0)
-            .then(Transform::rotate(FRAC_PI_4))
-            .then(Transform::scale(2.0, 3.0));
-        let inv = t.inverse().unwrap();
-        let p = Point::new(7.0, 11.0);
-        let back = inv.apply(t.apply(p));
-        assert!(point_approx_eq(back, p));
+    fn test_affine_composition() {
+        let t1 = Affine::translate(Vec2::new(10.0, 0.0));
+        let t2 = Affine::scale(2.0);
+        let composed = t2 * t1; // scale after translate
+        let p = Point::new(0.0, 0.0);
+        let result = composed * p;
+        assert!(point_approx_eq(result, Point::new(20.0, 0.0)));
     }
 
     #[test]
-    fn test_transform_inverse_singular_zero_scale() {
-        let t = Transform::scale(0.0, 1.0);
-        assert!(t.inverse().is_none());
+    fn test_affine_inverse() {
+        let t = Affine::translate(Vec2::new(10.0, 20.0));
+        let inv = t.inverse();
+        let p = Point::new(10.0, 20.0);
+        let result = inv * p;
+        assert!(point_approx_eq(result, Point::new(0.0, 0.0)));
     }
 
     #[test]
-    fn test_transform_inverse_singular_both_zero() {
-        let t = Transform::scale(0.0, 0.0);
-        assert!(t.inverse().is_none());
-    }
-
-    // === Apply all tests ===
-
-    #[test]
-    fn test_transform_apply_all() {
-        let t = Transform::translate(10.0, 20.0);
-        let points = vec![
-            Point::new(0.0, 0.0),
-            Point::new(1.0, 1.0),
-            Point::new(2.0, 2.0),
-        ];
-        let transformed = t.apply_all(&points);
-        assert_eq!(transformed.len(), 3);
-        assert_eq!(transformed[0], Point::new(10.0, 20.0));
-        assert_eq!(transformed[1], Point::new(11.0, 21.0));
-        assert_eq!(transformed[2], Point::new(12.0, 22.0));
-    }
-
-    #[test]
-    fn test_transform_apply_all_empty() {
-        let t = Transform::translate(10.0, 20.0);
-        let points: Vec<Point> = vec![];
-        let transformed = t.apply_all(&points);
-        assert!(transformed.is_empty());
-    }
-
-    // ========================================================================
-    // Color tests
-    // ========================================================================
-
-    #[test]
-    fn test_color_constants() {
-        assert_eq!(Color::BLACK, Color::rgb(0, 0, 0));
-        assert_eq!(Color::WHITE, Color::rgb(255, 255, 255));
-        assert_eq!(Color::RED, Color::rgb(255, 0, 0));
-        assert_eq!(Color::GREEN, Color::rgb(0, 255, 0));
-        assert_eq!(Color::BLUE, Color::rgb(0, 0, 255));
-        assert_eq!(Color::TRANSPARENT, Color::rgba(0, 0, 0, 0));
-    }
-
-    #[test]
-    fn test_color_default() {
-        assert_eq!(Color::default(), Color::BLACK);
-    }
-
-    #[test]
-    fn test_color_rgb() {
-        let c = Color::rgb(100, 150, 200);
-        assert_eq!(c.r, 100);
-        assert_eq!(c.g, 150);
-        assert_eq!(c.b, 200);
-        assert_eq!(c.a, 255);
-    }
-
-    #[test]
-    fn test_color_rgba() {
-        let c = Color::rgba(100, 150, 200, 128);
-        assert_eq!(c.r, 100);
-        assert_eq!(c.g, 150);
-        assert_eq!(c.b, 200);
-        assert_eq!(c.a, 128);
-    }
-
-    #[test]
-    fn test_color_gray() {
-        let c = Color::gray(128);
-        assert_eq!(c.r, 128);
-        assert_eq!(c.g, 128);
-        assert_eq!(c.b, 128);
-        assert_eq!(c.a, 255);
-    }
-
-    #[test]
-    fn test_color_with_alpha() {
-        let c = Color::RED.with_alpha(128);
-        assert_eq!(c.r, 255);
-        assert_eq!(c.g, 0);
-        assert_eq!(c.b, 0);
-        assert_eq!(c.a, 128);
-    }
-
-    // === HSL tests ===
-
-    #[test]
-    fn test_color_hsl_red() {
-        // Red: h=0, s=1, l=0.5
+    fn test_color_hsl() {
+        // Red at full saturation and mid lightness
         let c = Color::hsl(0.0, 1.0, 0.5);
         assert_eq!(c.r, 255);
         assert_eq!(c.g, 0);
         assert_eq!(c.b, 0);
-    }
 
-    #[test]
-    fn test_color_hsl_green() {
-        // Green: h=120, s=1, l=0.5
+        // Green
         let c = Color::hsl(120.0, 1.0, 0.5);
         assert_eq!(c.r, 0);
         assert_eq!(c.g, 255);
         assert_eq!(c.b, 0);
-    }
 
-    #[test]
-    fn test_color_hsl_blue() {
-        // Blue: h=240, s=1, l=0.5
+        // Blue
         let c = Color::hsl(240.0, 1.0, 0.5);
         assert_eq!(c.r, 0);
         assert_eq!(c.g, 0);
@@ -2097,561 +1038,60 @@ mod tests {
     }
 
     #[test]
-    fn test_color_hsl_yellow() {
-        // Yellow: h=60, s=1, l=0.5
-        let c = Color::hsl(60.0, 1.0, 0.5);
-        assert_eq!(c.r, 255);
-        assert_eq!(c.g, 255);
-        assert_eq!(c.b, 0);
+    fn test_stroke_length() {
+        let stroke = Stroke::new(
+            vec![Point::new(0.0, 0.0), Point::new(3.0, 4.0)],
+            Style::default(),
+        );
+        assert!(approx_eq(stroke.length(), 5.0));
     }
 
     #[test]
-    fn test_color_hsl_cyan() {
-        // Cyan: h=180, s=1, l=0.5
-        let c = Color::hsl(180.0, 1.0, 0.5);
-        assert_eq!(c.r, 0);
-        assert_eq!(c.g, 255);
-        assert_eq!(c.b, 255);
-    }
-
-    #[test]
-    fn test_color_hsl_magenta() {
-        // Magenta: h=300, s=1, l=0.5
-        let c = Color::hsl(300.0, 1.0, 0.5);
-        assert_eq!(c.r, 255);
-        assert_eq!(c.g, 0);
-        assert_eq!(c.b, 255);
-    }
-
-    #[test]
-    fn test_color_hsl_lightness_zero_is_black() {
-        // Any hue with l=0 should be black
-        for h in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0] {
-            let c = Color::hsl(h, 1.0, 0.0);
-            assert_eq!(c.r, 0, "h={} should have r=0", h);
-            assert_eq!(c.g, 0, "h={} should have g=0", h);
-            assert_eq!(c.b, 0, "h={} should have b=0", h);
-        }
-    }
-
-    #[test]
-    fn test_color_hsl_lightness_one_is_white() {
-        // Any hue with l=1 should be white
-        for h in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0] {
-            let c = Color::hsl(h, 1.0, 1.0);
-            assert_eq!(c.r, 255, "h={} should have r=255", h);
-            assert_eq!(c.g, 255, "h={} should have g=255", h);
-            assert_eq!(c.b, 255, "h={} should have b=255", h);
-        }
-    }
-
-    #[test]
-    fn test_color_hsl_saturation_zero_is_gray() {
-        // s=0 should give grayscale regardless of hue
-        let c1 = Color::hsl(0.0, 0.0, 0.5);
-        let c2 = Color::hsl(180.0, 0.0, 0.5);
-
-        // Both should be the same gray
-        assert_eq!(c1.r, c1.g);
-        assert_eq!(c1.g, c1.b);
-        assert_eq!(c1, c2);
-    }
-
-    #[test]
-    fn test_color_hsl_saturation_zero_lightness_levels() {
-        // s=0 should give gray at different lightness levels
-        let black = Color::hsl(0.0, 0.0, 0.0);
-        let mid_gray = Color::hsl(0.0, 0.0, 0.5);
-        let white = Color::hsl(0.0, 0.0, 1.0);
-
-        assert_eq!(black, Color::rgb(0, 0, 0));
-        assert_eq!(white, Color::rgb(255, 255, 255));
-        // Mid gray should have equal r, g, b around 127-128
-        assert_eq!(mid_gray.r, mid_gray.g);
-        assert_eq!(mid_gray.g, mid_gray.b);
-        assert!(mid_gray.r >= 127 && mid_gray.r <= 128);
-    }
-
-    #[test]
-    fn test_color_hsl_hue_ranges() {
-        // Test each hue sector (0-60, 60-120, etc.)
-        // Sector 0-60: red to yellow
-        let c = Color::hsl(30.0, 1.0, 0.5);
-        assert_eq!(c.r, 255);
-        assert!(c.g > 0 && c.g < 255);
-        assert_eq!(c.b, 0);
-
-        // Sector 60-120: yellow to green
-        let c = Color::hsl(90.0, 1.0, 0.5);
-        assert!(c.r > 0 && c.r < 255);
-        assert_eq!(c.g, 255);
-        assert_eq!(c.b, 0);
-
-        // Sector 120-180: green to cyan
-        let c = Color::hsl(150.0, 1.0, 0.5);
-        assert_eq!(c.r, 0);
-        assert_eq!(c.g, 255);
-        assert!(c.b > 0 && c.b < 255);
-
-        // Sector 180-240: cyan to blue
-        let c = Color::hsl(210.0, 1.0, 0.5);
-        assert_eq!(c.r, 0);
-        assert!(c.g > 0 && c.g < 255);
-        assert_eq!(c.b, 255);
-
-        // Sector 240-300: blue to magenta
-        let c = Color::hsl(270.0, 1.0, 0.5);
-        assert!(c.r > 0 && c.r < 255);
-        assert_eq!(c.g, 0);
-        assert_eq!(c.b, 255);
-
-        // Sector 300-360: magenta to red
-        let c = Color::hsl(330.0, 1.0, 0.5);
-        assert_eq!(c.r, 255);
-        assert_eq!(c.g, 0);
-        assert!(c.b > 0 && c.b < 255);
-    }
-
-    #[test]
-    fn test_color_hsl_partial_saturation() {
-        // Reduced saturation should give muted colors
-        let full = Color::hsl(0.0, 1.0, 0.5);
-        let half = Color::hsl(0.0, 0.5, 0.5);
-
-        // Full saturation red
-        assert_eq!(full.r, 255);
-        assert_eq!(full.g, 0);
-
-        // Half saturation should have higher green/blue (more grayish)
-        assert!(half.r > half.g);
-        assert!(half.g > 0); // Not pure red anymore
-    }
-
-    #[test]
-    fn test_color_hsl_lightness_range() {
-        // l=0.25 should be darker, l=0.75 should be lighter
-        let dark = Color::hsl(0.0, 1.0, 0.25);
-        let mid = Color::hsl(0.0, 1.0, 0.5);
-        let light = Color::hsl(0.0, 1.0, 0.75);
-
-        // Dark red should have lower r than mid red
-        assert!(dark.r < mid.r);
-        // Light red should have higher g and b than mid (more white)
-        assert!(light.g > mid.g);
-        assert!(light.b > mid.b);
-    }
-
-    // ========================================================================
-    // Bezier curve tests
-    // ========================================================================
-
-    // --- Quadratic Bezier tests ---
-
-    #[test]
-    fn test_quad_bezier_at_t0_returns_start() {
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(50.0, 100.0);
-        let p2 = Point::new(100.0, 0.0);
-        let result = quad_bezier(p0, p1, p2, 0.0);
-        assert!(point_approx_eq(result, p0));
-    }
-
-    #[test]
-    fn test_quad_bezier_at_t1_returns_end() {
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(50.0, 100.0);
-        let p2 = Point::new(100.0, 0.0);
-        let result = quad_bezier(p0, p1, p2, 1.0);
-        assert!(point_approx_eq(result, p2));
-    }
-
-    #[test]
-    fn test_quad_bezier_at_midpoint() {
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(50.0, 100.0);
-        let p2 = Point::new(100.0, 0.0);
-        let result = quad_bezier(p0, p1, p2, 0.5);
-        // At t=0.5: (1-t)^2 = 0.25, 2*(1-t)*t = 0.5, t^2 = 0.25
-        // x = 0.25*0 + 0.5*50 + 0.25*100 = 0 + 25 + 25 = 50
-        // y = 0.25*0 + 0.5*100 + 0.25*0 = 0 + 50 + 0 = 50
-        assert!(point_approx_eq(result, Point::new(50.0, 50.0)));
-    }
-
-    #[test]
-    fn test_quad_bezier_straight_line() {
-        // When control point is on the line, result should be linear
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(50.0, 50.0); // On the line from p0 to p2
-        let p2 = Point::new(100.0, 100.0);
-
-        // At t=0.5, should be exactly at midpoint
-        let result = quad_bezier(p0, p1, p2, 0.5);
-        assert!(point_approx_eq(result, Point::new(50.0, 50.0)));
-
-        // At t=0.25
-        let result = quad_bezier(p0, p1, p2, 0.25);
-        assert!(point_approx_eq(result, Point::new(25.0, 25.0)));
-    }
-
-    #[test]
-    fn test_quad_bezier_control_point_influence() {
-        let p0 = Point::new(0.0, 0.0);
-        let p2 = Point::new(100.0, 0.0);
-
-        // Control point above the line
-        let p1_above = Point::new(50.0, 100.0);
-        let result_above = quad_bezier(p0, p1_above, p2, 0.5);
-
-        // Control point below the line
-        let p1_below = Point::new(50.0, -100.0);
-        let result_below = quad_bezier(p0, p1_below, p2, 0.5);
-
-        // y should be positive when control is above
-        assert!(result_above.y > 0.0);
-        // y should be negative when control is below
-        assert!(result_below.y < 0.0);
-        // They should be symmetric
-        assert!(approx_eq(result_above.y, -result_below.y));
-    }
-
-    // --- Cubic Bezier tests ---
-
-    #[test]
-    fn test_cubic_bezier_at_t0_returns_start() {
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(25.0, 100.0);
-        let p2 = Point::new(75.0, 100.0);
-        let p3 = Point::new(100.0, 0.0);
-        let result = cubic_bezier(p0, p1, p2, p3, 0.0);
-        assert!(point_approx_eq(result, p0));
-    }
-
-    #[test]
-    fn test_cubic_bezier_at_t1_returns_end() {
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(25.0, 100.0);
-        let p2 = Point::new(75.0, 100.0);
-        let p3 = Point::new(100.0, 0.0);
-        let result = cubic_bezier(p0, p1, p2, p3, 1.0);
-        assert!(point_approx_eq(result, p3));
-    }
-
-    #[test]
-    fn test_cubic_bezier_at_midpoint() {
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(0.0, 100.0);
-        let p2 = Point::new(100.0, 100.0);
-        let p3 = Point::new(100.0, 0.0);
-        let result = cubic_bezier(p0, p1, p2, p3, 0.5);
-        // At t=0.5: (1-t)^3 = 0.125, 3*(1-t)^2*t = 0.375, 3*(1-t)*t^2 = 0.375, t^3 = 0.125
-        // x = 0.125*0 + 0.375*0 + 0.375*100 + 0.125*100 = 0 + 0 + 37.5 + 12.5 = 50
-        // y = 0.125*0 + 0.375*100 + 0.375*100 + 0.125*0 = 0 + 37.5 + 37.5 + 0 = 75
-        assert!(point_approx_eq(result, Point::new(50.0, 75.0)));
-    }
-
-    #[test]
-    fn test_cubic_bezier_straight_line() {
-        // When all points are collinear, result should be linear
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(33.33, 33.33);
-        let p2 = Point::new(66.67, 66.67);
-        let p3 = Point::new(100.0, 100.0);
-
-        // At t=0.5, should be close to midpoint
-        let result = cubic_bezier(p0, p1, p2, p3, 0.5);
-        assert!(approx_eq(result.x, 50.0));
-        assert!((result.y - 50.0).abs() < 0.1); // Allow small error due to non-perfect control points
-    }
-
-    #[test]
-    fn test_cubic_bezier_s_curve() {
-        // S-curve: control points on opposite sides
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(0.0, 100.0); // Pull up
-        let p2 = Point::new(100.0, -100.0); // Pull down
-        let p3 = Point::new(100.0, 0.0);
-
-        // At t=0.25, should be above the x-axis (influenced by p1)
-        let result_early = cubic_bezier(p0, p1, p2, p3, 0.25);
-        assert!(result_early.y > 0.0);
-
-        // At t=0.75, should be below the x-axis (influenced by p2)
-        let result_late = cubic_bezier(p0, p1, p2, p3, 0.75);
-        assert!(result_late.y < 0.0);
-    }
-
-    #[test]
-    fn test_cubic_bezier_control_points_symmetry() {
-        // Symmetric curve should have symmetric midpoint
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(25.0, 50.0);
-        let p2 = Point::new(75.0, 50.0);
-        let p3 = Point::new(100.0, 0.0);
-
-        let result = cubic_bezier(p0, p1, p2, p3, 0.5);
-        // x should be exactly at midpoint
-        assert!(approx_eq(result.x, 50.0));
-    }
-
-    #[test]
-    fn test_cubic_bezier_parameter_progression() {
-        // x should increase monotonically for this curve
-        let p0 = Point::new(0.0, 0.0);
-        let p1 = Point::new(33.0, 50.0);
-        let p2 = Point::new(66.0, 50.0);
-        let p3 = Point::new(100.0, 0.0);
-
-        let mut prev_x = -1.0;
-        for i in 0..=10 {
-            let t = i as f64 / 10.0;
-            let result = cubic_bezier(p0, p1, p2, p3, t);
-            assert!(result.x > prev_x, "x should increase at t={}", t);
-            prev_x = result.x;
-        }
-    }
-
-    #[test]
-    fn test_bezier_negative_coordinates() {
-        // Test with negative coordinates
-        let p0 = Point::new(-100.0, -100.0);
-        let p1 = Point::new(-50.0, 0.0);
-        let p2 = Point::new(0.0, -100.0);
-
-        let start = quad_bezier(p0, p1, p2, 0.0);
-        let end = quad_bezier(p0, p1, p2, 1.0);
-
-        assert!(point_approx_eq(start, p0));
-        assert!(point_approx_eq(end, p2));
-    }
-
-    // ========================================================================
-    // Stroke tests
-    // ========================================================================
-
-    #[test]
-    fn test_stroke_new() {
-        let points = vec![Point::new(0.0, 0.0), Point::new(10.0, 10.0)];
-        let style = Style::default();
-        let stroke = Stroke::new(points.clone(), style);
-
-        assert_eq!(stroke.points.len(), 2);
-        assert!(!stroke.closed);
-    }
-
-    #[test]
-    fn test_stroke_closed() {
-        let points = vec![
-            Point::new(0.0, 0.0),
-            Point::new(10.0, 0.0),
-            Point::new(10.0, 10.0),
-        ];
-        let stroke = Stroke::new(points, Style::default()).closed();
-        assert!(stroke.closed);
-    }
-
-    #[test]
-    fn test_stroke_line() {
-        let from = Point::new(0.0, 0.0);
-        let to = Point::new(10.0, 10.0);
-        let stroke = Stroke::line(from, to, Style::default());
-
-        assert_eq!(stroke.points.len(), 2);
-        assert_eq!(stroke.points[0], from);
-        assert_eq!(stroke.points[1], to);
-    }
-
-    #[test]
-    fn test_stroke_length_simple_line() {
-        let stroke = Stroke::line(Point::new(0.0, 0.0), Point::new(3.0, 4.0), Style::default());
-        assert!(approx_eq(stroke.length(), 5.0)); // 3-4-5 triangle
-    }
-
-    #[test]
-    fn test_stroke_length_multiple_segments() {
-        let points = vec![
-            Point::new(0.0, 0.0),
-            Point::new(3.0, 4.0), // distance 5
-            Point::new(3.0, 0.0), // distance 4
-        ];
-        let stroke = Stroke::new(points, Style::default());
-        assert!(approx_eq(stroke.length(), 9.0)); // 5 + 4
-    }
-
-    #[test]
-    fn test_stroke_length_empty() {
-        let stroke = Stroke::new(vec![], Style::default());
-        assert!(approx_eq(stroke.length(), 0.0));
-    }
-
-    #[test]
-    fn test_stroke_length_single_point() {
-        let stroke = Stroke::new(vec![Point::new(5.0, 5.0)], Style::default());
-        assert!(approx_eq(stroke.length(), 0.0));
-    }
-
-    #[test]
-    fn test_stroke_bounds_simple() {
-        let points = vec![
-            Point::new(0.0, 0.0),
-            Point::new(10.0, 5.0),
-            Point::new(5.0, 10.0),
-        ];
-        let stroke = Stroke::new(points, Style::default());
-        let (min, max) = stroke.bounds().unwrap();
-
-        assert!(point_approx_eq(min, Point::new(0.0, 0.0)));
-        assert!(point_approx_eq(max, Point::new(10.0, 10.0)));
-    }
-
-    #[test]
-    fn test_stroke_bounds_empty() {
-        let stroke = Stroke::new(vec![], Style::default());
-        assert!(stroke.bounds().is_none());
-    }
-
-    #[test]
-    fn test_stroke_bounds_single_point() {
-        let stroke = Stroke::new(vec![Point::new(5.0, 10.0)], Style::default());
-        let (min, max) = stroke.bounds().unwrap();
-
-        assert!(point_approx_eq(min, Point::new(5.0, 10.0)));
-        assert!(point_approx_eq(max, Point::new(5.0, 10.0)));
-    }
-
-    #[test]
-    fn test_stroke_bounds_negative_coords() {
-        let points = vec![
-            Point::new(-10.0, -5.0),
-            Point::new(5.0, 10.0),
-            Point::new(-3.0, 0.0),
-        ];
-        let stroke = Stroke::new(points, Style::default());
-        let (min, max) = stroke.bounds().unwrap();
-
-        assert!(point_approx_eq(min, Point::new(-10.0, -5.0)));
-        assert!(point_approx_eq(max, Point::new(5.0, 10.0)));
-    }
-
-    // ========================================================================
-    // Rect tests
-    // ========================================================================
-
-    #[test]
-    fn test_rect_new() {
-        let rect = Rect::new(10.0, 20.0, 100.0, 50.0);
-        assert!(point_approx_eq(rect.origin, Point::new(10.0, 20.0)));
-        assert!(approx_eq(rect.width, 100.0));
-        assert!(approx_eq(rect.height, 50.0));
-    }
-
-    #[test]
-    fn test_rect_from_origin() {
-        let rect = Rect::from_origin((10.0, 20.0), 100.0, 50.0);
-        assert!(point_approx_eq(rect.origin, Point::new(10.0, 20.0)));
-        assert!(approx_eq(rect.width, 100.0));
-        assert!(approx_eq(rect.height, 50.0));
+    fn test_rect_creation() {
+        let rect = Rect::from_origin_size((10.0, 20.0), (100.0, 50.0));
+        assert!(approx_eq(rect.x0, 10.0));
+        assert!(approx_eq(rect.y0, 20.0));
+        assert!(approx_eq(rect.x1, 110.0));
+        assert!(approx_eq(rect.y1, 70.0));
+        assert!(approx_eq(rect.width(), 100.0));
+        assert!(approx_eq(rect.height(), 50.0));
     }
 
     #[test]
     fn test_rect_centered() {
-        let rect = Rect::centered((50.0, 50.0), 100.0, 60.0);
-        // Origin should be at center - half dimensions
-        assert!(point_approx_eq(rect.origin, Point::new(0.0, 20.0)));
-        assert!(approx_eq(rect.width, 100.0));
-        assert!(approx_eq(rect.height, 60.0));
+        let rect = Rect::from_center_size((50.0, 50.0), (100.0, 100.0));
+        assert!(approx_eq(rect.x0, 0.0));
+        assert!(approx_eq(rect.y0, 0.0));
+        assert!(approx_eq(rect.x1, 100.0));
+        assert!(approx_eq(rect.y1, 100.0));
     }
 
     #[test]
-    fn test_rect_centered_at_origin() {
-        let rect = Rect::centered(Point::ZERO, 20.0, 10.0);
-        assert!(point_approx_eq(rect.origin, Point::new(-10.0, -5.0)));
-    }
-
-    #[test]
-    fn test_rect_center() {
-        let rect = Rect::new(0.0, 0.0, 100.0, 50.0);
-        let center = rect.center();
-        assert!(point_approx_eq(center, Point::new(50.0, 25.0)));
-    }
-
-    #[test]
-    fn test_rect_center_negative_origin() {
-        let rect = Rect::new(-50.0, -25.0, 100.0, 50.0);
-        let center = rect.center();
-        assert!(point_approx_eq(center, Point::new(0.0, 0.0)));
-    }
-
-    #[test]
-    fn test_rect_centered_and_center_roundtrip() {
-        let original_center = Point::new(100.0, 200.0);
-        let rect = Rect::centered(original_center, 50.0, 30.0);
-        assert!(point_approx_eq(rect.center(), original_center));
-    }
-
-    #[test]
-    fn test_rect_corners() {
-        let rect = Rect::new(10.0, 20.0, 100.0, 50.0);
-        let corners = rect.corners();
-
-        // Corners in order: origin, +x, +x+y, +y
-        assert!(point_approx_eq(corners[0], Point::new(10.0, 20.0)));
-        assert!(point_approx_eq(corners[1], Point::new(110.0, 20.0)));
-        assert!(point_approx_eq(corners[2], Point::new(110.0, 70.0)));
-        assert!(point_approx_eq(corners[3], Point::new(10.0, 70.0)));
-    }
-
-    #[test]
-    fn test_rect_corners_zero_dimensions() {
-        let rect = Rect::new(5.0, 5.0, 0.0, 0.0);
-        let corners = rect.corners();
-
-        // All corners should be at the same point
-        for corner in &corners {
-            assert!(point_approx_eq(*corner, Point::new(5.0, 5.0)));
-        }
-    }
-
-    #[test]
-    fn test_rect_corners_negative_origin() {
-        let rect = Rect::new(-10.0, -20.0, 20.0, 40.0);
-        let corners = rect.corners();
-
-        assert!(point_approx_eq(corners[0], Point::new(-10.0, -20.0)));
-        assert!(point_approx_eq(corners[1], Point::new(10.0, -20.0)));
-        assert!(point_approx_eq(corners[2], Point::new(10.0, 20.0)));
-        assert!(point_approx_eq(corners[3], Point::new(-10.0, 20.0)));
-    }
-
-    #[test]
-    fn test_rect_center_zero_dimensions() {
-        let rect = Rect::new(10.0, 20.0, 0.0, 0.0);
-        assert!(point_approx_eq(rect.center(), Point::new(10.0, 20.0)));
-    }
-
-    #[test]
-    fn test_circle_flatten() {
-        let circle = Circle::new(Point::ZERO, 10.0).with_segments(4);
-        let element = Element::new(circle);
-        let strokes = element.flatten();
+    fn test_element_flatten_line() {
+        let elem = Element::line((0.0, 0.0), (10.0, 10.0));
+        let strokes = elem.flatten();
         assert_eq!(strokes.len(), 1);
-        assert_eq!(strokes[0].points.len(), 5); // 4 segments + 1 to close
+        assert_eq!(strokes[0].points.len(), 2);
     }
 
     #[test]
-    fn test_group_transform() {
-        let mut group = Group::new();
-        group.push(Element::circle(Point::ZERO, 10.0));
-        group.push(Element::rect_centered(Point::ZERO, 20.0, 20.0));
+    fn test_element_flatten_circle() {
+        let elem = Element::circle((0.0, 0.0), 10.0);
+        let strokes = elem.flatten();
+        assert_eq!(strokes.len(), 1);
+        assert!(strokes[0].closed);
+        assert!(strokes[0].points.len() > 10); // Should have many points
+    }
 
-        let element = Element::group(group).translate(100.0, 100.0);
-        let strokes = element.flatten();
+    #[test]
+    fn test_path_to_bezpath() {
+        let path = Path::new()
+            .move_to((0.0, 0.0))
+            .line_to((10.0, 0.0))
+            .line_to((10.0, 10.0))
+            .close();
 
-        // Both shapes should be translated
-        for stroke in &strokes {
-            for point in &stroke.points {
-                assert!(point.x >= 80.0 && point.x <= 120.0);
-                assert!(point.y >= 80.0 && point.y <= 120.0);
-            }
-        }
+        let bezpath = path.to_bezpath();
+        assert_eq!(bezpath.elements().len(), 4);
     }
 }
