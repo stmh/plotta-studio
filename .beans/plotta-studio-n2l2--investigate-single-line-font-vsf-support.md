@@ -160,58 +160,55 @@ The creative coding community (Processing, p5.js) has developed extensive single
 
 ## Proposed Architecture
 
-### Abstract Font Renderer Design
+### Converter-Based Approach
+
+Rather than implementing multiple font loaders at runtime, we use a **converter-based architecture**:
+
+1. **Build-time converters** transform source formats (Hershey, UFO) → VSF
+2. **Single runtime loader** only needs to parse VSF
+3. **Bundle pre-converted fonts** as `.vsf` files
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        FontManager                              │
-│  - load_font(source) → FontHandle                              │
-│  - get_font(name) → Option<&Font>                              │
-│  - list_fonts() → Vec<FontInfo>                                │
+│                    BUILD-TIME / CLI TOOLS                       │
+├─────────────────────────────────────────────────────────────────┤
+│  Hershey (.jhf) ──→ ┌──────────────┐                           │
+│  UFO (.ufo)     ──→ │ vsf-convert  │ ──→ .vsf files            │
+│  SVG Font       ──→ └──────────────┘                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                              ▼ (bundled fonts / user fonts)
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Font (trait object)                         │
-│  - name() → &str                                                │
-│  - glyph(char) → Option<Glyph>                                 │
-│  - kerning(left, right) → f64                                  │
-│  - metrics() → FontMetrics                                     │
-│  - has_glyph(char) → bool                                      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  HersheyFont    │ │    UfoFont      │ │   SvgFont       │
-│  (lines only)   │ │  (bezier curves)│ │  (bezier curves)│
-└─────────────────┘ └─────────────────┘ └─────────────────┘
-          │                   │                   │
-          └───────────────────┼───────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Glyph                                   │
-│  - contours: Vec<Contour>                                      │
-│  - advance_width: f64                                          │
-│  - bounds: Rect                                                │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Contour                                  │
-│  - to_path() → Path           (drawing-core Path)              │
-│  - to_bezpath() → BezPath     (kurbo BezPath)                  │
-│  - flatten(tolerance) → Vec<Point>                             │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     TextRenderer                                │
-│  - render(text, font, options) → Vec<Element>                  │
-│  - layout(text, font, options) → TextLayout                    │
-│  - measure(text, font, options) → Rect                         │
+│                         RUNTIME                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐      ┌─────────────────┐                  │
+│  │   FontManager   │ ──→  │    VsfFont      │                  │
+│  │  - load(.vsf)   │      │  (single impl)  │                  │
+│  │  - get_font()   │      └─────────────────┘                  │
+│  │  - list_fonts() │              │                            │
+│  └─────────────────┘              ▼                            │
+│                           ┌─────────────────┐                  │
+│                           │      Glyph      │                  │
+│                           │  - contours     │                  │
+│                           │  - advance      │                  │
+│                           └─────────────────┘                  │
+│                                   │                            │
+│                                   ▼                            │
+│                           ┌─────────────────┐                  │
+│                           │  TextRenderer   │                  │
+│                           │  - render()     │                  │
+│                           │  - layout()     │                  │
+│                           └─────────────────┘                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Benefits:**
+- Single font format at runtime (simpler code, fewer dependencies)
+- VSF is a superset (supports bezier curves that Hershey lacks)
+- Converters are separate CLI tools, not runtime dependencies
+- Pre-convert and bundle common Hershey fonts as `.vsf`
+- Users can convert their own fonts with the CLI tool
+- `norad` dependency only needed in converter, not main library
 
 ### Core Types
 
@@ -278,57 +275,71 @@ pub struct PositionedGlyph {
 }
 ```
 
-### Font Trait
+### VsfFont (Single Implementation)
 
 ```rust
-pub trait Font: Send + Sync {
+/// A VSF font loaded from a .vsf file
+pub struct VsfFont {
+    name: String,
+    metadata: FontMetadata,
+    metrics: FontMetrics,
+    glyphs: HashMap<char, Glyph>,
+    kerning: HashMap<(char, char), f64>,
+}
+
+impl VsfFont {
+    /// Load from a .vsf file
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, FontError>;
+
+    /// Load from bytes (embedded fonts)
+    pub fn from_bytes(data: &[u8]) -> Result<Self, FontError>;
+
     /// Font family name
-    fn name(&self) -> &str;
+    pub fn name(&self) -> &str;
 
     /// Get a glyph by unicode character
-    fn glyph(&self, c: char) -> Option<Glyph>;
+    pub fn glyph(&self, c: char) -> Option<&Glyph>;
 
     /// Get kerning adjustment between two characters
-    fn kerning(&self, left: char, right: char) -> f64;
+    pub fn kerning(&self, left: char, right: char) -> f64;
 
     /// Get font metrics
-    fn metrics(&self) -> FontMetrics;
+    pub fn metrics(&self) -> &FontMetrics;
 
     /// Check if font has a glyph for character
-    fn has_glyph(&self, c: char) -> bool {
-        self.glyph(c).is_some()
-    }
+    pub fn has_glyph(&self, c: char) -> bool;
 
     /// Get all available characters
-    fn available_chars(&self) -> Vec<char>;
+    pub fn available_chars(&self) -> Vec<char>;
 }
 ```
 
-### Font Loaders (Pluggable)
+### FontManager
 
 ```rust
-pub trait FontLoader: Send + Sync {
-    /// Check if this loader can handle the given source
-    fn can_load(&self, source: &FontSource) -> bool;
-
-    /// Load a font from the source
-    fn load(&self, source: &FontSource) -> Result<Box<dyn Font>, FontError>;
-
-    /// Supported format name (for error messages)
-    fn format_name(&self) -> &'static str;
+/// Manages loaded fonts and provides access by name
+pub struct FontManager {
+    fonts: HashMap<String, VsfFont>,
+    search_paths: Vec<PathBuf>,
 }
 
-pub enum FontSource {
-    File(PathBuf),
-    Bytes { data: Vec<u8>, format: FontFormat },
-    Url(String),
-}
+impl FontManager {
+    pub fn new() -> Self;
 
-pub enum FontFormat {
-    Hershey,    // .jhf or inline Hershey data
-    Ufo,        // .ufo directory
-    SvgFont,    // .svg font file
-    Vsf,        // .vsf (our custom format)
+    /// Add a directory to search for .vsf files
+    pub fn add_search_path(&mut self, path: impl AsRef<Path>);
+
+    /// Load a font from file
+    pub fn load_font(&mut self, path: impl AsRef<Path>) -> Result<&VsfFont, FontError>;
+
+    /// Get a loaded font by name
+    pub fn get_font(&self, name: &str) -> Option<&VsfFont>;
+
+    /// List all loaded fonts
+    pub fn list_fonts(&self) -> Vec<&str>;
+
+    /// Load all .vsf files from search paths
+    pub fn load_all(&mut self) -> Result<(), FontError>;
 }
 ```
 
@@ -475,51 +486,66 @@ Contour:
 
 ## Implementation Plan
 
-### Phase 1: Core Font Types
+### Phase 1: VSF Format & Parser
 1. Create `drawing-text` crate
-2. Define `Font`, `Glyph`, `Contour` types
-3. Implement `Contour` → `Path` → `Stroke` conversion
-4. Add unit tests
+2. Define VSF JSON schema (finalize format spec)
+3. Implement `VsfFont` parser (`serde` deserialization)
+4. Define `Glyph`, `Contour`, `FontMetrics` types
+5. Implement `Contour` → `Path` → `Stroke` conversion
+6. Add unit tests
 
-### Phase 2: Hershey Font Loader
-1. Implement Hershey format parser
-2. Create `HersheyFont` implementing `Font` trait
-3. Bundle common Hershey fonts (simplex, complex, etc.)
-4. Test with p5-hershey-js data
+### Phase 2: vsf-convert CLI Tool
+1. Create `vsf-convert` binary crate
+2. Implement Hershey → VSF converter
+   - Parse Hershey ASCII format
+   - Map character sets to Unicode
+   - Generate VSF JSON output
+3. Implement UFO → VSF converter (using `norad`)
+   - Parse UFO with norad
+   - Convert contours and kerning
+   - Generate VSF JSON output
+4. Add CLI interface (input format detection, output path)
 
-### Phase 3: UFO Font Loader
-1. Add `norad` dependency
-2. Implement `UfoFont` using norad types
-3. Convert `norad::Contour` → our `Contour`
-4. Handle kerning from UFO
+### Phase 3: Bundle Fonts
+1. Convert common Hershey fonts to VSF:
+   - Simplex (romans, scripts)
+   - Complex (romanc, scriptc)
+   - Gothic, Greek, Cyrillic
+2. Include as embedded assets or separate font package
+3. Document available bundled fonts
 
-### Phase 4: VSF Format
-1. Define VSF JSON schema
-2. Implement VSF parser
-3. Create VSF exporter (convert other formats to VSF)
-4. Document format specification
+### Phase 4: Text Rendering
+1. Implement `FontManager` (load, cache, lookup)
+2. Implement `TextRenderer`
+3. Add text layout with kerning
+4. Create `Text` shape type in drawing-core
+5. Integrate with `Drawing`
 
-### Phase 5: Text Rendering
-1. Implement `TextRenderer`
-2. Add text layout with kerning
-3. Create `Text` shape type
-4. Integrate with `Drawing`
-
-### Phase 6: Integration
+### Phase 5: Integration
 1. Add to sketch-runner preview
-2. SVG export support
+2. SVG export support for text
 3. Plotter optimization for text paths
-4. Example sketches
+4. Example sketches with text
 
 ## Dependencies
 
+### drawing-text crate (runtime)
 ```toml
 [dependencies]
-norad = "0.17"              # UFO parsing
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"          # VSF format
+serde_json = "1.0"          # VSF format parsing
 thiserror = "1.0"           # Error handling
-kurbo = { version = "0.11", features = ["serde"] }  # Already used
+kurbo = { version = "0.11", features = ["serde"] }  # Already used in drawing-core
+```
+
+### vsf-convert CLI tool (build-time only)
+```toml
+[dependencies]
+norad = "0.17"              # UFO parsing (only needed here)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.0", features = ["derive"] }  # CLI argument parsing
+thiserror = "1.0"
 ```
 
 ## References
