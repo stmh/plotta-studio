@@ -36,6 +36,10 @@ use serialport::SerialPortType;
 #[cfg(feature = "hardware")]
 use std::io::{BufRead, BufReader, Write};
 #[cfg(feature = "hardware")]
+use std::sync::mpsc;
+#[cfg(feature = "hardware")]
+use std::thread::{self, JoinHandle};
+#[cfg(feature = "hardware")]
 use std::time::Duration;
 use thiserror::Error;
 
@@ -91,6 +95,62 @@ impl Default for PlotConfig {
             pen_down_delay: 150,
             pen_up_delay: 150,
         }
+    }
+}
+
+/// Events emitted during plotting
+#[cfg(feature = "hardware")]
+#[derive(Debug, Clone)]
+pub enum PlotEvent {
+    /// Plotting started
+    Started { total_strokes: usize },
+    /// Starting a new stroke
+    StrokeStart { index: usize, total: usize },
+    /// Stroke completed
+    StrokeComplete { index: usize, total: usize },
+    /// Moving to a position
+    MoveTo { position: Point, pen_down: bool },
+    /// Plotting completed successfully
+    Completed,
+    /// Error occurred
+    Error(String),
+}
+
+/// Handle to a background plotting job
+#[cfg(feature = "hardware")]
+pub struct PlotHandle {
+    /// Channel to receive plot events
+    pub receiver: mpsc::Receiver<PlotEvent>,
+    /// Thread handle
+    handle: JoinHandle<Result<(), PlotterError>>,
+}
+
+#[cfg(feature = "hardware")]
+impl PlotHandle {
+    /// Wait for the plotting to complete
+    pub fn join(self) -> Result<(), PlotterError> {
+        self.handle.join().map_err(|_| {
+            PlotterError::Device("Plotting thread panicked".to_string())
+        })?
+    }
+
+    /// Check if plotting is still running
+    pub fn is_running(&self) -> bool {
+        !self.handle.is_finished()
+    }
+
+    /// Try to receive the next event without blocking
+    pub fn try_recv(&self) -> Option<PlotEvent> {
+        self.receiver.try_recv().ok()
+    }
+
+    /// Receive all pending events
+    pub fn drain_events(&self) -> Vec<PlotEvent> {
+        let mut events = Vec::new();
+        while let Ok(event) = self.receiver.try_recv() {
+            events.push(event);
+        }
+        events
     }
 }
 
@@ -492,6 +552,152 @@ impl AxiDraw {
     pub fn is_pen_down(&self) -> bool {
         self.pen_is_down
     }
+
+    // ========================================================================
+    // Threaded Plotting with Events
+    // ========================================================================
+
+    /// Plot strokes with event callbacks
+    pub fn plot_strokes_with_events<F>(
+        &mut self,
+        strokes: &[&Stroke],
+        mut on_event: F,
+    ) -> Result<(), PlotterError>
+    where
+        F: FnMut(PlotEvent),
+    {
+        let total = strokes.len();
+        on_event(PlotEvent::Started { total_strokes: total });
+
+        self.pen_up()?;
+        self.enable_motors()?;
+
+        for (index, stroke) in strokes.iter().enumerate() {
+            if stroke.points.is_empty() {
+                continue;
+            }
+
+            on_event(PlotEvent::StrokeStart { index, total });
+
+            // Move to stroke start (pen up)
+            on_event(PlotEvent::MoveTo {
+                position: stroke.points[0],
+                pen_down: false,
+            });
+            self.move_to(stroke.points[0])?;
+
+            // Put pen down
+            self.pen_down()?;
+
+            // Draw stroke
+            for point in &stroke.points[1..] {
+                on_event(PlotEvent::MoveTo {
+                    position: *point,
+                    pen_down: true,
+                });
+                self.move_to(*point)?;
+            }
+
+            // Close if needed
+            if stroke.closed && stroke.points.len() > 2 {
+                on_event(PlotEvent::MoveTo {
+                    position: stroke.points[0],
+                    pen_down: true,
+                });
+                self.move_to(stroke.points[0])?;
+            }
+
+            // Lift pen
+            self.pen_up()?;
+
+            on_event(PlotEvent::StrokeComplete { index, total });
+        }
+
+        // Return home
+        on_event(PlotEvent::MoveTo {
+            position: Point::ZERO,
+            pen_down: false,
+        });
+        self.move_to(Point::ZERO)?;
+        self.disable_motors()?;
+
+        on_event(PlotEvent::Completed);
+        Ok(())
+    }
+
+    /// Plot a drawing with event callbacks
+    pub fn plot_with_events<F>(
+        &mut self,
+        drawing: &Drawing,
+        config: &PlotConfig,
+        on_event: F,
+    ) -> Result<(), PlotterError>
+    where
+        F: FnMut(PlotEvent),
+    {
+        self.config = config.clone();
+        let strokes = drawing.flatten();
+        let optimized = optimize_strokes(&strokes);
+        self.plot_strokes_with_events(&optimized, on_event)
+    }
+}
+
+/// Spawn a background thread to plot a drawing
+///
+/// Returns a `PlotHandle` that can be used to monitor progress and wait for completion.
+///
+/// # Example
+/// ```ignore
+/// use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent};
+///
+/// let handle = plot_in_background(drawing, PlotConfig::default(), None)?;
+///
+/// // Monitor progress
+/// while handle.is_running() {
+///     for event in handle.drain_events() {
+///         match event {
+///             PlotEvent::StrokeComplete { index, total } => {
+///                 println!("Stroke {}/{} complete", index + 1, total);
+///             }
+///             _ => {}
+///         }
+///     }
+///     std::thread::sleep(std::time::Duration::from_millis(100));
+/// }
+///
+/// handle.join()?;
+/// ```
+#[cfg(feature = "hardware")]
+pub fn plot_in_background(
+    drawing: Drawing,
+    config: PlotConfig,
+    port: Option<String>,
+) -> Result<PlotHandle, PlotterError> {
+    let (sender, receiver) = mpsc::channel();
+
+    let handle = thread::spawn(move || {
+        let result = (|| {
+            let mut plotter = match port {
+                Some(p) => AxiDraw::connect(&p)?,
+                None => AxiDraw::auto_connect()?,
+            };
+
+            let strokes = drawing.flatten();
+            let optimized = optimize_strokes(&strokes);
+
+            plotter.plot_strokes_with_events(&optimized, |event| {
+                let _ = sender.send(event);
+            })
+        })();
+
+        if let Err(ref e) = result {
+            let _ = sender.send(PlotEvent::Error(e.to_string()));
+        }
+
+        result
+    });
+
+    Ok(PlotHandle { receiver, handle })
 }
 
 #[cfg(feature = "hardware")]
