@@ -3,10 +3,15 @@ name = "drawing-plotter"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+# Enable hardware serial communication (requires libudev on Linux)
+hardware = ["serialport"]
+
 [dependencies]
 drawing-core = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 
-# Serial communication for AxiDraw
-# serialport = "4.3"  # Uncomment when implementing
+# Serial communication for AxiDraw (optional, requires system libraries)
+serialport = { version = "4.3", optional = true }

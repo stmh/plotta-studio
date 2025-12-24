@@ -28,8 +28,20 @@
 //! plotter.plot(&drawing, &PlotConfig::default())?;
 //! ```
 
-use drawing_core::{Drawing, Point, Stroke};
+#[cfg(feature = "hardware")]
+use drawing_core::Drawing;
+use drawing_core::{Point, Stroke};
+#[cfg(feature = "hardware")]
+use serialport::SerialPortType;
+#[cfg(feature = "hardware")]
+use std::io::{BufRead, BufReader, Write};
+#[cfg(feature = "hardware")]
+use std::time::Duration;
 use thiserror::Error;
+
+/// AxiDraw USB identifiers (EiBotBoard)
+pub const AXIDRAW_VID: u16 = 0x04D8; // Microchip
+pub const AXIDRAW_PID: u16 = 0xFD92; // EiBotBoard
 
 #[derive(Error, Debug)]
 pub enum PlotterError {
@@ -38,6 +50,12 @@ pub enum PlotterError {
 
     #[error("Communication error: {0}")]
     Communication(String),
+
+    #[error("Timeout waiting for response")]
+    Timeout,
+
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
 
     #[error("Plotter error: {0}")]
     Device(String),
@@ -148,51 +166,339 @@ pub fn pen_down_distance(strokes: &[&Stroke]) -> f64 {
         .sum()
 }
 
-// TODO: Implement actual AxiDraw communication
-// This requires the `serialport` crate and EBB protocol implementation
-
-/// Placeholder for AxiDraw connection
-pub struct AxiDraw {
-    // port: Box<dyn serialport::SerialPort>,
+/// Information about a serial port
+#[cfg(feature = "hardware")]
+#[derive(Debug, Clone)]
+pub struct PortInfo {
+    pub name: String,
+    pub is_axidraw: bool,
+    pub product: Option<String>,
+    pub manufacturer: Option<String>,
 }
 
+/// AxiDraw pen plotter controller
+#[cfg(feature = "hardware")]
+pub struct AxiDraw {
+    port: BufReader<Box<dyn serialport::SerialPort>>,
+    config: PlotConfig,
+    current_pos: Point,
+    pen_is_down: bool,
+}
+
+#[cfg(feature = "hardware")]
 impl AxiDraw {
-    /// List available serial ports
+    // ========================================================================
+    // Port Discovery (axi2b)
+    // ========================================================================
+
+    /// List all available USB serial ports
     pub fn list_ports() -> Result<Vec<String>, PlotterError> {
-        // TODO: Use serialport::available_ports()
-        Ok(vec![])
+        let ports = serialport::available_ports()
+            .map_err(|e| PlotterError::Connection(e.to_string()))?;
+
+        Ok(ports
+            .into_iter()
+            .filter(|p| matches!(p.port_type, SerialPortType::UsbPort(_)))
+            .map(|p| p.port_name)
+            .collect())
     }
 
-    /// Connect to an AxiDraw
-    pub fn connect(_port: &str) -> Result<Self, PlotterError> {
-        Err(PlotterError::Connection(
-            "AxiDraw connection not yet implemented".into(),
-        ))
+    /// Find all connected AxiDraw devices by VID/PID
+    pub fn find_devices() -> Result<Vec<String>, PlotterError> {
+        let ports = serialport::available_ports()
+            .map_err(|e| PlotterError::Connection(e.to_string()))?;
+
+        Ok(ports
+            .into_iter()
+            .filter_map(|p| {
+                if let SerialPortType::UsbPort(usb_info) = &p.port_type {
+                    if usb_info.vid == AXIDRAW_VID && usb_info.pid == AXIDRAW_PID {
+                        return Some(p.port_name);
+                    }
+                }
+                None
+            })
+            .collect())
     }
 
-    /// Plot a drawing
-    pub fn plot(&mut self, _drawing: &Drawing, _config: &PlotConfig) -> Result<(), PlotterError> {
-        Err(PlotterError::Device("Not implemented".into()))
+    /// Find first AxiDraw device
+    pub fn find_first() -> Result<String, PlotterError> {
+        let devices = Self::find_devices()?;
+        devices
+            .into_iter()
+            .next()
+            .ok_or_else(|| PlotterError::Connection("No AxiDraw device found".into()))
     }
+
+    /// Get detailed information about available USB serial ports
+    pub fn list_ports_detailed() -> Result<Vec<PortInfo>, PlotterError> {
+        let ports = serialport::available_ports()
+            .map_err(|e| PlotterError::Connection(e.to_string()))?;
+
+        Ok(ports
+            .into_iter()
+            .filter_map(|p| {
+                if let SerialPortType::UsbPort(usb_info) = &p.port_type {
+                    Some(PortInfo {
+                        name: p.port_name,
+                        is_axidraw: usb_info.vid == AXIDRAW_VID && usb_info.pid == AXIDRAW_PID,
+                        product: usb_info.product.clone(),
+                        manufacturer: usb_info.manufacturer.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+
+    // ========================================================================
+    // Connection (axi2c)
+    // ========================================================================
+
+    /// Connect to an AxiDraw on the specified port
+    pub fn connect(port_name: &str) -> Result<Self, PlotterError> {
+        let port = serialport::new(port_name, 115200)
+            .timeout(Duration::from_millis(1000))
+            .open()
+            .map_err(|e| PlotterError::Connection(format!("{}: {}", port_name, e)))?;
+
+        let mut axidraw = Self {
+            port: BufReader::new(port),
+            config: PlotConfig::default(),
+            current_pos: Point::ZERO,
+            pen_is_down: false,
+        };
+
+        // Verify connection with version query
+        let version = axidraw.query_version()?;
+        log::info!("Connected to AxiDraw: {}", version.trim());
+
+        Ok(axidraw)
+    }
+
+    /// Auto-connect to the first available AxiDraw
+    pub fn auto_connect() -> Result<Self, PlotterError> {
+        let port = Self::find_first()?;
+        Self::connect(&port)
+    }
+
+    /// Query firmware version
+    pub fn query_version(&mut self) -> Result<String, PlotterError> {
+        self.send_command("V")
+    }
+
+    // ========================================================================
+    // Command Protocol (axi2d)
+    // ========================================================================
+
+    /// Send a command and read the response
+    fn send_command(&mut self, cmd: &str) -> Result<String, PlotterError> {
+        let cmd_bytes = format!("{}\r", cmd);
+
+        self.port
+            .get_mut()
+            .write_all(cmd_bytes.as_bytes())
+            .map_err(|e| PlotterError::Communication(e.to_string()))?;
+
+        self.port
+            .get_mut()
+            .flush()
+            .map_err(|e| PlotterError::Communication(e.to_string()))?;
+
+        // Read response line
+        let mut response = String::new();
+        self.port
+            .read_line(&mut response)
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::TimedOut => PlotterError::Timeout,
+                _ => PlotterError::Communication(e.to_string()),
+            })?;
+
+        // Check for error response
+        if response.starts_with('!') {
+            return Err(PlotterError::Device(response.trim().to_string()));
+        }
+
+        Ok(response)
+    }
+
+    /// Send a command that returns OK
+    fn send_command_ok(&mut self, cmd: &str) -> Result<(), PlotterError> {
+        let response = self.send_command(cmd)?;
+        if !response.trim().eq_ignore_ascii_case("OK") {
+            return Err(PlotterError::InvalidResponse(response));
+        }
+        Ok(())
+    }
+
+    // ========================================================================
+    // Pen Control
+    // ========================================================================
 
     /// Move pen up
     pub fn pen_up(&mut self) -> Result<(), PlotterError> {
-        Err(PlotterError::Device("Not implemented".into()))
+        if !self.pen_is_down {
+            return Ok(());
+        }
+        let cmd = format!("SP,0,{}", self.config.pen_up_delay);
+        self.send_command_ok(&cmd)?;
+        std::thread::sleep(Duration::from_millis(self.config.pen_up_delay as u64));
+        self.pen_is_down = false;
+        Ok(())
     }
 
     /// Move pen down
     pub fn pen_down(&mut self) -> Result<(), PlotterError> {
-        Err(PlotterError::Device("Not implemented".into()))
+        if self.pen_is_down {
+            return Ok(());
+        }
+        let cmd = format!("SP,1,{}", self.config.pen_down_delay);
+        self.send_command_ok(&cmd)?;
+        std::thread::sleep(Duration::from_millis(self.config.pen_down_delay as u64));
+        self.pen_is_down = true;
+        Ok(())
+    }
+
+    /// Query current pen state (true = down)
+    pub fn query_pen(&mut self) -> Result<bool, PlotterError> {
+        let response = self.send_command("QP")?;
+        Ok(response.trim() == "1")
+    }
+
+    // ========================================================================
+    // Motor Control
+    // ========================================================================
+
+    /// Enable motors
+    pub fn enable_motors(&mut self) -> Result<(), PlotterError> {
+        self.send_command_ok("EM,1,1")
     }
 
     /// Disable motors (allows manual movement)
     pub fn disable_motors(&mut self) -> Result<(), PlotterError> {
-        Err(PlotterError::Device("Not implemented".into()))
+        self.send_command_ok("EM,0,0")
     }
 
-    /// Home the plotter
+    /// Home the plotter (move to origin)
     pub fn home(&mut self) -> Result<(), PlotterError> {
-        Err(PlotterError::Device("Not implemented".into()))
+        self.pen_up()?;
+        self.move_to(Point::ZERO)?;
+        Ok(())
+    }
+
+    // ========================================================================
+    // Movement (from axi3, but needed for basic operation)
+    // ========================================================================
+
+    /// Steps per mm (16 microsteps * 200 steps/rev / 40mm per rev)
+    const STEPS_PER_MM: f64 = 80.0;
+
+    /// Move to a position
+    pub fn move_to(&mut self, target: Point) -> Result<(), PlotterError> {
+        let delta = target - self.current_pos;
+        let distance = delta.length();
+
+        if distance < 0.01 {
+            return Ok(());
+        }
+
+        // Calculate steps
+        let steps_x = (delta.x * Self::STEPS_PER_MM) as i32;
+        let steps_y = (delta.y * Self::STEPS_PER_MM) as i32;
+
+        // CoreXY transform: axis1 = X+Y, axis2 = X-Y
+        let axis1 = steps_x + steps_y;
+        let axis2 = steps_x - steps_y;
+
+        // Calculate duration based on speed
+        let speed = if self.pen_is_down {
+            self.config.pen_down_speed
+        } else {
+            self.config.pen_up_speed
+        };
+        let duration_ms = ((distance / speed) * 1000.0) as u32;
+        let duration_ms = duration_ms.max(1); // Minimum 1ms
+
+        let cmd = format!("SM,{},{},{}", duration_ms, axis1, axis2);
+        self.send_command_ok(&cmd)?;
+        std::thread::sleep(Duration::from_millis(duration_ms as u64));
+
+        self.current_pos = target;
+        Ok(())
+    }
+
+    // ========================================================================
+    // High-level Plotting
+    // ========================================================================
+
+    /// Plot a drawing
+    pub fn plot(&mut self, drawing: &Drawing, config: &PlotConfig) -> Result<(), PlotterError> {
+        self.config = config.clone();
+
+        // Flatten drawing to strokes
+        let strokes = drawing.flatten();
+
+        // Optimize stroke order
+        let optimized = optimize_strokes(&strokes);
+
+        // Plot each stroke
+        self.plot_strokes(&optimized)
+    }
+
+    /// Plot a sequence of strokes
+    pub fn plot_strokes(&mut self, strokes: &[&Stroke]) -> Result<(), PlotterError> {
+        self.pen_up()?;
+        self.enable_motors()?;
+
+        for stroke in strokes {
+            if stroke.points.is_empty() {
+                continue;
+            }
+
+            // Move to stroke start (pen up)
+            self.move_to(stroke.points[0])?;
+
+            // Put pen down
+            self.pen_down()?;
+
+            // Draw stroke
+            for point in &stroke.points[1..] {
+                self.move_to(*point)?;
+            }
+
+            // Close if needed
+            if stroke.closed && stroke.points.len() > 2 {
+                self.move_to(stroke.points[0])?;
+            }
+
+            // Lift pen
+            self.pen_up()?;
+        }
+
+        // Return home
+        self.move_to(Point::ZERO)?;
+        self.disable_motors()?;
+
+        Ok(())
+    }
+
+    /// Get current position
+    pub fn position(&self) -> Point {
+        self.current_pos
+    }
+
+    /// Check if pen is down
+    pub fn is_pen_down(&self) -> bool {
+        self.pen_is_down
+    }
+}
+
+#[cfg(feature = "hardware")]
+impl Drop for AxiDraw {
+    fn drop(&mut self) {
+        // Best effort: disable motors on drop
+        let _ = self.disable_motors();
     }
 }
 
@@ -554,5 +860,81 @@ mod tests {
         assert!(config.pen_up_speed > 0.0);
         assert!(config.pen_up_speed > config.pen_down_speed); // Up should be faster
         assert!(config.pen_up_pos > config.pen_down_pos);
+    }
+
+    // ========================================================================
+    // AxiDraw USB identifiers tests
+    // ========================================================================
+
+    #[test]
+    fn test_axidraw_vid_pid() {
+        // EiBotBoard identifiers
+        assert_eq!(AXIDRAW_VID, 0x04D8); // Microchip
+        assert_eq!(AXIDRAW_PID, 0xFD92); // EiBotBoard
+    }
+
+    // ========================================================================
+    // PortInfo tests (hardware feature only)
+    // ========================================================================
+
+    #[cfg(feature = "hardware")]
+    #[test]
+    fn test_port_info_creation() {
+        let info = PortInfo {
+            name: "/dev/ttyUSB0".to_string(),
+            is_axidraw: true,
+            product: Some("EiBotBoard".to_string()),
+            manufacturer: Some("Microchip".to_string()),
+        };
+        assert_eq!(info.name, "/dev/ttyUSB0");
+        assert!(info.is_axidraw);
+        assert_eq!(info.product, Some("EiBotBoard".to_string()));
+    }
+
+    #[cfg(feature = "hardware")]
+    #[test]
+    fn test_port_info_clone() {
+        let info = PortInfo {
+            name: "/dev/ttyACM0".to_string(),
+            is_axidraw: false,
+            product: None,
+            manufacturer: None,
+        };
+        let cloned = info.clone();
+        assert_eq!(info.name, cloned.name);
+        assert_eq!(info.is_axidraw, cloned.is_axidraw);
+    }
+
+    // ========================================================================
+    // PlotterError tests
+    // ========================================================================
+
+    #[test]
+    fn test_plotter_error_display() {
+        let err = PlotterError::Connection("port not found".to_string());
+        assert!(err.to_string().contains("Connection error"));
+
+        let err = PlotterError::Communication("write failed".to_string());
+        assert!(err.to_string().contains("Communication error"));
+
+        let err = PlotterError::Timeout;
+        assert!(err.to_string().contains("Timeout"));
+
+        let err = PlotterError::InvalidResponse("unexpected".to_string());
+        assert!(err.to_string().contains("Invalid response"));
+
+        let err = PlotterError::Device("motor stuck".to_string());
+        assert!(err.to_string().contains("Plotter error"));
+    }
+
+    // ========================================================================
+    // AxiDraw constants tests (hardware feature only)
+    // ========================================================================
+
+    #[cfg(feature = "hardware")]
+    #[test]
+    fn test_steps_per_mm() {
+        // 16 microsteps * 200 steps/rev / 40mm per rev = 80
+        assert!((AxiDraw::STEPS_PER_MM - 80.0).abs() < 0.001);
     }
 }

@@ -1,7 +1,7 @@
 ---
 # plotta-studio-axi2
 title: Implement serial communication
-status: todo
+status: completed
 type: task
 created_at: 2025-12-23T19:00:00Z
 updated_at: 2025-12-23T19:00:00Z
