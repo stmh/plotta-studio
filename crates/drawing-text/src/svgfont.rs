@@ -50,11 +50,11 @@ impl SvgFont {
     /// Load an SVG font from a file
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, FontError> {
         let content = std::fs::read_to_string(path)?;
-        Self::from_str(&content)
+        Self::parse(&content)
     }
 
     /// Parse an SVG font from a string
-    pub fn from_str(svg: &str) -> Result<Self, FontError> {
+    pub fn parse(svg: &str) -> Result<Self, FontError> {
         let options = roxmltree::ParsingOptions {
             allow_dtd: true,
             ..Default::default()
@@ -257,9 +257,7 @@ impl SvgFont {
                         Point::new(current_pos.x + x, current_pos.y + y)
                     };
 
-                    // SVG fonts use Y-up, we use Y-down, so negate Y
-                    let point = Point::new(point.x, -point.y);
-
+                    // Keep Y as-is (Y-up convention), rendering will handle coordinate flip
                     current_contour.segments.push(ContourSegment::MoveTo(point));
                     current_pos = Point::new(x, y);
                     start_pos = current_pos;
@@ -272,8 +270,6 @@ impl SvgFont {
                         Point::new(current_pos.x + x, current_pos.y + y)
                     };
 
-                    let point = Point::new(point.x, -point.y);
-
                     current_contour.segments.push(ContourSegment::LineTo(point));
                     current_pos = if abs {
                         Point::new(x, y)
@@ -284,7 +280,7 @@ impl SvgFont {
 
                 SvgSeg::HorizontalLineTo { abs, x } => {
                     let new_x = if abs { x } else { current_pos.x + x };
-                    let point = Point::new(new_x, -current_pos.y);
+                    let point = Point::new(new_x, current_pos.y);
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
                     current_pos.x = new_x;
@@ -292,7 +288,7 @@ impl SvgFont {
 
                 SvgSeg::VerticalLineTo { abs, y } => {
                     let new_y = if abs { y } else { current_pos.y + y };
-                    let point = Point::new(current_pos.x, -new_y);
+                    let point = Point::new(current_pos.x, new_y);
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
                     current_pos.y = new_y;
@@ -307,9 +303,6 @@ impl SvgFont {
                             Point::new(current_pos.x + x, current_pos.y + y),
                         )
                     };
-
-                    let ctrl = Point::new(ctrl.x, -ctrl.y);
-                    let to = Point::new(to.x, -to.y);
 
                     current_contour
                         .segments
@@ -340,10 +333,6 @@ impl SvgFont {
                         )
                     };
 
-                    let ctrl1 = Point::new(ctrl1.x, -ctrl1.y);
-                    let ctrl2 = Point::new(ctrl2.x, -ctrl2.y);
-                    let to = Point::new(to.x, -to.y);
-
                     current_contour
                         .segments
                         .push(ContourSegment::CubicTo { ctrl1, ctrl2, to });
@@ -368,7 +357,6 @@ impl SvgFont {
                     } else {
                         Point::new(current_pos.x + x, current_pos.y + y)
                     };
-                    let point = Point::new(point.x, -point.y);
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
                     current_pos = if abs {
@@ -390,9 +378,7 @@ impl SvgFont {
                         )
                     };
 
-                    let ctrl1 = Point::new(current_pos.x, -current_pos.y);
-                    let ctrl2 = Point::new(ctrl2.x, -ctrl2.y);
-                    let to = Point::new(to.x, -to.y);
+                    let ctrl1 = Point::new(current_pos.x, current_pos.y);
 
                     current_contour
                         .segments
@@ -411,7 +397,6 @@ impl SvgFont {
                     } else {
                         Point::new(current_pos.x + x, current_pos.y + y)
                     };
-                    let point = Point::new(point.x, -point.y);
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
                     current_pos = if abs {
@@ -497,13 +482,13 @@ mod tests {
 
     #[test]
     fn test_parse_svg_font() {
-        let font = SvgFont::from_str(SAMPLE_SVG_FONT).unwrap();
+        let font = SvgFont::parse(SAMPLE_SVG_FONT).unwrap();
         assert_eq!(font.name(), "Test Font");
     }
 
     #[test]
     fn test_svg_font_metrics() {
-        let font = SvgFont::from_str(SAMPLE_SVG_FONT).unwrap();
+        let font = SvgFont::parse(SAMPLE_SVG_FONT).unwrap();
         let metrics = font.metrics();
 
         assert_eq!(metrics.units_per_em, 1000.0);
@@ -515,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_svg_font_glyph() {
-        let font = SvgFont::from_str(SAMPLE_SVG_FONT).unwrap();
+        let font = SvgFont::parse(SAMPLE_SVG_FONT).unwrap();
 
         assert!(font.has_glyph('A'));
         assert!(font.has_glyph('B'));
@@ -530,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_svg_font_kerning() {
-        let font = SvgFont::from_str(SAMPLE_SVG_FONT).unwrap();
+        let font = SvgFont::parse(SAMPLE_SVG_FONT).unwrap();
 
         assert_eq!(font.kerning('A', 'V'), 50.0);
         assert_eq!(font.kerning('A', 'B'), 0.0);
@@ -561,7 +546,7 @@ mod tests {
     fn test_glyph_to_strokes() {
         use drawing_core::Style;
 
-        let font = SvgFont::from_str(SAMPLE_SVG_FONT).unwrap();
+        let font = SvgFont::parse(SAMPLE_SVG_FONT).unwrap();
         let glyph = font.glyph('A').unwrap();
         let strokes = glyph.to_strokes(Style::default(), 0.1);
 

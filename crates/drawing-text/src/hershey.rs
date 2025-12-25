@@ -137,10 +137,15 @@ impl HersheyFont {
             name: name.into(),
             glyphs: HashMap::new(),
             metrics: FontMetrics {
-                units_per_em: 32.0, // Hershey fonts typically use a 32-unit height
-                ascender: 21.0,
-                descender: -11.0,
-                x_height: Some(14.0),
+                // Hershey fonts have origin roughly centered, not at baseline
+                // Raw coords: y=-12 at top of caps, y=+9 at baseline, y=+16 at descenders
+                // After negation: y=+12 at top, y=-9 at baseline, y=-16 at descenders
+                // We shift so baseline is at y=0: add 9 to all Y coords
+                // Result: ascender at y=21, baseline at y=0, descender at y=-7
+                units_per_em: 32.0,
+                ascender: 21.0,       // Top of capitals (12 + 9 = 21 above baseline)
+                descender: -7.0,      // Bottom of descenders (16 - 9 = 7 below baseline)
+                x_height: Some(14.0), // lowercase height (~5 + 9 = 14)
                 cap_height: Some(21.0),
                 line_gap: 4.0,
             },
@@ -239,7 +244,12 @@ impl HersheyFont {
             }
 
             let x = Self::decode_coord(x_byte) as f64 - left_margin as f64;
-            let y = Self::decode_coord(y_byte) as f64;
+            // Convert from Hershey's Y-down to standard font Y-up coordinates
+            // In Hershey: negative Y = up (ascenders), positive Y = down (descenders)
+            // Raw y=9 is the baseline (bottom of capitals), which should become y=0
+            // So we negate and then add 9: y = -raw_y + 9
+            let raw_y = Self::decode_coord(y_byte) as f64;
+            let y = -raw_y + 9.0; // Shift so baseline is at y=0
 
             if !pen_down {
                 current_contour

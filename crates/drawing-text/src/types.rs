@@ -240,7 +240,7 @@ impl Glyph {
     pub fn to_strokes(&self, style: Style, tolerance: f64) -> Vec<Stroke> {
         self.contours
             .iter()
-            .map(|c| c.to_stroke(style.clone(), tolerance))
+            .map(|c| c.to_stroke(style, tolerance))
             .collect()
     }
 
@@ -357,21 +357,20 @@ impl PositionedGlyph {
             .iter()
             .map(|contour| {
                 // Scale and translate points
-                // Hershey fonts use Y-down coordinates with baseline at Y=0
-                // Ascenders go to negative Y, descenders to positive Y
-                // We keep Y as-is since our drawing system is also Y-down
+                // Font glyphs use Y-up coordinates (positive = ascenders, negative = descenders)
+                // Our drawing system uses Y-down, so we negate Y during scaling
                 let scaled_points: Vec<Point> = contour
                     .flatten(tolerance)
                     .iter()
                     .map(|p| {
                         Point::new(
                             p.x * self.scale + self.position.x,
-                            p.y * self.scale + self.position.y,
+                            -p.y * self.scale + self.position.y, // Negate Y to flip from Y-up to Y-down
                         )
                     })
                     .collect();
 
-                let mut stroke = Stroke::new(scaled_points, style.clone());
+                let mut stroke = Stroke::new(scaled_points, style);
                 if contour.closed {
                     stroke = stroke.closed();
                 }
@@ -397,7 +396,7 @@ impl TextLayout {
     pub fn to_strokes(&self, style: Style, tolerance: f64) -> Vec<Stroke> {
         self.glyphs
             .iter()
-            .flat_map(|pg| pg.to_strokes(style.clone(), tolerance))
+            .flat_map(|pg| pg.to_strokes(style, tolerance))
             .collect()
     }
 }
