@@ -37,9 +37,9 @@ impl Default for RadialSketch {
 }
 
 impl Sketch for RadialSketch {
-    fn setup(&mut self) -> Drawing {
+    fn setup(&mut self, ctx: &RenderContext) -> Drawing {
         let mut drawing = Drawing::a4_landscape();
-        self.generate(&mut drawing);
+        self.generate(&mut drawing, ctx);
         drawing
     }
 
@@ -85,16 +85,16 @@ impl Sketch for RadialSketch {
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &RenderContext) {
         match key {
             Key::Character(c) if c.as_str() == "g" => {
                 // Regenerate with new seed
                 self.seed = self.seed.wrapping_add(1);
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Character(c) if c.as_str() == "e" => {
                 // Export SVG
-                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg") {
+                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx) {
                     log::error!("Failed to export SVG: {e}");
                 } else {
                     log::info!("Exported to drawing.svg");
@@ -103,11 +103,14 @@ impl Sketch for RadialSketch {
             #[cfg(feature = "hardware")]
             Key::Character(c) if c.as_str() == "p" => {
                 // Plot to AxiDraw
+                // Note: plot_in_background takes ownership of the context, so we create a new one
                 if self.plot_handle.is_some() {
                     log::warn!("Plotting already in progress");
                 } else {
                     log::info!("Starting plot...");
-                    match plot_in_background(drawing.clone(), PlotConfig::default(), None) {
+                    let plot_ctx = RenderContext::new().with_hershey_simplex();
+                    match plot_in_background(drawing.clone(), PlotConfig::default(), plot_ctx, None)
+                    {
                         Ok(handle) => {
                             self.plot_handle = Some(handle);
                             log::info!("Plot started in background thread");
@@ -124,22 +127,22 @@ impl Sketch for RadialSketch {
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.num_circles += 1;
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Named(NamedKey::ArrowDown) => {
                 if self.num_circles > 1 {
                     self.num_circles -= 1;
-                    self.generate(drawing);
+                    self.generate(drawing, ctx);
                 }
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.num_rays += 4;
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 if self.num_rays > 4 {
                     self.num_rays -= 4;
-                    self.generate(drawing);
+                    self.generate(drawing, ctx);
                 }
             }
             _ => {}
@@ -148,7 +151,7 @@ impl Sketch for RadialSketch {
 }
 
 impl RadialSketch {
-    fn generate(&self, drawing: &mut Drawing) {
+    fn generate(&self, drawing: &mut Drawing, ctx: &RenderContext) {
         drawing.clear();
 
         let center = drawing.center();
@@ -273,7 +276,7 @@ impl RadialSketch {
         log::info!(
             "Generated {} elements, {} strokes",
             drawing.elements.len(),
-            drawing.stroke_count()
+            drawing.stroke_count(ctx)
         );
     }
 }

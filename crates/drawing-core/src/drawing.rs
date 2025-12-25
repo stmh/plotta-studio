@@ -3,6 +3,7 @@
 use kurbo::Point;
 use serde::{Deserialize, Serialize};
 
+use crate::context::RenderContext;
 use crate::element::Element;
 use crate::stroke::Stroke;
 use crate::Color;
@@ -68,13 +69,13 @@ impl Drawing {
     }
 
     /// Flatten all elements to strokes for rendering/export
-    pub fn flatten(&self) -> Vec<Stroke> {
-        self.elements.iter().flat_map(|e| e.flatten()).collect()
+    pub fn flatten(&self, ctx: &RenderContext) -> Vec<Stroke> {
+        self.elements.iter().flat_map(|e| e.flatten(ctx)).collect()
     }
 
     /// Total number of strokes when flattened
-    pub fn stroke_count(&self) -> usize {
-        self.elements.iter().map(|e| e.flatten().len()).sum()
+    pub fn stroke_count(&self, ctx: &RenderContext) -> usize {
+        self.elements.iter().map(|e| e.flatten(ctx).len()).sum()
     }
 
     /// Save to JSON

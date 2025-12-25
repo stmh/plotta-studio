@@ -72,22 +72,22 @@ impl Default for TextSketch {
 }
 
 impl Sketch for TextSketch {
-    fn setup(&mut self) -> Drawing {
+    fn setup(&mut self, ctx: &RenderContext) -> Drawing {
         let mut drawing = Drawing::a4_landscape();
-        self.generate(&mut drawing);
+        self.generate(&mut drawing, ctx);
         drawing
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &RenderContext) {
         match key {
             Key::Character(c) if c.as_str() == "f" => {
                 self.font_type = self.font_type.next();
                 log::info!("Switched to font: {}", self.font_type.name());
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Character(c) if c.as_str() == "g" => {
                 self.sample_index = (self.sample_index + 1) % SAMPLE_TEXTS.len();
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Character(c) if c.as_str() == "d" => {
                 self.show_debug = !self.show_debug;
@@ -95,10 +95,10 @@ impl Sketch for TextSketch {
                     "Debug visualization: {}",
                     if self.show_debug { "ON" } else { "OFF" }
                 );
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "text_drawing.svg") {
+                if let Err(e) = drawing_svg::export_svg(drawing, "text_drawing.svg", ctx) {
                     log::error!("Failed to export SVG: {e}");
                 } else {
                     log::info!("Exported to text_drawing.svg");
@@ -106,19 +106,19 @@ impl Sketch for TextSketch {
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.font_size = (self.font_size + 1.0).min(50.0);
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Named(NamedKey::ArrowDown) => {
                 self.font_size = (self.font_size - 1.0).max(3.0);
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.letter_spacing += 0.05;
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 self.letter_spacing = (self.letter_spacing - 0.05).max(-0.2);
-                self.generate(drawing);
+                self.generate(drawing, ctx);
             }
             _ => {}
         }
@@ -145,7 +145,7 @@ impl TextSketch {
         }
     }
 
-    fn generate(&self, drawing: &mut Drawing) {
+    fn generate(&self, drawing: &mut Drawing, ctx: &RenderContext) {
         drawing.clear();
 
         let font = match self.load_font() {
@@ -254,7 +254,7 @@ impl TextSketch {
 
         log::info!(
             "Generated text with {} strokes (font: {}, size: {:.0}mm{})",
-            drawing.stroke_count(),
+            drawing.stroke_count(ctx),
             self.font_type.name(),
             self.font_size,
             if self.show_debug { ", debug ON" } else { "" }

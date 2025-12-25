@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::group::Group;
 use crate::path::Path;
 use crate::primitives::{Arc, Circle, Ellipse, Polyline, RegularPolygon};
+use crate::text::Text;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Shape {
@@ -18,6 +19,7 @@ pub enum Shape {
     RegularPolygon(RegularPolygon),
     Path(Path),
     Group(Group),
+    Text(Text),
 }
 
 impl From<Line> for Shape {
@@ -71,5 +73,11 @@ impl From<Path> for Shape {
 impl From<Group> for Shape {
     fn from(v: Group) -> Self {
         Shape::Group(v)
+    }
+}
+
+impl From<Text> for Shape {
+    fn from(v: Text) -> Self {
+        Shape::Text(v)
     }
 }

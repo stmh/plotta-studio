@@ -1,32 +1,15 @@
 //! Font trait and related types
+//!
+//! The core Font trait is defined in drawing-core.
+//! This module provides additional font loading infrastructure.
 
 use crate::error::FontError;
-use crate::types::{FontMetrics, Glyph};
 
-/// Trait for font implementations
-pub trait Font: Send + Sync {
-    /// Font family name
-    fn name(&self) -> &str;
+// Re-export the Font trait from drawing-core
+pub use drawing_core::Font;
 
-    /// Get a glyph by unicode character
-    fn glyph(&self, c: char) -> Option<Glyph>;
-
-    /// Get kerning adjustment between two characters (in font units)
-    fn kerning(&self, _left: char, _right: char) -> f64 {
-        0.0
-    }
-
-    /// Get font metrics
-    fn metrics(&self) -> FontMetrics;
-
-    /// Check if font has a glyph for character
-    fn has_glyph(&self, c: char) -> bool {
-        self.glyph(c).is_some()
-    }
-
-    /// Get all available characters
-    fn available_chars(&self) -> Vec<char>;
-}
+// Re-export font-related types
+pub use drawing_core::{FontMetrics, Glyph};
 
 /// Font source for loading
 #[derive(Debug, Clone)]

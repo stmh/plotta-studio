@@ -7,7 +7,7 @@ use crate::config::PlotConfig;
 use crate::error::PlotterError;
 use crate::event::{PlotEvent, PlotHandle};
 use crate::optimize::optimize_strokes;
-use drawing_core::{Drawing, Point, Stroke};
+use drawing_core::{Drawing, Point, RenderContext, Stroke};
 use serialport::SerialPortType;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::mpsc;
@@ -287,11 +287,16 @@ impl AxiDraw {
     // ========================================================================
 
     /// Plot a drawing
-    pub fn plot(&mut self, drawing: &Drawing, config: &PlotConfig) -> Result<(), PlotterError> {
+    pub fn plot(
+        &mut self,
+        drawing: &Drawing,
+        config: &PlotConfig,
+        ctx: &RenderContext,
+    ) -> Result<(), PlotterError> {
         self.config = config.clone();
 
         // Flatten drawing to strokes
-        let strokes = drawing.flatten();
+        let strokes = drawing.flatten(ctx);
 
         // Optimize stroke order
         let optimized = optimize_strokes(&strokes);
@@ -426,13 +431,14 @@ impl AxiDraw {
         &mut self,
         drawing: &Drawing,
         config: &PlotConfig,
+        ctx: &RenderContext,
         on_event: F,
     ) -> Result<(), PlotterError>
     where
         F: FnMut(PlotEvent),
     {
         self.config = config.clone();
-        let strokes = drawing.flatten();
+        let strokes = drawing.flatten(ctx);
         let optimized = optimize_strokes(&strokes);
         self.plot_strokes_with_events(&optimized, on_event)
     }
@@ -452,8 +458,10 @@ impl Drop for AxiDraw {
 /// # Example
 /// ```ignore
 /// use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent};
+/// use drawing_core::RenderContext;
 ///
-/// let handle = plot_in_background(drawing, PlotConfig::default(), None)?;
+/// let ctx = RenderContext::new();
+/// let handle = plot_in_background(drawing, PlotConfig::default(), ctx, None)?;
 ///
 /// // Monitor progress
 /// while handle.is_running() {
@@ -473,6 +481,7 @@ impl Drop for AxiDraw {
 pub fn plot_in_background(
     drawing: Drawing,
     _config: PlotConfig,
+    ctx: RenderContext,
     port: Option<String>,
 ) -> Result<PlotHandle, PlotterError> {
     let (sender, receiver) = mpsc::channel();
@@ -484,7 +493,7 @@ pub fn plot_in_background(
                 None => AxiDraw::auto_connect()?,
             };
 
-            let strokes = drawing.flatten();
+            let strokes = drawing.flatten(&ctx);
             let optimized = optimize_strokes(&strokes);
 
             plotter.plot_strokes_with_events(&optimized, |event| {

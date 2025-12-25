@@ -466,6 +466,7 @@ name = "drawing-core"
 version = "0.1.0"
 dependencies = [
  "kurbo",
+ "log",
  "serde",
  "serde_json",
 ]
@@ -1864,6 +1865,7 @@ name = "sketch-runner"
 version = "0.1.0"
 dependencies = [
  "drawing-core",
+ "drawing-text",
  "env_logger",
  "log",
  "pollster",
