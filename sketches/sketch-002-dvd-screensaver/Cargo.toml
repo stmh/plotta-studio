@@ -1,0 +1,9 @@
+[package]
+name = "sketch-002-dvd-screensaver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sketch-runner = { path = "../../crates/sketch-runner" }
+drawing-svg = { path = "../../crates/drawing-svg" }
+log = "0.4"
