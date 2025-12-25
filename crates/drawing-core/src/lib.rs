@@ -176,10 +176,7 @@ impl Stroke {
 
     /// Total length of this stroke
     pub fn length(&self) -> f64 {
-        self.points
-            .windows(2)
-            .map(|w| w[0].distance(w[1]))
-            .sum()
+        self.points.windows(2).map(|w| w[0].distance(w[1])).sum()
     }
 
     /// Bounding box (min, max)
@@ -354,8 +351,15 @@ pub struct Path {
 pub enum PathSegment {
     MoveTo(Point),
     LineTo(Point),
-    QuadTo { ctrl: Point, to: Point },
-    CubicTo { ctrl1: Point, ctrl2: Point, to: Point },
+    QuadTo {
+        ctrl: Point,
+        to: Point,
+    },
+    CubicTo {
+        ctrl1: Point,
+        ctrl2: Point,
+        to: Point,
+    },
     Close,
 }
 
@@ -591,7 +595,7 @@ impl Element {
     }
 
     pub fn skew(mut self, sx: f64, sy: f64) -> Self {
-        self.transform = self.transform * Affine::skew(sx.tan(), sy.tan());
+        self.transform *= Affine::skew(sx.tan(), sy.tan());
         self
     }
 

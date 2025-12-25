@@ -183,9 +183,7 @@ impl RadialSketch {
                 center.y + (base_angle + PI / 2.0).sin() * r1,
             );
 
-            let path = Path::new()
-                .move_to(start)
-                .cubic_to(ctrl1, ctrl2, end);
+            let path = Path::new().move_to(start).cubic_to(ctrl1, ctrl2, end);
 
             drawing.add(
                 Element::path(path)
@@ -197,8 +195,13 @@ impl RadialSketch {
         // Border rectangle
         let margin = 10.0;
         drawing.add(
-            Element::rect(margin, margin, drawing.width - margin * 2.0, drawing.height - margin * 2.0)
-                .stroke_width(1.0),
+            Element::rect(
+                margin,
+                margin,
+                drawing.width - margin * 2.0,
+                drawing.height - margin * 2.0,
+            )
+            .stroke_width(1.0),
         );
 
         log::info!(
