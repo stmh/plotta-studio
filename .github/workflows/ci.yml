@@ -12,10 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install libudev (required for serialport crate)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      - name: Check ${{ matrix.features.name }}
+      - name: Check
         run: cargo check --all-targets
 
   test:
@@ -23,11 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install libudev (required for serialport crate)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Test ${{ matrix.features.name }}
+      - name: Test
         run: cargo test --all-targets
 
   fmt:
@@ -39,7 +42,6 @@ jobs:
         with:
           toolchain: stable
       - run: rustup component add rustfmt
-      - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt --all -- --check
 
   clippy:
@@ -47,10 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install libudev (required for serialport crate)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
       - run: rustup component add clippy
-      - uses: dtolnay/rust-toolchain@stable
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
