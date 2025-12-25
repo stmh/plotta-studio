@@ -1,0 +1,56 @@
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+name: Continuous integration
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Check ${{ matrix.features.name }}
+        run: cargo check --all-targets
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test ${{ matrix.features.name }}
+        run: cargo test --all-targets
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - run: rustup component add rustfmt
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - run: rustup component add clippy
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
