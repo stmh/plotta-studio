@@ -217,7 +217,7 @@ impl RadialSketch {
         // Center decoration
         drawing.add(
             Element::polygon(center, 20.0, 8)
-                .rotate_deg(22.5)
+                .rotate_around(22.5_f64.to_radians(), center)
                 .stroke_width(1.0),
         );
 
