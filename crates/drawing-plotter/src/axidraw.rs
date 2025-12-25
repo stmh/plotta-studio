@@ -50,8 +50,8 @@ impl AxiDraw {
 
     /// List all available USB serial ports
     pub fn list_ports() -> Result<Vec<String>, PlotterError> {
-        let ports = serialport::available_ports()
-            .map_err(|e| PlotterError::Connection(e.to_string()))?;
+        let ports =
+            serialport::available_ports().map_err(|e| PlotterError::Connection(e.to_string()))?;
 
         Ok(ports
             .into_iter()
@@ -62,8 +62,8 @@ impl AxiDraw {
 
     /// Find all connected AxiDraw devices by VID/PID
     pub fn find_devices() -> Result<Vec<String>, PlotterError> {
-        let ports = serialport::available_ports()
-            .map_err(|e| PlotterError::Connection(e.to_string()))?;
+        let ports =
+            serialport::available_ports().map_err(|e| PlotterError::Connection(e.to_string()))?;
 
         Ok(ports
             .into_iter()
@@ -89,8 +89,8 @@ impl AxiDraw {
 
     /// Get detailed information about available USB serial ports
     pub fn list_ports_detailed() -> Result<Vec<PortInfo>, PlotterError> {
-        let ports = serialport::available_ports()
-            .map_err(|e| PlotterError::Connection(e.to_string()))?;
+        let ports =
+            serialport::available_ports().map_err(|e| PlotterError::Connection(e.to_string()))?;
 
         Ok(ports
             .into_iter()
@@ -361,7 +361,9 @@ impl AxiDraw {
         F: FnMut(PlotEvent),
     {
         let total = strokes.len();
-        on_event(PlotEvent::Started { total_strokes: total });
+        on_event(PlotEvent::Started {
+            total_strokes: total,
+        });
 
         self.pen_up()?;
         self.enable_motors()?;
@@ -470,7 +472,7 @@ impl Drop for AxiDraw {
 /// ```
 pub fn plot_in_background(
     drawing: Drawing,
-    config: PlotConfig,
+    _config: PlotConfig,
     port: Option<String>,
 ) -> Result<PlotHandle, PlotterError> {
     let (sender, receiver) = mpsc::channel();

@@ -585,18 +585,29 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if self.config.animate && self.render_state.is_some() {
-            let now = Instant::now();
-            self.ctx.delta = now.duration_since(self.last_frame_time).as_secs_f64();
-            self.ctx.time = now.duration_since(self.start_time).as_secs_f64();
-            self.ctx.frame += 1;
-            self.last_frame_time = now;
+        if self.render_state.is_none() {
+            return;
+        }
 
-            if self.sketch.update(&mut self.drawing, &self.ctx) {
-                self.strokes_dirty = true;
-                if let Some(state) = &self.render_state {
-                    state.window.request_redraw();
-                }
+        let now = Instant::now();
+        self.ctx.delta = now.duration_since(self.last_frame_time).as_secs_f64();
+        self.ctx.time = now.duration_since(self.start_time).as_secs_f64();
+        self.ctx.frame += 1;
+        self.last_frame_time = now;
+
+        // Always call update to allow background task monitoring (e.g., plotting)
+        // even when not animating
+        if self.sketch.update(&mut self.drawing, &self.ctx) {
+            self.strokes_dirty = true;
+            if let Some(state) = &self.render_state {
+                state.window.request_redraw();
+            }
+        }
+
+        // Only request continuous redraws when animating
+        if self.config.animate {
+            if let Some(state) = &self.render_state {
+                state.window.request_redraw();
             }
         }
     }
