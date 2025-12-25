@@ -1,13 +1,40 @@
 ---
 # plotta-studio-n2l2
 title: Investigate Single Line Font (VSF) support
-status: in-progress
+status: done
 type: epic
 created_at: 2025-12-23T19:14:41Z
-updated_at: 2025-12-24T00:00:00Z
+updated_at: 2025-12-25T00:00:00Z
 ---
 
 Research and plan Single Line Font support for plotta-studio. Vector Stroke Fonts (VSF) are essential for pen plotters as they draw text with single strokes rather than filled outlines.
+
+## Implementation Complete
+
+The `drawing-text` crate has been implemented with:
+
+### Completed Features
+- **Core types**: `Font` trait, `Glyph`, `Contour`, `FontMetrics`, `TextOptions`
+- **Hershey font parser**: JHF format support with public domain Simplex font
+- **VSF format**: JSON-based format with bezier curve support and kerning
+- **TextRenderer**: Layout engine with alignment (left/center/right), letter spacing, word spacing, and multiline support
+- **Contour conversion**: `to_path()`, `to_stroke()`, `flatten()` methods
+- **Integration helpers**: `Element::from_stroke()`, `Style::with_stroke_width/color()`
+
+### Files Added
+- `crates/drawing-text/` - New crate with all font functionality
+- `fonts/hershey/simplex.jhf` - Public domain Hershey Simplex Roman font
+- `fonts/hershey/LICENSE` - Public domain notice
+- `sketches/sketch-003-text/` - Demo sketch showing text rendering
+
+### Font Units
+Font sizes are in drawing units (millimeters for A4). Example: `TextOptions::new(12.0)` = 12mm tall text.
+
+### Remaining Work (Future)
+- UFO font loader (using `norad` crate)
+- Additional Hershey font variants (Gothic, Script, etc.)
+- `vsf-convert` CLI tool for font conversion
+- FontManager for managing multiple fonts
 
 ## Background
 

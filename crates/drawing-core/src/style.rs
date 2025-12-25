@@ -36,4 +36,14 @@ impl Style {
         self.stroke_color = c;
         self
     }
+
+    /// Alias for width() for consistency with Element API
+    pub fn with_stroke_width(self, w: f64) -> Self {
+        self.width(w)
+    }
+
+    /// Alias for color() for consistency with Element API
+    pub fn with_stroke_color(self, c: Color) -> Self {
+        self.color(c)
+    }
 }

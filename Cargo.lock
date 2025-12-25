@@ -489,6 +489,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "drawing-text"
+version = "0.1.0"
+dependencies = [
+ "drawing-core",
+ "kurbo",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "svgtypes",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "env_filter"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1655,6 +1668,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1807,6 +1826,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
+name = "siphasher"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
+
+[[package]]
 name = "sketch-001-radial"
 version = "0.1.0"
 dependencies = [
@@ -1821,6 +1846,16 @@ version = "0.1.0"
 dependencies = [
  "drawing-svg",
  "log",
+ "sketch-runner",
+]
+
+[[package]]
+name = "sketch-003-text"
+version = "0.1.0"
+dependencies = [
+ "drawing-plotter",
+ "drawing-svg",
+ "drawing-text",
  "sketch-runner",
 ]
 
@@ -1930,6 +1965,16 @@ name = "svg_fmt"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0193cc4331cfd2f3d2011ef287590868599a2f33c3e69bc22c1a3d3acf9e02fb"
+
+[[package]]
+name = "svgtypes"
+version = "0.15.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68c7541fff44b35860c1a7a47a7cadf3e4a304c457b58f9870d9706ece028afc"
+dependencies = [
+ "kurbo",
+ "siphasher",
+]
 
 [[package]]
 name = "syn"

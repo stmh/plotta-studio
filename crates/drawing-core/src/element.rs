@@ -76,6 +76,17 @@ impl Element {
         Self::new(group)
     }
 
+    /// Create an element from a pre-flattened stroke
+    /// The stroke's points become a polyline
+    pub fn from_stroke(stroke: Stroke) -> Self {
+        let polyline = if stroke.closed {
+            Polyline::closed(stroke.points)
+        } else {
+            Polyline::new(stroke.points)
+        };
+        Self::new(polyline).style(stroke.style)
+    }
+
     // === Transform builders ===
 
     pub fn translate(mut self, x: f64, y: f64) -> Self {
