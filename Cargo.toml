@@ -15,7 +15,7 @@ repository = "https://github.com/stmh/plotta-studio"
 drawing-core = { path = "crates/drawing-core" }
 sketch-runner = { path = "crates/sketch-runner" }
 drawing-svg = { path = "crates/drawing-svg" }
-drawing-plotter = { path = "crates/drawing-plotter" }
+drawing-plotter = { path = "crates/drawing-plotter", default-features = false }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

@@ -1,7 +1,7 @@
 ---
 # plotta-studio-axi2
 title: Implement serial communication
-status: todo
+status: completed
 type: task
 created_at: 2025-12-23T19:00:00Z
 updated_at: 2025-12-23T19:00:00Z
@@ -72,6 +72,16 @@ Look for USB devices with specific VID/PID:
 - Vendor ID: 0x04D8 (Microchip)
 - Product ID: 0xFD92 (EiBotBoard)
 
+## Subtasks
+
+Implementation is broken into focused child beans:
+
+1. **axi2a** - Add serialport dependency and update types
+2. **axi2b** - Port discovery and auto-detection (VID/PID)
+3. **axi2c** - Connection with EBB handshake
+4. **axi2d** - Send/receive command protocol
+
 ## Files to Modify
+
 - `crates/drawing-plotter/Cargo.toml`
 - `crates/drawing-plotter/src/lib.rs`
