@@ -18,6 +18,7 @@ cp -r sketches/sketch-001 sketches/my-sketch
 | Key/Action | Effect |
 |------------|--------|
 | Middle mouse drag | Pan |
+| Option + left mouse drag | Pan (macOS trackpad alternative) |
 | Scroll wheel | Zoom (toward cursor) |
 | Space | Fit drawing to window |
 | R | Reset view to 1:1 |
@@ -160,9 +161,10 @@ Drawing::new(w, h)       // Custom size
 - [x] Pan/zoom navigation
 - [x] JSON serialization
 - [x] SVG export
+- [x] Path optimization for plotting (greedy nearest-neighbor)
 - [ ] SVG import
 - [ ] AxiDraw plotter control
-- [ ] Path optimization for plotting
+- [ ] Single line font support
 - [ ] GUI for parameters (egui?)
 - [ ] Sketch templates with cargo-generate
 
