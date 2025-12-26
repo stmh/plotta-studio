@@ -130,6 +130,405 @@ const HERSHEY_ROMAN_SIMPLEX_MAP: &[(u32, char)] = &[
     (2246, '~'),
 ];
 
+/// Mapping for Hershey Script Simplex font
+/// Script fonts use different glyph numbers than Roman fonts
+const HERSHEY_SCRIPT_SIMPLEX_MAP: &[(u32, char)] = &[
+    (699, ' '),   // space (shared)
+    (2764, '!'),
+    (2778, '"'),
+    (733, '#'),   // shared
+    (2769, '$'),
+    (2271, '%'),  // shared
+    (2768, '&'),
+    (2767, '\''),
+    (2771, '('),
+    (2772, ')'),
+    (2773, '*'),
+    (725, '+'),   // shared
+    (2761, ','),
+    (724, '-'),   // shared
+    (710, '.'),   // shared
+    (2770, '/'),
+    (2750, '0'),
+    (2751, '1'),
+    (2752, '2'),
+    (2753, '3'),
+    (2754, '4'),
+    (2755, '5'),
+    (2756, '6'),
+    (2757, '7'),
+    (2758, '8'),
+    (2759, '9'),
+    (2762, ':'),
+    (2763, ';'),
+    (2241, '<'),  // shared
+    (726, '='),   // shared
+    (2242, '>'),  // shared
+    (2765, '?'),
+    (2273, '@'),  // shared
+    (551, 'A'),
+    (552, 'B'),
+    (553, 'C'),
+    (554, 'D'),
+    (555, 'E'),
+    (556, 'F'),
+    (557, 'G'),
+    (558, 'H'),
+    (559, 'I'),
+    (560, 'J'),
+    (561, 'K'),
+    (562, 'L'),
+    (563, 'M'),
+    (564, 'N'),
+    (565, 'O'),
+    (566, 'P'),
+    (567, 'Q'),
+    (568, 'R'),
+    (569, 'S'),
+    (570, 'T'),
+    (571, 'U'),
+    (572, 'V'),
+    (573, 'W'),
+    (574, 'X'),
+    (575, 'Y'),
+    (576, 'Z'),
+    (2223, '['),  // shared
+    (804, '\\'),  // shared
+    (2224, ']'),  // shared
+    (2262, '^'),  // shared
+    (999, '_'),   // shared
+    (730, '`'),   // shared
+    (651, 'a'),
+    (652, 'b'),
+    (653, 'c'),
+    (654, 'd'),
+    (655, 'e'),
+    (656, 'f'),
+    (657, 'g'),
+    (658, 'h'),
+    (659, 'i'),
+    (660, 'j'),
+    (661, 'k'),
+    (662, 'l'),
+    (663, 'm'),
+    (664, 'n'),
+    (665, 'o'),
+    (666, 'p'),
+    (667, 'q'),
+    (668, 'r'),
+    (669, 's'),
+    (670, 't'),
+    (671, 'u'),
+    (672, 'v'),
+    (673, 'w'),
+    (674, 'x'),
+    (675, 'y'),
+    (676, 'z'),
+    (2225, '{'),  // shared
+    (723, '|'),   // shared
+    (2226, '}'),  // shared
+    (2246, '~'),  // shared
+];
+
+/// Mapping for Hershey Script Complex font (offset from Script Simplex by 2000)
+const HERSHEY_SCRIPT_COMPLEX_MAP: &[(u32, char)] = &[
+    (699, ' '),   // space (shared)
+    (2764, '!'),
+    (2778, '"'),
+    (733, '#'),
+    (2769, '$'),
+    (2271, '%'),
+    (2768, '&'),
+    (2767, '\''),
+    (2771, '('),
+    (2772, ')'),
+    (2773, '*'),
+    (725, '+'),
+    (2761, ','),
+    (724, '-'),
+    (710, '.'),
+    (2770, '/'),
+    (2750, '0'),
+    (2751, '1'),
+    (2752, '2'),
+    (2753, '3'),
+    (2754, '4'),
+    (2755, '5'),
+    (2756, '6'),
+    (2757, '7'),
+    (2758, '8'),
+    (2759, '9'),
+    (2762, ':'),
+    (2763, ';'),
+    (2241, '<'),
+    (726, '='),
+    (2242, '>'),
+    (2765, '?'),
+    (2273, '@'),
+    (2551, 'A'),
+    (2552, 'B'),
+    (2553, 'C'),
+    (2554, 'D'),
+    (2555, 'E'),
+    (2556, 'F'),
+    (2557, 'G'),
+    (2558, 'H'),
+    (2559, 'I'),
+    (2560, 'J'),
+    (2561, 'K'),
+    (2562, 'L'),
+    (2563, 'M'),
+    (2564, 'N'),
+    (2565, 'O'),
+    (2566, 'P'),
+    (2567, 'Q'),
+    (2568, 'R'),
+    (2569, 'S'),
+    (2570, 'T'),
+    (2571, 'U'),
+    (2572, 'V'),
+    (2573, 'W'),
+    (2574, 'X'),
+    (2575, 'Y'),
+    (2576, 'Z'),
+    (2223, '['),
+    (804, '\\'),
+    (2224, ']'),
+    (2262, '^'),
+    (999, '_'),
+    (730, '`'),
+    (2651, 'a'),
+    (2652, 'b'),
+    (2653, 'c'),
+    (2654, 'd'),
+    (2655, 'e'),
+    (2656, 'f'),
+    (2657, 'g'),
+    (2658, 'h'),
+    (2659, 'i'),
+    (2660, 'j'),
+    (2661, 'k'),
+    (2662, 'l'),
+    (2663, 'm'),
+    (2664, 'n'),
+    (2665, 'o'),
+    (2666, 'p'),
+    (2667, 'q'),
+    (2668, 'r'),
+    (2669, 's'),
+    (2670, 't'),
+    (2671, 'u'),
+    (2672, 'v'),
+    (2673, 'w'),
+    (2674, 'x'),
+    (2675, 'y'),
+    (2676, 'z'),
+    (2225, '{'),
+    (723, '|'),
+    (2226, '}'),
+    (2246, '~'),
+];
+
+/// Mapping for Hershey Gothic fonts (German, Italian variants)
+/// Gothic fonts use 3301-3326 for uppercase and 3401-3426 for lowercase
+const HERSHEY_GOTHIC_MAP: &[(u32, char)] = &[
+    (3699, ' '),  // space
+    (3714, '!'),
+    (3728, '"'),
+    (2275, '#'),  // shared
+    (3719, '$'),
+    (2271, '%'),  // shared
+    (3718, '&'),
+    (3717, '\''),
+    (3721, '('),
+    (3722, ')'),
+    (3723, '*'),
+    (3725, '+'),
+    (3711, ','),
+    (3724, '-'),
+    (3710, '.'),
+    (3720, '/'),
+    (3700, '0'),
+    (3701, '1'),
+    (3702, '2'),
+    (3703, '3'),
+    (3704, '4'),
+    (3705, '5'),
+    (3706, '6'),
+    (3707, '7'),
+    (3708, '8'),
+    (3709, '9'),
+    (3712, ':'),
+    (3713, ';'),
+    (2241, '<'),  // shared
+    (3726, '='),
+    (2242, '>'),  // shared
+    (3715, '?'),
+    (2273, '@'),  // shared
+    (3301, 'A'),
+    (3302, 'B'),
+    (3303, 'C'),
+    (3304, 'D'),
+    (3305, 'E'),
+    (3306, 'F'),
+    (3307, 'G'),
+    (3308, 'H'),
+    (3309, 'I'),
+    (3310, 'J'),
+    (3311, 'K'),
+    (3312, 'L'),
+    (3313, 'M'),
+    (3314, 'N'),
+    (3315, 'O'),
+    (3316, 'P'),
+    (3317, 'Q'),
+    (3318, 'R'),
+    (3319, 'S'),
+    (3320, 'T'),
+    (3321, 'U'),
+    (3322, 'V'),
+    (3323, 'W'),
+    (3324, 'X'),
+    (3325, 'Y'),
+    (3326, 'Z'),
+    (2223, '['),  // shared
+    (804, '\\'),  // shared
+    (2224, ']'),  // shared
+    (2262, '^'),  // shared
+    (999, '_'),   // shared
+    (3729, '`'),
+    (3401, 'a'),
+    (3402, 'b'),
+    (3403, 'c'),
+    (3404, 'd'),
+    (3405, 'e'),
+    (3406, 'f'),
+    (3407, 'g'),
+    (3408, 'h'),
+    (3409, 'i'),
+    (3410, 'j'),
+    (3411, 'k'),
+    (3412, 'l'),
+    (3413, 'm'),
+    (3414, 'n'),
+    (3415, 'o'),
+    (3416, 'p'),
+    (3417, 'q'),
+    (3418, 'r'),
+    (3419, 's'),
+    (3420, 't'),
+    (3421, 'u'),
+    (3422, 'v'),
+    (3423, 'w'),
+    (3424, 'x'),
+    (3425, 'y'),
+    (3426, 'z'),
+    (2225, '{'),  // shared
+    (3716, '|'),
+    (2226, '}'),  // shared
+    (2246, '~'),  // shared
+];
+
+/// Mapping for Hershey Gothic Italian font
+/// Italian Gothic uses 3801-3826 for uppercase and 3901-3926 for lowercase
+const HERSHEY_GOTHIC_ITALIAN_MAP: &[(u32, char)] = &[
+    (3699, ' '),  // space
+    (3714, '!'),
+    (3728, '"'),
+    (2275, '#'),  // shared
+    (3719, '$'),
+    (2271, '%'),  // shared
+    (3718, '&'),
+    (3717, '\''),
+    (3721, '('),
+    (3722, ')'),
+    (3723, '*'),
+    (3725, '+'),
+    (3711, ','),
+    (3724, '-'),
+    (3710, '.'),
+    (3720, '/'),
+    (3700, '0'),
+    (3701, '1'),
+    (3702, '2'),
+    (3703, '3'),
+    (3704, '4'),
+    (3705, '5'),
+    (3706, '6'),
+    (3707, '7'),
+    (3708, '8'),
+    (3709, '9'),
+    (3712, ':'),
+    (3713, ';'),
+    (2241, '<'),  // shared
+    (3726, '='),
+    (2242, '>'),  // shared
+    (3715, '?'),
+    (2273, '@'),  // shared
+    (3801, 'A'),
+    (3802, 'B'),
+    (3803, 'C'),
+    (3804, 'D'),
+    (3805, 'E'),
+    (3806, 'F'),
+    (3807, 'G'),
+    (3808, 'H'),
+    (3809, 'I'),
+    (3810, 'J'),
+    (3811, 'K'),
+    (3812, 'L'),
+    (3813, 'M'),
+    (3814, 'N'),
+    (3815, 'O'),
+    (3816, 'P'),
+    (3817, 'Q'),
+    (3818, 'R'),
+    (3819, 'S'),
+    (3820, 'T'),
+    (3821, 'U'),
+    (3822, 'V'),
+    (3823, 'W'),
+    (3824, 'X'),
+    (3825, 'Y'),
+    (3826, 'Z'),
+    (2223, '['),  // shared
+    (804, '\\'),  // shared
+    (2224, ']'),  // shared
+    (2262, '^'),  // shared
+    (999, '_'),   // shared
+    (3729, '`'),
+    (3901, 'a'),
+    (3902, 'b'),
+    (3903, 'c'),
+    (3904, 'd'),
+    (3905, 'e'),
+    (3906, 'f'),
+    (3907, 'g'),
+    (3908, 'h'),
+    (3909, 'i'),
+    (3910, 'j'),
+    (3911, 'k'),
+    (3912, 'l'),
+    (3913, 'm'),
+    (3914, 'n'),
+    (3915, 'o'),
+    (3916, 'p'),
+    (3917, 'q'),
+    (3918, 'r'),
+    (3919, 's'),
+    (3920, 't'),
+    (3921, 'u'),
+    (3922, 'v'),
+    (3923, 'w'),
+    (3924, 'x'),
+    (3925, 'y'),
+    (3926, 'z'),
+    (2225, '{'),  // shared
+    (3716, '|'),
+    (2226, '}'),  // shared
+    (2246, '~'),  // shared
+];
+
 impl HersheyFont {
     /// Create a new empty Hershey font
     pub fn new(name: impl Into<String>) -> Self {
@@ -156,10 +555,50 @@ impl HersheyFont {
     ///
     /// JHF format has one glyph per line. The glyph number is used to map to characters.
     pub fn from_jhf(name: &str, data: &str) -> Result<Self, FontError> {
+        Self::from_jhf_with_mapping(name, data, HERSHEY_ROMAN_SIMPLEX_MAP)
+    }
+
+    /// Parse a Hershey font from JHF format using an offset from the base mapping
+    ///
+    /// Many Hershey fonts use the same character layout but with glyph numbers
+    /// offset by a fixed amount (e.g., Duplex uses base + 2000).
+    pub fn from_jhf_with_offset(name: &str, data: &str, offset: u32) -> Result<Self, FontError> {
+        let mut font = Self::new(name);
+
+        // Build offset mapping from base Roman Simplex mapping
+        let glyph_to_char: HashMap<u32, char> = HERSHEY_ROMAN_SIMPLEX_MAP
+            .iter()
+            .map(|&(num, c)| (num + offset, c))
+            .collect();
+
+        for line in data.lines() {
+            let line = line.trim_end();
+            if line.is_empty() {
+                continue;
+            }
+
+            if let Some((glyph_num, glyph)) = Self::parse_glyph_line(line)? {
+                if let Some(&c) = glyph_to_char.get(&glyph_num) {
+                    let mut mapped_glyph = glyph;
+                    mapped_glyph.unicode = c;
+                    font.glyphs.insert(c, mapped_glyph);
+                }
+            }
+        }
+
+        Ok(font)
+    }
+
+    /// Parse a Hershey font from JHF format using a custom character mapping
+    pub fn from_jhf_with_mapping(
+        name: &str,
+        data: &str,
+        mapping: &[(u32, char)],
+    ) -> Result<Self, FontError> {
         let mut font = Self::new(name);
 
         // Build reverse mapping from glyph number to character
-        let glyph_to_char: HashMap<u32, char> = HERSHEY_ROMAN_SIMPLEX_MAP.iter().copied().collect();
+        let glyph_to_char: HashMap<u32, char> = mapping.iter().copied().collect();
 
         for line in data.lines() {
             // Don't trim leading spaces - they're significant in the format
@@ -315,12 +754,70 @@ impl Font for HersheyFont {
     }
 }
 
-/// Built-in Hershey Simplex Roman font data (public domain)
+/// Built-in Hershey font data (public domain)
 pub const HERSHEY_SIMPLEX_ROMAN: &str = include_str!("../../../fonts/hershey/simplex.jhf");
+pub const HERSHEY_DUPLEX_ROMAN: &str = include_str!("../../../fonts/hershey/rowmand.jhf");
+pub const HERSHEY_TRIPLEX_ROMAN: &str = include_str!("../../../fonts/hershey/rowmant.jhf");
+pub const HERSHEY_SCRIPT_SIMPLEX: &str = include_str!("../../../fonts/hershey/scripts.jhf");
+pub const HERSHEY_SCRIPT_COMPLEX: &str = include_str!("../../../fonts/hershey/scriptc.jhf");
+pub const HERSHEY_GOTHIC_GERMAN_BOLD: &str = include_str!("../../../fonts/hershey/gothgbt.jhf");
+pub const HERSHEY_GOTHIC_GERMAN: &str = include_str!("../../../fonts/hershey/gothgrt.jhf");
+pub const HERSHEY_GOTHIC_ITALIAN: &str = include_str!("../../../fonts/hershey/gothitt.jhf");
 
 /// Load the built-in Hershey Simplex font
 pub fn load_simplex() -> Result<HersheyFont, FontError> {
     HersheyFont::from_jhf("Hershey Simplex", HERSHEY_SIMPLEX_ROMAN)
+}
+
+/// Load the Hershey Roman Duplex font (double-stroke)
+pub fn load_duplex() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_offset("Hershey Duplex", HERSHEY_DUPLEX_ROMAN, 2000)
+}
+
+/// Load the Hershey Roman Triplex font (triple-stroke, more ornate)
+pub fn load_triplex() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_offset("Hershey Triplex", HERSHEY_TRIPLEX_ROMAN, 2500)
+}
+
+/// Load the Hershey Script Simplex font (cursive, single-stroke)
+pub fn load_script_simplex() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_mapping(
+        "Hershey Script Simplex",
+        HERSHEY_SCRIPT_SIMPLEX,
+        &HERSHEY_SCRIPT_SIMPLEX_MAP,
+    )
+}
+
+/// Load the Hershey Script Complex font (cursive, double-stroke)
+pub fn load_script_complex() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_mapping(
+        "Hershey Script Complex",
+        HERSHEY_SCRIPT_COMPLEX,
+        &HERSHEY_SCRIPT_COMPLEX_MAP,
+    )
+}
+
+/// Load the Hershey Gothic German Bold font (Fraktur-style, bold)
+pub fn load_gothic_german_bold() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_offset("Hershey Gothic German Bold", HERSHEY_GOTHIC_GERMAN_BOLD, 3000)
+}
+
+/// Load the Hershey Gothic German font (Fraktur-style)
+pub fn load_gothic_german() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_mapping(
+        "Hershey Gothic German",
+        HERSHEY_GOTHIC_GERMAN,
+        &HERSHEY_GOTHIC_MAP,
+    )
+}
+
+/// Load the Hershey Gothic Italian font (Fraktur-style, Italian variant)
+pub fn load_gothic_italian() -> Result<HersheyFont, FontError> {
+    HersheyFont::from_jhf_with_mapping(
+        "Hershey Gothic Italian",
+        HERSHEY_GOTHIC_ITALIAN,
+        &HERSHEY_GOTHIC_ITALIAN_MAP,
+    )
 }
 
 #[cfg(test)]
@@ -384,5 +881,68 @@ mod tests {
         for stroke in &strokes {
             assert!(!stroke.points.is_empty());
         }
+    }
+
+    #[test]
+    fn test_load_duplex() {
+        let font = load_duplex().unwrap();
+        assert_eq!(font.name(), "Hershey Duplex");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_load_triplex() {
+        let font = load_triplex().unwrap();
+        assert_eq!(font.name(), "Hershey Triplex");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_load_script_simplex() {
+        let font = load_script_simplex().unwrap();
+        assert_eq!(font.name(), "Hershey Script Simplex");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_load_script_complex() {
+        let font = load_script_complex().unwrap();
+        assert_eq!(font.name(), "Hershey Script Complex");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_load_gothic_german_bold() {
+        let font = load_gothic_german_bold().unwrap();
+        assert_eq!(font.name(), "Hershey Gothic German Bold");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_load_gothic_german() {
+        let font = load_gothic_german().unwrap();
+        assert_eq!(font.name(), "Hershey Gothic German");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_load_gothic_italian() {
+        let font = load_gothic_italian().unwrap();
+        assert_eq!(font.name(), "Hershey Gothic Italian");
+        assert!(font.has_glyph('A'));
+        assert!(font.has_glyph('a'));
+        assert!(font.has_glyph('0'));
     }
 }

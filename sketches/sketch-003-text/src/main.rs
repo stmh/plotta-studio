@@ -20,7 +20,18 @@ use sketch_runner::*;
 
 /// Available fonts
 enum FontType {
+    // Hershey Roman variants
     HersheySimplex,
+    HersheyDuplex,
+    HersheyTriplex,
+    // Hershey Script variants
+    HersheyScriptSimplex,
+    HersheyScriptComplex,
+    // Hershey Gothic variants
+    HersheyGothicGermanBold,
+    HersheyGothicGerman,
+    HersheyGothicItalian,
+    // Other single-line fonts
     ReliefSingleLine,
     Asteroids,
     Apple410,
@@ -30,7 +41,14 @@ enum FontType {
 impl FontType {
     fn next(&self) -> Self {
         match self {
-            FontType::HersheySimplex => FontType::ReliefSingleLine,
+            FontType::HersheySimplex => FontType::HersheyDuplex,
+            FontType::HersheyDuplex => FontType::HersheyTriplex,
+            FontType::HersheyTriplex => FontType::HersheyScriptSimplex,
+            FontType::HersheyScriptSimplex => FontType::HersheyScriptComplex,
+            FontType::HersheyScriptComplex => FontType::HersheyGothicGermanBold,
+            FontType::HersheyGothicGermanBold => FontType::HersheyGothicGerman,
+            FontType::HersheyGothicGerman => FontType::HersheyGothicItalian,
+            FontType::HersheyGothicItalian => FontType::ReliefSingleLine,
             FontType::ReliefSingleLine => FontType::Asteroids,
             FontType::Asteroids => FontType::Apple410,
             FontType::Apple410 => FontType::Minf,
@@ -41,6 +59,13 @@ impl FontType {
     fn name(&self) -> &'static str {
         match self {
             FontType::HersheySimplex => "Hershey Simplex",
+            FontType::HersheyDuplex => "Hershey Duplex",
+            FontType::HersheyTriplex => "Hershey Triplex",
+            FontType::HersheyScriptSimplex => "Hershey Script Simplex",
+            FontType::HersheyScriptComplex => "Hershey Script Complex",
+            FontType::HersheyGothicGermanBold => "Hershey Gothic German Bold",
+            FontType::HersheyGothicGerman => "Hershey Gothic German",
+            FontType::HersheyGothicItalian => "Hershey Gothic Italian",
             FontType::ReliefSingleLine => "Relief SingleLine",
             FontType::Asteroids => "Asteroids (1979)",
             FontType::Apple410 => "Apple 410 (1983)",
@@ -144,13 +169,66 @@ impl Sketch for TextSketch {
 impl TextSketch {
     fn load_font(&self) -> Option<Box<dyn Font>> {
         match self.font_type {
+            // Hershey Roman variants
             FontType::HersheySimplex => match hershey::load_simplex() {
                 Ok(f) => Some(Box::new(f)),
                 Err(e) => {
-                    log::error!("Failed to load Hershey font: {e}");
+                    log::error!("Failed to load Hershey Simplex font: {e}");
                     None
                 }
             },
+            FontType::HersheyDuplex => match hershey::load_duplex() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Duplex font: {e}");
+                    None
+                }
+            },
+            FontType::HersheyTriplex => match hershey::load_triplex() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Triplex font: {e}");
+                    None
+                }
+            },
+            // Hershey Script variants
+            FontType::HersheyScriptSimplex => match hershey::load_script_simplex() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Script Simplex font: {e}");
+                    None
+                }
+            },
+            FontType::HersheyScriptComplex => match hershey::load_script_complex() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Script Complex font: {e}");
+                    None
+                }
+            },
+            // Hershey Gothic variants
+            FontType::HersheyGothicGermanBold => match hershey::load_gothic_german_bold() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Gothic German Bold font: {e}");
+                    None
+                }
+            },
+            FontType::HersheyGothicGerman => match hershey::load_gothic_german() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Gothic German font: {e}");
+                    None
+                }
+            },
+            FontType::HersheyGothicItalian => match hershey::load_gothic_italian() {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Hershey Gothic Italian font: {e}");
+                    None
+                }
+            },
+            // Other single-line fonts
             FontType::ReliefSingleLine => match SvgFont::parse(RELIEF_SINGLE_LINE_SVG) {
                 Ok(f) => Some(Box::new(f)),
                 Err(e) => {
