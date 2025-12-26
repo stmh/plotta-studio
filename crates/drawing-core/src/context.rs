@@ -3,56 +3,64 @@
 //! The `RenderContext` holds shared resources needed during rendering,
 //! such as font registries for text rendering.
 
-use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::font_types::Font;
+use crate::font_registry::{FontRef, FontRegistry};
 
 /// Context for rendering operations
 ///
 /// Holds shared resources like fonts that are needed when flattening
 /// elements to strokes.
-#[derive(Default)]
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use drawing_core::{FontRegistry, RenderContext};
+/// use std::sync::Arc;
+///
+/// let registry = Arc::new(FontRegistry::new());
+/// // ... register fonts with registry ...
+///
+/// let ctx = RenderContext::new(registry);
+/// let font = ctx.font("Hershey Simplex");
+/// ```
 pub struct RenderContext {
-    fonts: HashMap<String, Box<dyn Font>>,
+    font_registry: Arc<FontRegistry>,
 }
 
 impl RenderContext {
-    /// Create a new empty render context
-    pub fn new() -> Self {
-        Self::default()
+    /// Create a new render context with the given font registry.
+    pub fn new(font_registry: Arc<FontRegistry>) -> Self {
+        Self { font_registry }
     }
 
-    /// Register a font with a name
-    pub fn register_font(&mut self, name: impl Into<String>, font: Box<dyn Font>) {
-        self.fonts.insert(name.into(), font);
+    /// Get the font registry.
+    pub fn font_registry(&self) -> &Arc<FontRegistry> {
+        &self.font_registry
     }
 
-    /// Register a font, builder style
-    pub fn with_font(mut self, name: impl Into<String>, font: Box<dyn Font>) -> Self {
-        self.register_font(name, font);
-        self
+    /// Get a font by name (convenience method).
+    ///
+    /// This is equivalent to `ctx.font_registry().get(name)`.
+    pub fn font(&self, name: impl AsRef<str>) -> Option<FontRef> {
+        self.font_registry.get(name)
     }
 
-    /// Get a font by name
-    pub fn font(&self, name: &str) -> Option<&dyn Font> {
-        self.fonts.get(name).map(|f| f.as_ref())
+    /// Check if a font is registered (convenience method).
+    pub fn has_font(&self, name: impl AsRef<str>) -> bool {
+        self.font_registry.has(name)
     }
 
-    /// Check if a font is registered
-    pub fn has_font(&self, name: &str) -> bool {
-        self.fonts.contains_key(name)
-    }
-
-    /// Get list of registered font names
-    pub fn font_names(&self) -> Vec<&str> {
-        self.fonts.keys().map(|s| s.as_str()).collect()
+    /// Get list of registered font names (convenience method).
+    pub fn font_names(&self) -> Vec<String> {
+        self.font_registry.list()
     }
 }
 
 impl std::fmt::Debug for RenderContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RenderContext")
-            .field("fonts", &self.font_names())
+            .field("font_registry", &self.font_registry)
             .finish()
     }
 }
@@ -63,14 +71,25 @@ mod tests {
 
     #[test]
     fn test_render_context_new() {
-        let ctx = RenderContext::new();
+        let registry = Arc::new(FontRegistry::new());
+        let ctx = RenderContext::new(registry);
         assert!(ctx.font_names().is_empty());
     }
 
     #[test]
     fn test_render_context_font_not_found() {
-        let ctx = RenderContext::new();
+        let registry = Arc::new(FontRegistry::new());
+        let ctx = RenderContext::new(registry);
         assert!(ctx.font("NonExistent").is_none());
         assert!(!ctx.has_font("NonExistent"));
+    }
+
+    #[test]
+    fn test_render_context_font_registry_access() {
+        let registry = Arc::new(FontRegistry::new());
+        let ctx = RenderContext::new(registry.clone());
+
+        // Both should reference the same registry
+        assert!(Arc::ptr_eq(ctx.font_registry(), &registry));
     }
 }

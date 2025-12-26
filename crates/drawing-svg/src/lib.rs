@@ -122,10 +122,11 @@ pub fn write_svg<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use drawing_core::{Element, Point, Style};
+    use drawing_core::{Element, FontRegistry, Point, Style};
+    use std::sync::Arc;
 
     fn test_ctx() -> RenderContext {
-        RenderContext::new()
+        RenderContext::new(Arc::new(FontRegistry::new()))
     }
 
     // ========================================================================

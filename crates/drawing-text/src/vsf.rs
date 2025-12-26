@@ -170,7 +170,9 @@ impl VsfFont {
 
     /// Load a VSF font from a file path
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, FontError> {
-        let data = std::fs::read_to_string(path)?;
+        let path = path.as_ref();
+        let data = std::fs::read_to_string(path)
+            .map_err(|e| FontError::IoError(path.to_path_buf(), e.to_string()))?;
         Self::from_json(&data)
     }
 

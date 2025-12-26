@@ -8,7 +8,8 @@ use kurbo::Affine;
 use serde::{Deserialize, Serialize};
 
 use crate::context::RenderContext;
-use crate::font_types::{Font, TextAlign, TextLayout, TextOptions, TextRenderer};
+use crate::font_registry::FontRef;
+use crate::font_types::{TextAlign, TextLayout, TextOptions, TextRenderer};
 use crate::stroke::Stroke;
 use crate::{Color, Point, Rect, Style};
 
@@ -66,6 +67,12 @@ impl Text {
         self
     }
 
+    /// Set curve flattening tolerance (lower = finer curves, higher = coarser)
+    pub fn tolerance(mut self, tolerance: f64) -> Self {
+        self.options.tolerance = tolerance;
+        self
+    }
+
     /// Flatten text to strokes
     pub(crate) fn flatten(
         &self,
@@ -82,17 +89,17 @@ impl Text {
         };
 
         let renderer = TextRenderer::new();
-        let layout = renderer.layout(&self.text, font, &self.options);
+        let layout = renderer.layout(&self.text, font.clone(), &self.options);
 
         let mut strokes = Vec::new();
 
         // Debug geometry first (rendered underneath text)
         if self.debug {
-            strokes.extend(self.render_debug(&layout, font, transform, style));
+            strokes.extend(self.render_debug(&layout, &font, transform, style));
         }
 
         // Text strokes (rendered on top)
-        let text_strokes = layout.to_strokes(style, 0.5);
+        let text_strokes = layout.to_strokes(style, self.options.tolerance);
         for stroke in text_strokes {
             // Apply transform to stroke points
             let transformed_points: Vec<Point> =
@@ -111,7 +118,7 @@ impl Text {
     fn render_debug(
         &self,
         layout: &TextLayout,
-        font: &dyn Font,
+        font: &FontRef,
         transform: Affine,
         style: Style,
     ) -> Vec<Stroke> {
@@ -133,7 +140,13 @@ impl Text {
         for positioned_glyph in &layout.glyphs {
             let pos = positioned_glyph.position;
             let scale = positioned_glyph.scale;
-            let glyph = &positioned_glyph.glyph;
+            let c = positioned_glyph.char;
+
+            // Look up glyph for bounding box and advance width
+            let glyph = match font.glyph(c) {
+                Some(g) => g,
+                None => continue,
+            };
 
             // Calculate metric lines (scaled to drawing units)
             let baseline_y = pos.y;
@@ -293,8 +306,12 @@ mod tests {
 
     #[test]
     fn test_text_flatten_missing_font() {
+        use crate::FontRegistry;
+        use std::sync::Arc;
+
         let text = Text::new("Hello", "NonExistent");
-        let ctx = RenderContext::new();
+        let registry = Arc::new(FontRegistry::new());
+        let ctx = RenderContext::new(registry);
         let strokes = text.flatten(&ctx, Affine::IDENTITY, Style::default());
         assert!(strokes.is_empty());
     }

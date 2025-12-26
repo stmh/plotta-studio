@@ -27,6 +27,7 @@
 pub mod error;
 pub mod font;
 pub mod hershey;
+pub mod manager;
 pub mod svgfont;
 pub mod types;
 pub mod vsf;
@@ -34,7 +35,8 @@ pub mod vsf;
 // Re-export main types
 pub use error::FontError;
 pub use font::{Font, FontFormat, FontLoader, FontSource};
-pub use hershey::HersheyFont;
+pub use hershey::{Hershey, HersheyFont};
+pub use manager::FontManager;
 pub use svgfont::SvgFont;
 pub use types::{
     Contour, ContourSegment, FontMetrics, Glyph, PositionedGlyph, TextAlign, TextLayout,
@@ -45,6 +47,7 @@ pub use vsf::VsfFont;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn test_text_renderer_creation() {
@@ -57,10 +60,10 @@ mod tests {
 
     #[test]
     fn test_layout_empty_text() {
-        let font = hershey::load_simplex().unwrap();
+        let font: drawing_core::FontRef = Arc::new(hershey::load_simplex().unwrap());
         let renderer = TextRenderer::new();
         let options = TextOptions::new(24.0);
-        let layout = renderer.layout("", &font, &options);
+        let layout = renderer.layout("", font, &options);
 
         assert!(layout.glyphs.is_empty());
         assert!(layout.bounds.is_none());
@@ -69,10 +72,10 @@ mod tests {
 
     #[test]
     fn test_layout_simple_text() {
-        let font = hershey::load_simplex().unwrap();
+        let font: drawing_core::FontRef = Arc::new(hershey::load_simplex().unwrap());
         let renderer = TextRenderer::new();
         let options = TextOptions::new(24.0).at((100.0, 100.0));
-        let layout = renderer.layout("ABC", &font, &options);
+        let layout = renderer.layout("ABC", font, &options);
 
         assert_eq!(layout.glyphs.len(), 3);
         assert!(layout.bounds.is_some());
@@ -80,10 +83,10 @@ mod tests {
 
     #[test]
     fn test_layout_multiline() {
-        let font = hershey::load_simplex().unwrap();
+        let font: drawing_core::FontRef = Arc::new(hershey::load_simplex().unwrap());
         let renderer = TextRenderer::new();
         let options = TextOptions::new(24.0);
-        let layout = renderer.layout("AB\nCD", &font, &options);
+        let layout = renderer.layout("AB\nCD", font, &options);
 
         assert_eq!(layout.line_count, 2);
     }

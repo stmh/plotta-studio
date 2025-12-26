@@ -49,7 +49,9 @@ impl SvgFont {
 
     /// Load an SVG font from a file
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, FontError> {
-        let content = std::fs::read_to_string(path)?;
+        let path = path.as_ref();
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| FontError::IoError(path.to_path_buf(), e.to_string()))?;
         Self::parse(&content)
     }
 
@@ -238,6 +240,8 @@ impl SvgFont {
         let mut current_contour = Contour::new();
         let mut current_pos = Point::ORIGIN;
         let mut start_pos = Point::ORIGIN;
+        // Track last control point for smooth curves (T and S commands)
+        let mut last_control: Option<Point> = None;
 
         for segment in PathParser::from(d) {
             let segment = segment
@@ -259,8 +263,9 @@ impl SvgFont {
 
                     // Keep Y as-is (Y-up convention), rendering will handle coordinate flip
                     current_contour.segments.push(ContourSegment::MoveTo(point));
-                    current_pos = Point::new(x, y);
+                    current_pos = point;
                     start_pos = current_pos;
+                    last_control = None; // Reset for new subpath
                 }
 
                 SvgSeg::LineTo { abs, x, y } => {
@@ -271,11 +276,8 @@ impl SvgFont {
                     };
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
-                    current_pos = if abs {
-                        Point::new(x, y)
-                    } else {
-                        Point::new(current_pos.x + x, current_pos.y + y)
-                    };
+                    current_pos = point;
+                    last_control = None; // Line resets smooth curve state
                 }
 
                 SvgSeg::HorizontalLineTo { abs, x } => {
@@ -283,7 +285,8 @@ impl SvgFont {
                     let point = Point::new(new_x, current_pos.y);
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
-                    current_pos.x = new_x;
+                    current_pos = point;
+                    last_control = None; // Line resets smooth curve state
                 }
 
                 SvgSeg::VerticalLineTo { abs, y } => {
@@ -291,7 +294,8 @@ impl SvgFont {
                     let point = Point::new(current_pos.x, new_y);
 
                     current_contour.segments.push(ContourSegment::LineTo(point));
-                    current_pos.y = new_y;
+                    current_pos = point;
+                    last_control = None; // Line resets smooth curve state
                 }
 
                 SvgSeg::Quadratic { abs, x1, y1, x, y } => {
@@ -307,11 +311,8 @@ impl SvgFont {
                     current_contour
                         .segments
                         .push(ContourSegment::QuadTo { ctrl, to });
-                    current_pos = if abs {
-                        Point::new(x, y)
-                    } else {
-                        Point::new(current_pos.x + x, current_pos.y + y)
-                    };
+                    last_control = Some(ctrl);
+                    current_pos = to;
                 }
 
                 SvgSeg::CurveTo {
@@ -336,39 +337,46 @@ impl SvgFont {
                     current_contour
                         .segments
                         .push(ContourSegment::CubicTo { ctrl1, ctrl2, to });
-                    current_pos = if abs {
-                        Point::new(x, y)
-                    } else {
-                        Point::new(current_pos.x + x, current_pos.y + y)
-                    };
+                    last_control = Some(ctrl2);
+                    current_pos = to;
                 }
 
                 SvgSeg::ClosePath { .. } => {
                     current_contour.closed = true;
                     current_pos = start_pos;
+                    last_control = None; // Close resets smooth curve state
                 }
 
                 // Handle smooth curves by computing reflected control points
                 SvgSeg::SmoothQuadratic { abs, x, y } => {
-                    // For smooth quadratic, we'd need to track the previous control point
-                    // For simplicity, treat as line for now
-                    let point = if abs {
+                    // For smooth quadratic (T), control point is reflection of previous
+                    // control point across the current position
+                    let to = if abs {
                         Point::new(x, y)
                     } else {
                         Point::new(current_pos.x + x, current_pos.y + y)
                     };
 
-                    current_contour.segments.push(ContourSegment::LineTo(point));
-                    current_pos = if abs {
-                        Point::new(x, y)
-                    } else {
-                        Point::new(current_pos.x + x, current_pos.y + y)
+                    // Reflect last control point across current position
+                    let ctrl = match last_control {
+                        Some(prev_ctrl) => Point::new(
+                            2.0 * current_pos.x - prev_ctrl.x,
+                            2.0 * current_pos.y - prev_ctrl.y,
+                        ),
+                        // If no previous control point, use current position
+                        None => current_pos,
                     };
+
+                    current_contour
+                        .segments
+                        .push(ContourSegment::QuadTo { ctrl, to });
+                    last_control = Some(ctrl);
+                    current_pos = to;
                 }
 
                 SvgSeg::SmoothCurveTo { abs, x2, y2, x, y } => {
-                    // For smooth cubic, first control point is reflection of previous
-                    // For simplicity, use endpoint as first control point
+                    // For smooth cubic (S), first control point is reflection of previous
+                    // second control point across the current position
                     let (ctrl2, to) = if abs {
                         (Point::new(x2, y2), Point::new(x, y))
                     } else {
@@ -378,32 +386,72 @@ impl SvgFont {
                         )
                     };
 
-                    let ctrl1 = Point::new(current_pos.x, current_pos.y);
+                    // Reflect last control point across current position
+                    let ctrl1 = match last_control {
+                        Some(prev_ctrl) => Point::new(
+                            2.0 * current_pos.x - prev_ctrl.x,
+                            2.0 * current_pos.y - prev_ctrl.y,
+                        ),
+                        // If no previous control point, use current position
+                        None => current_pos,
+                    };
 
                     current_contour
                         .segments
                         .push(ContourSegment::CubicTo { ctrl1, ctrl2, to });
-                    current_pos = if abs {
-                        Point::new(x, y)
-                    } else {
-                        Point::new(current_pos.x + x, current_pos.y + y)
-                    };
+                    last_control = Some(ctrl2);
+                    current_pos = to;
                 }
 
-                SvgSeg::EllipticalArc { abs, x, y, .. } => {
-                    // Arcs are complex - approximate with line for now
-                    let point = if abs {
+                SvgSeg::EllipticalArc {
+                    abs,
+                    rx,
+                    ry,
+                    x_axis_rotation,
+                    large_arc,
+                    sweep,
+                    x,
+                    y,
+                } => {
+                    let end_point = if abs {
                         Point::new(x, y)
                     } else {
                         Point::new(current_pos.x + x, current_pos.y + y)
                     };
 
-                    current_contour.segments.push(ContourSegment::LineTo(point));
-                    current_pos = if abs {
-                        Point::new(x, y)
-                    } else {
-                        Point::new(current_pos.x + x, current_pos.y + y)
+                    // Convert SVG arc to kurbo arc, then to bezier curves
+                    let svg_arc = kurbo::SvgArc {
+                        from: current_pos,
+                        to: end_point,
+                        radii: kurbo::Vec2::new(rx, ry),
+                        x_rotation: x_axis_rotation.to_radians(),
+                        large_arc,
+                        sweep,
                     };
+
+                    if svg_arc.is_straight_line() {
+                        // Degenerate arc - just draw a line
+                        current_contour
+                            .segments
+                            .push(ContourSegment::LineTo(end_point));
+                    } else if let Some(arc) = kurbo::Arc::from_svg_arc(&svg_arc) {
+                        // Convert arc to bezier path and extract cubic segments
+                        arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+                            current_contour.segments.push(ContourSegment::CubicTo {
+                                ctrl1: p1,
+                                ctrl2: p2,
+                                to: p3,
+                            });
+                        });
+                    } else {
+                        // Fallback to line if arc conversion fails
+                        current_contour
+                            .segments
+                            .push(ContourSegment::LineTo(end_point));
+                    }
+
+                    current_pos = end_point;
+                    last_control = None; // Arc resets smooth curve state
                 }
             }
         }

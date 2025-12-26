@@ -272,10 +272,16 @@ impl Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FontRegistry;
+    use std::sync::Arc;
+
+    fn test_ctx() -> RenderContext {
+        RenderContext::new(Arc::new(FontRegistry::new()))
+    }
 
     #[test]
     fn test_element_flatten_line() {
-        let ctx = RenderContext::new();
+        let ctx = test_ctx();
         let elem = Element::line((0.0, 0.0), (10.0, 10.0));
         let strokes = elem.flatten(&ctx);
         assert_eq!(strokes.len(), 1);
@@ -284,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_element_flatten_circle() {
-        let ctx = RenderContext::new();
+        let ctx = test_ctx();
         let elem = Element::circle((0.0, 0.0), 10.0);
         let strokes = elem.flatten(&ctx);
         assert_eq!(strokes.len(), 1);

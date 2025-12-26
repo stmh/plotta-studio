@@ -22,6 +22,98 @@ use crate::error::FontError;
 use crate::font::Font;
 use crate::types::{Contour, ContourSegment, FontMetrics, Glyph};
 
+/// Hershey font variants
+///
+/// This enum provides type-safe access to the built-in Hershey font variants.
+/// Use with `FontManager::load_hershey()` to load fonts.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use drawing_text::{FontManager, Hershey};
+///
+/// let manager = FontManager::new(registry);
+/// manager.load_hershey(Hershey::Simplex)?;
+///
+/// // Get font using the enum (implements AsRef<str>)
+/// let font = registry.get(Hershey::Simplex);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Hershey {
+    /// Roman Simplex - single-stroke, clean and readable
+    Simplex,
+    /// Roman Duplex - double-stroke, bolder
+    Duplex,
+    /// Roman Triplex - triple-stroke, most ornate
+    Triplex,
+    /// Script Simplex - cursive, single-stroke
+    ScriptSimplex,
+    /// Script Complex - cursive, double-stroke
+    ScriptComplex,
+    /// Gothic German Bold - Fraktur-style, bold
+    GothicGermanBold,
+    /// Gothic German - Fraktur-style
+    GothicGerman,
+    /// Gothic Italian - Fraktur-style, Italian variant
+    GothicItalian,
+}
+
+impl Hershey {
+    /// Get the font name as a string
+    pub fn name(&self) -> &'static str {
+        match self {
+            Hershey::Simplex => "Hershey Simplex",
+            Hershey::Duplex => "Hershey Duplex",
+            Hershey::Triplex => "Hershey Triplex",
+            Hershey::ScriptSimplex => "Hershey Script Simplex",
+            Hershey::ScriptComplex => "Hershey Script Complex",
+            Hershey::GothicGermanBold => "Hershey Gothic German Bold",
+            Hershey::GothicGerman => "Hershey Gothic German",
+            Hershey::GothicItalian => "Hershey Gothic Italian",
+        }
+    }
+
+    /// Load this font variant
+    pub fn load(&self) -> Result<HersheyFont, FontError> {
+        match self {
+            Hershey::Simplex => load_simplex(),
+            Hershey::Duplex => load_duplex(),
+            Hershey::Triplex => load_triplex(),
+            Hershey::ScriptSimplex => load_script_simplex(),
+            Hershey::ScriptComplex => load_script_complex(),
+            Hershey::GothicGermanBold => load_gothic_german_bold(),
+            Hershey::GothicGerman => load_gothic_german(),
+            Hershey::GothicItalian => load_gothic_italian(),
+        }
+    }
+
+    /// Get all available Hershey font variants
+    pub fn all() -> &'static [Hershey] {
+        &[
+            Hershey::Simplex,
+            Hershey::Duplex,
+            Hershey::Triplex,
+            Hershey::ScriptSimplex,
+            Hershey::ScriptComplex,
+            Hershey::GothicGermanBold,
+            Hershey::GothicGerman,
+            Hershey::GothicItalian,
+        ]
+    }
+}
+
+impl AsRef<str> for Hershey {
+    fn as_ref(&self) -> &str {
+        self.name()
+    }
+}
+
+impl std::fmt::Display for Hershey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// A Hershey font loaded from JHF or similar format
 #[derive(Debug, Clone)]
 pub struct HersheyFont {
@@ -133,21 +225,21 @@ const HERSHEY_ROMAN_SIMPLEX_MAP: &[(u32, char)] = &[
 /// Mapping for Hershey Script Simplex font
 /// Script fonts use different glyph numbers than Roman fonts
 const HERSHEY_SCRIPT_SIMPLEX_MAP: &[(u32, char)] = &[
-    (699, ' '),   // space (shared)
+    (699, ' '), // space (shared)
     (2764, '!'),
     (2778, '"'),
-    (733, '#'),   // shared
+    (733, '#'), // shared
     (2769, '$'),
-    (2271, '%'),  // shared
+    (2271, '%'), // shared
     (2768, '&'),
     (2767, '\''),
     (2771, '('),
     (2772, ')'),
     (2773, '*'),
-    (725, '+'),   // shared
+    (725, '+'), // shared
     (2761, ','),
-    (724, '-'),   // shared
-    (710, '.'),   // shared
+    (724, '-'), // shared
+    (710, '.'), // shared
     (2770, '/'),
     (2750, '0'),
     (2751, '1'),
@@ -161,11 +253,11 @@ const HERSHEY_SCRIPT_SIMPLEX_MAP: &[(u32, char)] = &[
     (2759, '9'),
     (2762, ':'),
     (2763, ';'),
-    (2241, '<'),  // shared
-    (726, '='),   // shared
-    (2242, '>'),  // shared
+    (2241, '<'), // shared
+    (726, '='),  // shared
+    (2242, '>'), // shared
     (2765, '?'),
-    (2273, '@'),  // shared
+    (2273, '@'), // shared
     (551, 'A'),
     (552, 'B'),
     (553, 'C'),
@@ -192,12 +284,12 @@ const HERSHEY_SCRIPT_SIMPLEX_MAP: &[(u32, char)] = &[
     (574, 'X'),
     (575, 'Y'),
     (576, 'Z'),
-    (2223, '['),  // shared
-    (804, '\\'),  // shared
-    (2224, ']'),  // shared
-    (2262, '^'),  // shared
-    (999, '_'),   // shared
-    (730, '`'),   // shared
+    (2223, '['), // shared
+    (804, '\\'), // shared
+    (2224, ']'), // shared
+    (2262, '^'), // shared
+    (999, '_'),  // shared
+    (730, '`'),  // shared
     (651, 'a'),
     (652, 'b'),
     (653, 'c'),
@@ -224,15 +316,15 @@ const HERSHEY_SCRIPT_SIMPLEX_MAP: &[(u32, char)] = &[
     (674, 'x'),
     (675, 'y'),
     (676, 'z'),
-    (2225, '{'),  // shared
-    (723, '|'),   // shared
-    (2226, '}'),  // shared
-    (2246, '~'),  // shared
+    (2225, '{'), // shared
+    (723, '|'),  // shared
+    (2226, '}'), // shared
+    (2246, '~'), // shared
 ];
 
 /// Mapping for Hershey Script Complex font (offset from Script Simplex by 2000)
 const HERSHEY_SCRIPT_COMPLEX_MAP: &[(u32, char)] = &[
-    (699, ' '),   // space (shared)
+    (699, ' '), // space (shared)
     (2764, '!'),
     (2778, '"'),
     (733, '#'),
@@ -332,12 +424,12 @@ const HERSHEY_SCRIPT_COMPLEX_MAP: &[(u32, char)] = &[
 /// Mapping for Hershey Gothic fonts (German, Italian variants)
 /// Gothic fonts use 3301-3326 for uppercase and 3401-3426 for lowercase
 const HERSHEY_GOTHIC_MAP: &[(u32, char)] = &[
-    (3699, ' '),  // space
+    (3699, ' '), // space
     (3714, '!'),
     (3728, '"'),
-    (2275, '#'),  // shared
+    (2275, '#'), // shared
     (3719, '$'),
-    (2271, '%'),  // shared
+    (2271, '%'), // shared
     (3718, '&'),
     (3717, '\''),
     (3721, '('),
@@ -360,11 +452,11 @@ const HERSHEY_GOTHIC_MAP: &[(u32, char)] = &[
     (3709, '9'),
     (3712, ':'),
     (3713, ';'),
-    (2241, '<'),  // shared
+    (2241, '<'), // shared
     (3726, '='),
-    (2242, '>'),  // shared
+    (2242, '>'), // shared
     (3715, '?'),
-    (2273, '@'),  // shared
+    (2273, '@'), // shared
     (3301, 'A'),
     (3302, 'B'),
     (3303, 'C'),
@@ -391,11 +483,11 @@ const HERSHEY_GOTHIC_MAP: &[(u32, char)] = &[
     (3324, 'X'),
     (3325, 'Y'),
     (3326, 'Z'),
-    (2223, '['),  // shared
-    (804, '\\'),  // shared
-    (2224, ']'),  // shared
-    (2262, '^'),  // shared
-    (999, '_'),   // shared
+    (2223, '['), // shared
+    (804, '\\'), // shared
+    (2224, ']'), // shared
+    (2262, '^'), // shared
+    (999, '_'),  // shared
     (3729, '`'),
     (3401, 'a'),
     (3402, 'b'),
@@ -423,21 +515,21 @@ const HERSHEY_GOTHIC_MAP: &[(u32, char)] = &[
     (3424, 'x'),
     (3425, 'y'),
     (3426, 'z'),
-    (2225, '{'),  // shared
+    (2225, '{'), // shared
     (3716, '|'),
-    (2226, '}'),  // shared
-    (2246, '~'),  // shared
+    (2226, '}'), // shared
+    (2246, '~'), // shared
 ];
 
 /// Mapping for Hershey Gothic Italian font
 /// Italian Gothic uses 3801-3826 for uppercase and 3901-3926 for lowercase
 const HERSHEY_GOTHIC_ITALIAN_MAP: &[(u32, char)] = &[
-    (3699, ' '),  // space
+    (3699, ' '), // space
     (3714, '!'),
     (3728, '"'),
-    (2275, '#'),  // shared
+    (2275, '#'), // shared
     (3719, '$'),
-    (2271, '%'),  // shared
+    (2271, '%'), // shared
     (3718, '&'),
     (3717, '\''),
     (3721, '('),
@@ -460,11 +552,11 @@ const HERSHEY_GOTHIC_ITALIAN_MAP: &[(u32, char)] = &[
     (3709, '9'),
     (3712, ':'),
     (3713, ';'),
-    (2241, '<'),  // shared
+    (2241, '<'), // shared
     (3726, '='),
-    (2242, '>'),  // shared
+    (2242, '>'), // shared
     (3715, '?'),
-    (2273, '@'),  // shared
+    (2273, '@'), // shared
     (3801, 'A'),
     (3802, 'B'),
     (3803, 'C'),
@@ -491,11 +583,11 @@ const HERSHEY_GOTHIC_ITALIAN_MAP: &[(u32, char)] = &[
     (3824, 'X'),
     (3825, 'Y'),
     (3826, 'Z'),
-    (2223, '['),  // shared
-    (804, '\\'),  // shared
-    (2224, ']'),  // shared
-    (2262, '^'),  // shared
-    (999, '_'),   // shared
+    (2223, '['), // shared
+    (804, '\\'), // shared
+    (2224, ']'), // shared
+    (2262, '^'), // shared
+    (999, '_'),  // shared
     (3729, '`'),
     (3901, 'a'),
     (3902, 'b'),
@@ -523,10 +615,10 @@ const HERSHEY_GOTHIC_ITALIAN_MAP: &[(u32, char)] = &[
     (3924, 'x'),
     (3925, 'y'),
     (3926, 'z'),
-    (2225, '{'),  // shared
+    (2225, '{'), // shared
     (3716, '|'),
-    (2226, '}'),  // shared
-    (2246, '~'),  // shared
+    (2226, '}'), // shared
+    (2246, '~'), // shared
 ];
 
 impl HersheyFont {
@@ -653,7 +745,8 @@ impl HersheyFont {
         let right_margin = Self::decode_coord(bytes[9]);
         let advance_width = (right_margin - left_margin) as f64;
 
-        // If count is 1, that means only the margins exist (space character)
+        // If count is 0 or 1, that means only the margins exist (space character)
+        // We check this before computing count - 1 to avoid underflow
         if count <= 1 {
             return Ok(Some((glyph_num, Glyph::new('?', advance_width))));
         }
@@ -666,7 +759,9 @@ impl HersheyFont {
 
         let mut i = 0;
         // count includes the left/right margin pair, so actual data pairs = count - 1
-        while i + 1 < coord_data.len() && i / 2 < count - 1 {
+        // Safe to subtract because we verified count > 1 above
+        let max_pairs = count - 1;
+        while i + 1 < coord_data.len() && i / 2 < max_pairs {
             let x_byte = coord_data[i];
             let y_byte = coord_data[i + 1];
 
@@ -784,7 +879,7 @@ pub fn load_script_simplex() -> Result<HersheyFont, FontError> {
     HersheyFont::from_jhf_with_mapping(
         "Hershey Script Simplex",
         HERSHEY_SCRIPT_SIMPLEX,
-        &HERSHEY_SCRIPT_SIMPLEX_MAP,
+        HERSHEY_SCRIPT_SIMPLEX_MAP,
     )
 }
 
@@ -793,13 +888,17 @@ pub fn load_script_complex() -> Result<HersheyFont, FontError> {
     HersheyFont::from_jhf_with_mapping(
         "Hershey Script Complex",
         HERSHEY_SCRIPT_COMPLEX,
-        &HERSHEY_SCRIPT_COMPLEX_MAP,
+        HERSHEY_SCRIPT_COMPLEX_MAP,
     )
 }
 
 /// Load the Hershey Gothic German Bold font (Fraktur-style, bold)
 pub fn load_gothic_german_bold() -> Result<HersheyFont, FontError> {
-    HersheyFont::from_jhf_with_offset("Hershey Gothic German Bold", HERSHEY_GOTHIC_GERMAN_BOLD, 3000)
+    HersheyFont::from_jhf_with_offset(
+        "Hershey Gothic German Bold",
+        HERSHEY_GOTHIC_GERMAN_BOLD,
+        3000,
+    )
 }
 
 /// Load the Hershey Gothic German font (Fraktur-style)
@@ -807,7 +906,7 @@ pub fn load_gothic_german() -> Result<HersheyFont, FontError> {
     HersheyFont::from_jhf_with_mapping(
         "Hershey Gothic German",
         HERSHEY_GOTHIC_GERMAN,
-        &HERSHEY_GOTHIC_MAP,
+        HERSHEY_GOTHIC_MAP,
     )
 }
 
@@ -816,7 +915,7 @@ pub fn load_gothic_italian() -> Result<HersheyFont, FontError> {
     HersheyFont::from_jhf_with_mapping(
         "Hershey Gothic Italian",
         HERSHEY_GOTHIC_ITALIAN,
-        &HERSHEY_GOTHIC_ITALIAN_MAP,
+        HERSHEY_GOTHIC_ITALIAN_MAP,
     )
 }
 
@@ -935,6 +1034,34 @@ mod tests {
         assert!(font.has_glyph('A'));
         assert!(font.has_glyph('a'));
         assert!(font.has_glyph('0'));
+    }
+
+    #[test]
+    fn test_gothic_german_k_glyph() {
+        let font = load_gothic_german().unwrap();
+        let glyph = font.glyph('k').expect("Should have 'k' glyph");
+
+        // The 'k' glyph should have multiple contours (Gothic fonts are ornate)
+        // Gothic German 'k' has 13 contours with various segments
+        assert!(
+            !glyph.contours.is_empty(),
+            "'k' should have at least one contour"
+        );
+
+        // Each contour should have segments
+        for (i, contour) in glyph.contours.iter().enumerate() {
+            assert!(
+                !contour.segments.is_empty(),
+                "Contour {} should have segments",
+                i
+            );
+        }
+
+        // Check that advance width is reasonable
+        assert!(
+            glyph.advance_width > 0.0,
+            "'k' should have positive advance width"
+        );
     }
 
     #[test]

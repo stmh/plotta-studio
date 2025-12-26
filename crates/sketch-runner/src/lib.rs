@@ -29,22 +29,19 @@ use winit::window::{Window, WindowId};
 // Re-export drawing-core for convenience
 pub use drawing_core::*;
 
-/// Extension trait to add font loading convenience methods to RenderContext
-pub trait RenderContextExt {
-    /// Register the built-in Hershey Simplex font
-    fn with_hershey_simplex(self) -> Self;
-}
+// Re-export drawing-text types for convenience
+pub use drawing_text::{FontManager, Hershey};
 
-impl RenderContextExt for RenderContext {
-    fn with_hershey_simplex(self) -> Self {
-        match drawing_text::hershey::load_simplex() {
-            Ok(font) => self.with_font("Hershey Simplex", Box::new(font)),
-            Err(e) => {
-                log::warn!("Failed to load Hershey Simplex font: {}", e);
-                self
-            }
-        }
+/// Create a new FontRegistry with the Hershey Simplex font pre-loaded
+pub fn create_default_font_registry() -> Arc<FontRegistry> {
+    let registry = Arc::new(FontRegistry::new());
+    let manager = FontManager::new(registry.clone());
+
+    if let Err(e) = manager.load_hershey(Hershey::Simplex) {
+        log::warn!("Failed to load Hershey Simplex font: {}", e);
     }
+
+    registry
 }
 
 // Re-export keyboard types from winit for sketches to use
@@ -233,8 +230,9 @@ struct AppState<S: Sketch> {
 
 impl<S: Sketch> AppState<S> {
     fn new(mut sketch: S, config: RunnerConfig) -> Self {
-        // Create default render context with built-in fonts
-        let render_ctx = RenderContext::new().with_hershey_simplex();
+        // Create font registry with built-in fonts and render context
+        let registry = create_default_font_registry();
+        let render_ctx = RenderContext::new(registry);
         let drawing = sketch.setup(&render_ctx);
         let now = Instant::now();
 

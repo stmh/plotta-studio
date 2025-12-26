@@ -1,10 +1,11 @@
 ---
 # plotta-studio-vpqe
 title: Add additional Hershey font variants
-status: draft
+status: completed
 type: feature
+priority: normal
 created_at: 2025-12-26T12:33:38Z
-updated_at: 2025-12-26T12:33:38Z
+updated_at: 2025-12-26T14:07:51Z
 parent: plotta-studio-ah5h
 ---
 

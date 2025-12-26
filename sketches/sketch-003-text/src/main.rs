@@ -14,82 +14,10 @@
 //! - Escape: Quit
 
 use drawing_text::{
-    hershey, Font, SvgFont, TextAlign, TextLayout, TextOptions, TextRenderer, VsfFont,
+    FontManager, SvgFont, TextAlign, TextLayout, TextOptions, TextRenderer, VsfFont,
 };
 use sketch_runner::*;
-
-/// Available fonts
-enum FontType {
-    // Hershey Roman variants
-    HersheySimplex,
-    HersheyDuplex,
-    HersheyTriplex,
-    // Hershey Script variants
-    HersheyScriptSimplex,
-    HersheyScriptComplex,
-    // Hershey Gothic variants
-    HersheyGothicGermanBold,
-    HersheyGothicGerman,
-    HersheyGothicItalian,
-    // Other single-line fonts
-    ReliefSingleLine,
-    Asteroids,
-    Apple410,
-    Minf,
-}
-
-impl FontType {
-    fn next(&self) -> Self {
-        match self {
-            FontType::HersheySimplex => FontType::HersheyDuplex,
-            FontType::HersheyDuplex => FontType::HersheyTriplex,
-            FontType::HersheyTriplex => FontType::HersheyScriptSimplex,
-            FontType::HersheyScriptSimplex => FontType::HersheyScriptComplex,
-            FontType::HersheyScriptComplex => FontType::HersheyGothicGermanBold,
-            FontType::HersheyGothicGermanBold => FontType::HersheyGothicGerman,
-            FontType::HersheyGothicGerman => FontType::HersheyGothicItalian,
-            FontType::HersheyGothicItalian => FontType::ReliefSingleLine,
-            FontType::ReliefSingleLine => FontType::Asteroids,
-            FontType::Asteroids => FontType::Apple410,
-            FontType::Apple410 => FontType::Minf,
-            FontType::Minf => FontType::HersheySimplex,
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            FontType::HersheySimplex => "Hershey Simplex",
-            FontType::HersheyDuplex => "Hershey Duplex",
-            FontType::HersheyTriplex => "Hershey Triplex",
-            FontType::HersheyScriptSimplex => "Hershey Script Simplex",
-            FontType::HersheyScriptComplex => "Hershey Script Complex",
-            FontType::HersheyGothicGermanBold => "Hershey Gothic German Bold",
-            FontType::HersheyGothicGerman => "Hershey Gothic German",
-            FontType::HersheyGothicItalian => "Hershey Gothic Italian",
-            FontType::ReliefSingleLine => "Relief SingleLine",
-            FontType::Asteroids => "Asteroids (1979)",
-            FontType::Apple410 => "Apple 410 (1983)",
-            FontType::Minf => "minf (2024)",
-        }
-    }
-}
-
-struct TextSketch {
-    font_type: FontType,
-    font_size: f64,
-    letter_spacing: f64,
-    sample_index: usize,
-    show_debug: bool,
-}
-
-const SAMPLE_TEXTS: &[&str] = &[
-    "Hello, World!",
-    "PLOTTA STUDIO",
-    "The quick brown fox\njumps over the lazy dog",
-    "ABCDEFGHIJKLM\nNOPQRSTUVWXYZ",
-    "0123456789",
-    "Single-line fonts\nare perfect for\npen plotters!",
-];
+use std::sync::Arc;
 
 /// Embedded Relief SingleLine SVG font
 const RELIEF_SINGLE_LINE_SVG: &str =
@@ -100,10 +28,60 @@ const ASTEROIDS_VSF: &str = include_str!("../../../fonts/vsf/asteroids.vsf");
 const APPLE410_VSF: &str = include_str!("../../../fonts/vsf/apple410.vsf");
 const MINF_VSF: &str = include_str!("../../../fonts/vsf/minf.vsf");
 
+const SAMPLE_TEXTS: &[&str] = &[
+    "Hello, World!",
+    "PLOTTA STUDIO",
+    "The quick brown fox\njumps over the lazy dog",
+    "ABCDEFGHIJKLM\nNOPQRSTUVWXYZ",
+    "0123456789",
+    "Single-line fonts\nare perfect for\npen plotters!",
+];
+
+struct TextSketch {
+    registry: Arc<FontRegistry>,
+    font_names: Vec<String>,
+    font_index: usize,
+    font_size: f64,
+    letter_spacing: f64,
+    sample_index: usize,
+    show_debug: bool,
+}
+
 impl Default for TextSketch {
     fn default() -> Self {
+        // Create font registry and manager
+        let registry = Arc::new(FontRegistry::new());
+        let manager = FontManager::new(registry.clone());
+
+        // Load all built-in Hershey fonts
+        if let Err(e) = manager.load_all_hershey() {
+            log::warn!("Failed to load Hershey fonts: {}", e);
+        }
+
+        // Register SVG font
+        if let Ok(font) = SvgFont::parse(RELIEF_SINGLE_LINE_SVG) {
+            registry.register(Arc::new(font));
+        }
+
+        // Register VSF fonts
+        if let Ok(font) = VsfFont::from_json(ASTEROIDS_VSF) {
+            registry.register(Arc::new(font));
+        }
+        if let Ok(font) = VsfFont::from_json(APPLE410_VSF) {
+            registry.register(Arc::new(font));
+        }
+        if let Ok(font) = VsfFont::from_json(MINF_VSF) {
+            registry.register(Arc::new(font));
+        }
+
+        // Get sorted list of all available fonts
+        let mut font_names = registry.list();
+        font_names.sort();
+
         Self {
-            font_type: FontType::HersheySimplex,
+            registry,
+            font_names,
+            font_index: 0,
             font_size: 12.0, // 12mm tall text
             letter_spacing: 0.0,
             sample_index: 0,
@@ -122,8 +100,8 @@ impl Sketch for TextSketch {
     fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &RenderContext) {
         match key {
             Key::Character(c) if c.as_str() == "f" => {
-                self.font_type = self.font_type.next();
-                log::info!("Switched to font: {}", self.font_type.name());
+                self.font_index = (self.font_index + 1) % self.font_names.len();
+                log::info!("Switched to font: {}", self.current_font_name());
                 self.generate(drawing, ctx);
             }
             Key::Character(c) if c.as_str() == "g" => {
@@ -167,97 +145,12 @@ impl Sketch for TextSketch {
 }
 
 impl TextSketch {
-    fn load_font(&self) -> Option<Box<dyn Font>> {
-        match self.font_type {
-            // Hershey Roman variants
-            FontType::HersheySimplex => match hershey::load_simplex() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Simplex font: {e}");
-                    None
-                }
-            },
-            FontType::HersheyDuplex => match hershey::load_duplex() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Duplex font: {e}");
-                    None
-                }
-            },
-            FontType::HersheyTriplex => match hershey::load_triplex() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Triplex font: {e}");
-                    None
-                }
-            },
-            // Hershey Script variants
-            FontType::HersheyScriptSimplex => match hershey::load_script_simplex() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Script Simplex font: {e}");
-                    None
-                }
-            },
-            FontType::HersheyScriptComplex => match hershey::load_script_complex() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Script Complex font: {e}");
-                    None
-                }
-            },
-            // Hershey Gothic variants
-            FontType::HersheyGothicGermanBold => match hershey::load_gothic_german_bold() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Gothic German Bold font: {e}");
-                    None
-                }
-            },
-            FontType::HersheyGothicGerman => match hershey::load_gothic_german() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Gothic German font: {e}");
-                    None
-                }
-            },
-            FontType::HersheyGothicItalian => match hershey::load_gothic_italian() {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Hershey Gothic Italian font: {e}");
-                    None
-                }
-            },
-            // Other single-line fonts
-            FontType::ReliefSingleLine => match SvgFont::parse(RELIEF_SINGLE_LINE_SVG) {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Relief SingleLine font: {e}");
-                    None
-                }
-            },
-            FontType::Asteroids => match VsfFont::from_json(ASTEROIDS_VSF) {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Asteroids font: {e}");
-                    None
-                }
-            },
-            FontType::Apple410 => match VsfFont::from_json(APPLE410_VSF) {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load Apple 410 font: {e}");
-                    None
-                }
-            },
-            FontType::Minf => match VsfFont::from_json(MINF_VSF) {
-                Ok(f) => Some(Box::new(f)),
-                Err(e) => {
-                    log::error!("Failed to load minf font: {e}");
-                    None
-                }
-            },
-        }
+    fn current_font_name(&self) -> &str {
+        &self.font_names[self.font_index]
+    }
+
+    fn load_font(&self) -> Option<FontRef> {
+        self.registry.get(self.current_font_name())
     }
 
     fn generate(&self, drawing: &mut Drawing, ctx: &RenderContext) {
@@ -265,7 +158,10 @@ impl TextSketch {
 
         let font = match self.load_font() {
             Some(f) => f,
-            None => return,
+            None => {
+                log::error!("Failed to load font: {}", self.current_font_name());
+                return;
+            }
         };
 
         let renderer = TextRenderer::new();
@@ -278,7 +174,7 @@ impl TextSketch {
             .align(TextAlign::Center)
             .letter_spacing(self.letter_spacing);
 
-        let layout = renderer.layout(text, font.as_ref(), &options);
+        let layout = renderer.layout(text, font.clone(), &options);
         let strokes = layout.to_strokes(Style::default().with_stroke_width(0.5), 0.5);
 
         for stroke in strokes {
@@ -287,7 +183,7 @@ impl TextSketch {
 
         // Debug visualization
         if self.show_debug {
-            self.draw_debug(drawing, &layout, font.as_ref());
+            self.draw_debug(drawing, &layout);
         }
 
         // Title at top - show current font name
@@ -295,8 +191,8 @@ impl TextSketch {
             .at((center.x, 15.0))
             .align(TextAlign::Center);
 
-        let title = self.font_type.name();
-        let title_layout = renderer.layout(title, font.as_ref(), &title_options);
+        let title = self.current_font_name();
+        let title_layout = renderer.layout(title, font.clone(), &title_options);
         let title_strokes = title_layout.to_strokes(
             Style::default()
                 .with_stroke_width(0.3)
@@ -317,7 +213,7 @@ impl TextSketch {
             .at((center.x, drawing.height - 15.0))
             .align(TextAlign::Center);
 
-        let info_layout = renderer.layout(&info, font.as_ref(), &info_options);
+        let info_layout = renderer.layout(&info, font.clone(), &info_options);
         let info_strokes = info_layout.to_strokes(
             Style::default()
                 .with_stroke_width(0.2)
@@ -341,7 +237,7 @@ impl TextSketch {
                 .at((center.x, y))
                 .align(TextAlign::Center);
 
-            let sample_layout = renderer.layout(sample, font.as_ref(), &sample_options);
+            let sample_layout = renderer.layout(sample, font.clone(), &sample_options);
             let sample_strokes = sample_layout.to_strokes(
                 Style::default()
                     .with_stroke_width(0.2)
@@ -370,15 +266,15 @@ impl TextSketch {
         log::info!(
             "Generated text with {} strokes (font: {}, size: {:.0}mm{})",
             drawing.stroke_count(ctx),
-            self.font_type.name(),
+            self.current_font_name(),
             self.font_size,
             if self.show_debug { ", debug ON" } else { "" }
         );
     }
 
     /// Draw debug visualization: baselines, ascender/descender lines, glyph bounding boxes
-    fn draw_debug(&self, drawing: &mut Drawing, layout: &TextLayout, font: &dyn Font) {
-        let metrics = font.metrics();
+    fn draw_debug(&self, drawing: &mut Drawing, layout: &TextLayout) {
+        let metrics = layout.font.metrics();
 
         // Colors for debug elements
         let baseline_color = Color::rgb(255, 0, 0); // Red for baseline
@@ -395,7 +291,13 @@ impl TextSketch {
         for positioned_glyph in &layout.glyphs {
             let pos = positioned_glyph.position;
             let scale = positioned_glyph.scale;
-            let glyph = &positioned_glyph.glyph;
+            let c = positioned_glyph.char;
+
+            // Look up the actual glyph from the font
+            let glyph = match layout.font.glyph(c) {
+                Some(g) => g,
+                None => continue,
+            };
 
             // Calculate metric lines (scaled to drawing units)
             // Font metrics use Y-up convention, rendering negates Y for screen coordinates
