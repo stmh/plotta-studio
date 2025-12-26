@@ -115,23 +115,23 @@ The converter will populate VSF metadata fields for proper attribution:
 ## Checklist
 
 ### Phase 1: Create vsf-convert crate
-- [ ] Set up crate with clap for CLI parsing
-- [ ] Add drawing-text dependency for VsfFont output
-- [ ] Implement common conversion helpers
+- [x] Set up crate with clap for CLI parsing
+- [x] Add drawing-text dependency for VsfFont output
+- [x] Implement common conversion helpers
 
 ### Phase 2: Implement format parsers
-- [ ] Asteroids parser (JS object -> VsfFont)
-- [ ] Apple 410 parser (4-bit packed coords -> VsfFont)
-- [ ] minf parser (base64 decode -> VsfFont)
+- [x] Asteroids parser (JS object -> VsfFont)
+- [x] Apple 410 parser (4-bit packed coords -> VsfFont)
+- [x] minf parser (base64 decode -> VsfFont)
 
 ### Phase 3: Convert and bundle fonts
-- [ ] Download source data from p5-single-line-font-resources
-- [ ] Run conversions, verify output
-- [ ] Add converted .vsf files to fonts/vsf/
-- [ ] Add README.md with attribution
+- [x] Download source data from p5-single-line-font-resources
+- [x] Run conversions, verify output
+- [x] Add converted .vsf files to fonts/vsf/
+- [x] Add README.md with attribution
 
 ### Phase 4: Integration
-- [ ] Update sketch-003-text to demo a vintage font
+- [x] Update sketch-003-text to demo vintage fonts
 - [ ] Add to FontManager built-in fonts (when FontManager is implemented)
 
 ## References

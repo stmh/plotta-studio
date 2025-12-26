@@ -1,0 +1,19 @@
+[package]
+name = "vsf-convert"
+version.workspace = true
+edition.workspace = true
+description = "CLI tool to convert single-line fonts to VSF format"
+license.workspace = true
+
+[[bin]]
+name = "vsf-convert"
+path = "src/main.rs"
+
+[dependencies]
+drawing-text = { workspace = true }
+drawing-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+base64 = "0.22"

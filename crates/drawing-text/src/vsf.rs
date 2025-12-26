@@ -133,6 +133,7 @@ pub struct VsfFont {
     glyphs: HashMap<char, Glyph>,
     metrics: FontMetrics,
     kerning: HashMap<(char, char), f64>,
+    metadata: VsfMetadata,
 }
 
 impl VsfFont {
@@ -143,7 +144,22 @@ impl VsfFont {
             glyphs: HashMap::new(),
             metrics: FontMetrics::default(),
             kerning: HashMap::new(),
+            metadata: VsfMetadata::default(),
         }
+    }
+
+    /// Set font metadata (author, license, description)
+    pub fn set_metadata(
+        &mut self,
+        author: Option<String>,
+        license: Option<String>,
+        description: Option<String>,
+    ) {
+        self.metadata = VsfMetadata {
+            author,
+            license,
+            description,
+        };
     }
 
     /// Load a VSF font from JSON data
@@ -194,6 +210,7 @@ impl VsfFont {
             glyphs,
             metrics,
             kerning,
+            metadata: vsf.metadata,
         })
     }
 
@@ -283,7 +300,7 @@ impl VsfFont {
         VsfFile {
             version: "1.0".to_string(),
             name: self.name.clone(),
-            metadata: VsfMetadata::default(),
+            metadata: self.metadata.clone(),
             metrics: VsfMetrics {
                 units_per_em: self.metrics.units_per_em,
                 ascender: self.metrics.ascender,

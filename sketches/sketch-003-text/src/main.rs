@@ -13,20 +13,28 @@
 //! - Space: Fit to window
 //! - Escape: Quit
 
-use drawing_text::{hershey, Font, SvgFont, TextAlign, TextLayout, TextOptions, TextRenderer};
+use drawing_text::{
+    hershey, Font, SvgFont, TextAlign, TextLayout, TextOptions, TextRenderer, VsfFont,
+};
 use sketch_runner::*;
 
 /// Available fonts
 enum FontType {
     HersheySimplex,
     ReliefSingleLine,
+    Asteroids,
+    Apple410,
+    Minf,
 }
 
 impl FontType {
     fn next(&self) -> Self {
         match self {
             FontType::HersheySimplex => FontType::ReliefSingleLine,
-            FontType::ReliefSingleLine => FontType::HersheySimplex,
+            FontType::ReliefSingleLine => FontType::Asteroids,
+            FontType::Asteroids => FontType::Apple410,
+            FontType::Apple410 => FontType::Minf,
+            FontType::Minf => FontType::HersheySimplex,
         }
     }
 
@@ -34,6 +42,9 @@ impl FontType {
         match self {
             FontType::HersheySimplex => "Hershey Simplex",
             FontType::ReliefSingleLine => "Relief SingleLine",
+            FontType::Asteroids => "Asteroids (1979)",
+            FontType::Apple410 => "Apple 410 (1983)",
+            FontType::Minf => "minf (2024)",
         }
     }
 }
@@ -58,6 +69,11 @@ const SAMPLE_TEXTS: &[&str] = &[
 /// Embedded Relief SingleLine SVG font
 const RELIEF_SINGLE_LINE_SVG: &str =
     include_str!("../../../fonts/svg/ReliefSingleLine-Regular.svg");
+
+/// Embedded VSF fonts (vintage single-line fonts)
+const ASTEROIDS_VSF: &str = include_str!("../../../fonts/vsf/asteroids.vsf");
+const APPLE410_VSF: &str = include_str!("../../../fonts/vsf/apple410.vsf");
+const MINF_VSF: &str = include_str!("../../../fonts/vsf/minf.vsf");
 
 impl Default for TextSketch {
     fn default() -> Self {
@@ -139,6 +155,27 @@ impl TextSketch {
                 Ok(f) => Some(Box::new(f)),
                 Err(e) => {
                     log::error!("Failed to load Relief SingleLine font: {e}");
+                    None
+                }
+            },
+            FontType::Asteroids => match VsfFont::from_json(ASTEROIDS_VSF) {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Asteroids font: {e}");
+                    None
+                }
+            },
+            FontType::Apple410 => match VsfFont::from_json(APPLE410_VSF) {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load Apple 410 font: {e}");
+                    None
+                }
+            },
+            FontType::Minf => match VsfFont::from_json(MINF_VSF) {
+                Ok(f) => Some(Box::new(f)),
+                Err(e) => {
+                    log::error!("Failed to load minf font: {e}");
                     None
                 }
             },
