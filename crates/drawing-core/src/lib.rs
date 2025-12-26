@@ -7,15 +7,19 @@
 //! - Drawing: The top-level container
 
 mod color;
+mod context;
 mod drawing;
 mod element;
 mod flatten;
+mod font_registry;
+pub mod font_types;
 mod group;
 mod path;
 mod primitives;
 mod shape;
 mod stroke;
 mod style;
+mod text;
 
 // Re-export kurbo types as our public API
 pub use kurbo::{Affine, BezPath, Line, PathEl, Point, Rect, Vec2};
@@ -25,14 +29,23 @@ pub type Transform = Affine;
 
 // Re-export our types
 pub use color::Color;
+pub use context::RenderContext;
 pub use drawing::Drawing;
 pub use element::Element;
+pub use font_registry::{FontRef, FontRegistry};
 pub use group::Group;
 pub use path::{Path, PathSegment};
 pub use primitives::{Arc, Circle, Ellipse, Polyline, RegularPolygon};
 pub use shape::Shape;
 pub use stroke::Stroke;
 pub use style::Style;
+pub use text::Text;
+
+// Re-export font types for convenience
+pub use font_types::{
+    Contour, ContourSegment, Font, FontMetrics, Glyph, PositionedGlyph, TextAlign, TextLayout,
+    TextOptions, TextRenderer,
+};
 
 #[cfg(test)]
 mod tests {

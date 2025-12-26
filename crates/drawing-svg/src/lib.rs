@@ -3,7 +3,7 @@
 //! Note: Import is lossy - only path/line data is preserved.
 //! Complex SVG features (gradients, filters, text, etc.) are ignored.
 
-use drawing_core::{Color, Drawing, Stroke};
+use drawing_core::{Color, Drawing, RenderContext, Stroke};
 use std::io::Write;
 use std::path::Path;
 use thiserror::Error;
@@ -18,14 +18,18 @@ pub enum SvgError {
 }
 
 /// Export a drawing to SVG format
-pub fn export_svg(drawing: &Drawing, path: impl AsRef<Path>) -> Result<(), SvgError> {
-    let svg = drawing_to_svg_string(drawing);
+pub fn export_svg(
+    drawing: &Drawing,
+    path: impl AsRef<Path>,
+    ctx: &RenderContext,
+) -> Result<(), SvgError> {
+    let svg = drawing_to_svg_string(drawing, ctx);
     std::fs::write(path, svg)?;
     Ok(())
 }
 
 /// Convert a drawing to an SVG string
-pub fn drawing_to_svg_string(drawing: &Drawing) -> String {
+pub fn drawing_to_svg_string(drawing: &Drawing, ctx: &RenderContext) -> String {
     let mut svg = String::new();
 
     // SVG header
@@ -52,7 +56,7 @@ pub fn drawing_to_svg_string(drawing: &Drawing) -> String {
     }
 
     // Flatten and export strokes
-    let strokes = drawing.flatten();
+    let strokes = drawing.flatten(ctx);
     for stroke in strokes {
         if stroke.points.len() < 2 {
             continue;
@@ -101,8 +105,12 @@ fn color_to_hex(c: Color) -> String {
 }
 
 /// Export drawing to SVG and write to a writer
-pub fn write_svg<W: Write>(drawing: &Drawing, writer: &mut W) -> Result<(), SvgError> {
-    let svg = drawing_to_svg_string(drawing);
+pub fn write_svg<W: Write>(
+    drawing: &Drawing,
+    writer: &mut W,
+    ctx: &RenderContext,
+) -> Result<(), SvgError> {
+    let svg = drawing_to_svg_string(drawing, ctx);
     writer.write_all(svg.as_bytes())?;
     Ok(())
 }
@@ -114,7 +122,12 @@ pub fn write_svg<W: Write>(drawing: &Drawing, writer: &mut W) -> Result<(), SvgE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use drawing_core::{Element, Point, Style};
+    use drawing_core::{Element, FontRegistry, Point, Style};
+    use std::sync::Arc;
+
+    fn test_ctx() -> RenderContext {
+        RenderContext::new(Arc::new(FontRegistry::new()))
+    }
 
     // ========================================================================
     // color_to_hex tests
@@ -248,13 +261,14 @@ mod tests {
 
     #[test]
     fn test_basic_export() {
+        let ctx = test_ctx();
         let mut drawing = Drawing::new(100.0, 100.0);
         drawing.add(Element::line(
             Point::new(0.0, 0.0),
             Point::new(100.0, 100.0),
         ));
 
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
         assert!(svg.contains("svg"));
         assert!(svg.contains("path"));
         assert!(svg.contains("M0.000,0.000"));
@@ -262,8 +276,9 @@ mod tests {
 
     #[test]
     fn test_drawing_dimensions() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(297.0, 210.0);
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         assert!(svg.contains("width=\"297mm\""));
         assert!(svg.contains("height=\"210mm\""));
@@ -272,8 +287,9 @@ mod tests {
 
     #[test]
     fn test_drawing_empty() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(100.0, 100.0);
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         assert!(svg.contains("<svg"));
         assert!(svg.contains("</svg>"));
@@ -283,8 +299,9 @@ mod tests {
 
     #[test]
     fn test_drawing_white_background_omitted() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(100.0, 100.0).with_background(Color::WHITE);
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         // White background should not create a rect element
         assert!(!svg.contains("<rect"));
@@ -292,8 +309,9 @@ mod tests {
 
     #[test]
     fn test_drawing_non_white_background() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(100.0, 100.0).with_background(Color::BLACK);
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         assert!(svg.contains("<rect"));
         assert!(svg.contains("fill=\"#000000\""));
@@ -301,8 +319,9 @@ mod tests {
 
     #[test]
     fn test_drawing_colored_background() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(100.0, 100.0).with_background(Color::rgb(200, 220, 240));
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         assert!(svg.contains("<rect"));
         assert!(svg.contains("fill=\"#c8dcf0\""));
@@ -310,6 +329,7 @@ mod tests {
 
     #[test]
     fn test_drawing_multiple_elements() {
+        let ctx = test_ctx();
         let mut drawing = Drawing::new(100.0, 100.0);
         drawing.add(Element::line(Point::new(0.0, 0.0), Point::new(50.0, 50.0)));
         drawing.add(Element::line(
@@ -317,7 +337,7 @@ mod tests {
             Point::new(100.0, 0.0),
         ));
 
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         // Should contain two path elements
         let path_count = svg.matches("<path").count();
@@ -326,10 +346,11 @@ mod tests {
 
     #[test]
     fn test_drawing_circle() {
+        let ctx = test_ctx();
         let mut drawing = Drawing::new(100.0, 100.0);
         drawing.add(Element::circle(Point::new(50.0, 50.0), 25.0));
 
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         // Circle is flattened to a path with many points
         assert!(svg.contains("<path"));
@@ -341,16 +362,18 @@ mod tests {
 
     #[test]
     fn test_drawing_xml_header() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(100.0, 100.0);
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         assert!(svg.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
     }
 
     #[test]
     fn test_drawing_xmlns() {
+        let ctx = test_ctx();
         let drawing = Drawing::new(100.0, 100.0);
-        let svg = drawing_to_svg_string(&drawing);
+        let svg = drawing_to_svg_string(&drawing, &ctx);
 
         assert!(svg.contains("xmlns=\"http://www.w3.org/2000/svg\""));
     }
@@ -361,6 +384,7 @@ mod tests {
 
     #[test]
     fn test_write_svg_to_buffer() {
+        let ctx = test_ctx();
         let mut drawing = Drawing::new(100.0, 100.0);
         drawing.add(Element::line(
             Point::new(0.0, 0.0),
@@ -368,7 +392,7 @@ mod tests {
         ));
 
         let mut buffer = Vec::new();
-        write_svg(&drawing, &mut buffer).unwrap();
+        write_svg(&drawing, &mut buffer, &ctx).unwrap();
 
         let svg = String::from_utf8(buffer).unwrap();
         assert!(svg.contains("<svg"));

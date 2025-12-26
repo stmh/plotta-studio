@@ -1,8 +1,10 @@
 //! Element - a scene graph node with shape, transform, and style
 
+use crate::font_types::TextOptions;
 use kurbo::{Affine, Line, Point, Rect, Vec2};
 use serde::{Deserialize, Serialize};
 
+use crate::context::RenderContext;
 use crate::flatten::{
     flatten_arc, flatten_circle, flatten_ellipse, flatten_path, flatten_regular_polygon,
 };
@@ -11,6 +13,7 @@ use crate::path::Path;
 use crate::primitives::{Arc, Circle, Ellipse, Polyline, RegularPolygon};
 use crate::shape::Shape;
 use crate::stroke::Stroke;
+use crate::text::Text;
 use crate::{Color, Style};
 
 /// An element in the scene graph - a shape with transform and style
@@ -76,6 +79,22 @@ impl Element {
         Self::new(group)
     }
 
+    /// Create a text element
+    pub fn text(text: impl Into<String>, font_name: impl Into<String>) -> Self {
+        Self::new(Text::new(text, font_name))
+    }
+
+    /// Create an element from a pre-flattened stroke
+    /// The stroke's points become a polyline
+    pub fn from_stroke(stroke: Stroke) -> Self {
+        let polyline = if stroke.closed {
+            Polyline::closed(stroke.points)
+        } else {
+            Polyline::new(stroke.points)
+        };
+        Self::new(polyline).style(stroke.style)
+    }
+
     // === Transform builders ===
 
     pub fn translate(mut self, x: f64, y: f64) -> Self {
@@ -128,14 +147,44 @@ impl Element {
         self
     }
 
+    // === Text-specific builders ===
+
+    /// Set text options (only applies to Text shapes)
+    pub fn text_options(mut self, options: TextOptions) -> Self {
+        if let Shape::Text(ref mut text) = self.shape {
+            text.options = options;
+        }
+        self
+    }
+
+    /// Set text size (only applies to Text shapes)
+    pub fn text_size(mut self, size: f64) -> Self {
+        if let Shape::Text(ref mut text) = self.shape {
+            text.options.size = size;
+        }
+        self
+    }
+
+    /// Enable/disable text debug visualization (only applies to Text shapes)
+    pub fn text_debug(mut self, debug: bool) -> Self {
+        if let Shape::Text(ref mut text) = self.shape {
+            text.debug = debug;
+        }
+        self
+    }
+
     // === Flattening ===
 
     /// Flatten to strokes, applying transform
-    pub fn flatten(&self) -> Vec<Stroke> {
-        self.flatten_with_transform(Affine::IDENTITY)
+    pub fn flatten(&self, ctx: &RenderContext) -> Vec<Stroke> {
+        self.flatten_with_transform(ctx, Affine::IDENTITY)
     }
 
-    pub(crate) fn flatten_with_transform(&self, parent_transform: Affine) -> Vec<Stroke> {
+    pub(crate) fn flatten_with_transform(
+        &self,
+        ctx: &RenderContext,
+        parent_transform: Affine,
+    ) -> Vec<Stroke> {
         let transform = parent_transform * self.transform;
 
         match &self.shape {
@@ -212,8 +261,10 @@ impl Element {
             Shape::Group(group) => group
                 .children
                 .iter()
-                .flat_map(|child| child.flatten_with_transform(transform))
+                .flat_map(|child| child.flatten_with_transform(ctx, transform))
                 .collect(),
+
+            Shape::Text(text) => text.flatten(ctx, transform, self.style),
         }
     }
 }
@@ -221,21 +272,31 @@ impl Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FontRegistry;
+    use std::sync::Arc;
+
+    fn test_ctx() -> RenderContext {
+        RenderContext::new(Arc::new(FontRegistry::new()))
+    }
 
     #[test]
     fn test_element_flatten_line() {
+        let ctx = test_ctx();
         let elem = Element::line((0.0, 0.0), (10.0, 10.0));
-        let strokes = elem.flatten();
+        let strokes = elem.flatten(&ctx);
         assert_eq!(strokes.len(), 1);
         assert_eq!(strokes[0].points.len(), 2);
     }
 
     #[test]
     fn test_element_flatten_circle() {
+        let ctx = test_ctx();
         let elem = Element::circle((0.0, 0.0), 10.0);
-        let strokes = elem.flatten();
+        let strokes = elem.flatten(&ctx);
         assert_eq!(strokes.len(), 1);
         assert!(strokes[0].closed);
         assert!(strokes[0].points.len() > 10); // Should have many points
     }
+
+    // Note: Tests requiring actual fonts are in drawing-text or integration tests
 }

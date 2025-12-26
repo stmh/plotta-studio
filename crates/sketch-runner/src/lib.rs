@@ -29,6 +29,21 @@ use winit::window::{Window, WindowId};
 // Re-export drawing-core for convenience
 pub use drawing_core::*;
 
+// Re-export drawing-text types for convenience
+pub use drawing_text::{FontManager, Hershey};
+
+/// Create a new FontRegistry with the Hershey Simplex font pre-loaded
+pub fn create_default_font_registry() -> Arc<FontRegistry> {
+    let registry = Arc::new(FontRegistry::new());
+    let manager = FontManager::new(registry.clone());
+
+    if let Err(e) = manager.load_hershey(Hershey::Simplex) {
+        log::warn!("Failed to load Hershey Simplex font: {}", e);
+    }
+
+    registry
+}
+
 // Re-export keyboard types from winit for sketches to use
 pub use winit::keyboard::{Key, NamedKey};
 
@@ -42,7 +57,7 @@ pub use log;
 /// Implement this trait for your sketch
 pub trait Sketch {
     /// Called once at startup, return initial drawing
-    fn setup(&mut self) -> Drawing;
+    fn setup(&mut self, ctx: &RenderContext) -> Drawing;
 
     /// Called every frame when animating
     /// Return true if drawing changed and needs re-render
@@ -52,16 +67,16 @@ pub trait Sketch {
     }
 
     /// Optional: handle keyboard input
-    fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing) {}
+    fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing, _ctx: &RenderContext) {}
 
     /// Optional: handle mouse press
-    fn mouse_pressed(&mut self, _pos: Point, _drawing: &mut Drawing) {}
+    fn mouse_pressed(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &RenderContext) {}
 
     /// Optional: handle mouse release
-    fn mouse_released(&mut self, _pos: Point, _drawing: &mut Drawing) {}
+    fn mouse_released(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &RenderContext) {}
 
     /// Optional: handle mouse drag
-    fn mouse_dragged(&mut self, _pos: Point, _drawing: &mut Drawing) {}
+    fn mouse_dragged(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &RenderContext) {}
 }
 
 // ============================================================================
@@ -200,6 +215,7 @@ struct AppState<S: Sketch> {
     sketch: S,
     config: RunnerConfig,
     drawing: Drawing,
+    render_ctx: RenderContext,
     ctx: UpdateContext,
     view: ViewState,
     start_time: Instant,
@@ -214,13 +230,17 @@ struct AppState<S: Sketch> {
 
 impl<S: Sketch> AppState<S> {
     fn new(mut sketch: S, config: RunnerConfig) -> Self {
-        let drawing = sketch.setup();
+        // Create font registry with built-in fonts and render context
+        let registry = create_default_font_registry();
+        let render_ctx = RenderContext::new(registry);
+        let drawing = sketch.setup(&render_ctx);
         let now = Instant::now();
 
         Self {
             sketch,
             config,
             drawing,
+            render_ctx,
             ctx: UpdateContext {
                 time: 0.0,
                 delta: 0.0,
@@ -241,7 +261,7 @@ impl<S: Sketch> AppState<S> {
 
     fn refresh_strokes(&mut self) {
         if self.strokes_dirty {
-            self.cached_strokes = self.drawing.flatten();
+            self.cached_strokes = self.drawing.flatten(&self.render_ctx);
             self.strokes_dirty = false;
         }
     }
@@ -471,12 +491,19 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                     self.ctx.mouse_pressed = btn_state == ElementState::Pressed;
 
                     if self.ctx.mouse_pressed && !was_pressed {
-                        self.sketch.mouse_pressed(self.ctx.mouse, &mut self.drawing);
+                        self.sketch.mouse_pressed(
+                            self.ctx.mouse,
+                            &mut self.drawing,
+                            &self.render_ctx,
+                        );
                         self.strokes_dirty = true;
                         needs_redraw = true;
                     } else if !self.ctx.mouse_pressed && was_pressed {
-                        self.sketch
-                            .mouse_released(self.ctx.mouse, &mut self.drawing);
+                        self.sketch.mouse_released(
+                            self.ctx.mouse,
+                            &mut self.drawing,
+                            &self.render_ctx,
+                        );
                         self.strokes_dirty = true;
                         needs_redraw = true;
                     }
@@ -500,7 +527,8 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                 );
 
                 if self.ctx.mouse_pressed {
-                    self.sketch.mouse_dragged(self.ctx.mouse, &mut self.drawing);
+                    self.sketch
+                        .mouse_dragged(self.ctx.mouse, &mut self.drawing, &self.render_ctx);
                     self.strokes_dirty = true;
                     needs_redraw = true;
                 }
@@ -555,7 +583,8 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                     }
 
                     key => {
-                        self.sketch.key_pressed(key, &mut self.drawing);
+                        self.sketch
+                            .key_pressed(key, &mut self.drawing, &self.render_ctx);
                         self.strokes_dirty = true;
                         needs_redraw = true;
                     }

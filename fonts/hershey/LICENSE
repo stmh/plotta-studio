@@ -1,0 +1,26 @@
+Hershey Fonts - Public Domain
+
+The Hershey fonts were developed c. 1967 by Dr. Allen Vincent Hershey 
+at the Naval Weapons Laboratory, Dahlgren, Virginia. As a work of the 
+United States Government, the original font data is in the public domain.
+
+The font data files in this directory are derived from the public domain
+Hershey font definitions and can be freely used, modified, and distributed
+without restriction.
+
+References:
+- Hershey, A.V. (1967). "Calligraphy for Computers". 
+  Naval Weapons Laboratory Technical Report 2101.
+- https://en.wikipedia.org/wiki/Hershey_fonts
+
+The JHF format files were sourced from:
+- The MIT-licensed p5-hershey-js project (https://github.com/LingDong-/p5-hershey-js)
+- The GPL-licensed hershey-fonts project (https://github.com/kamalmostafa/hershey-fonts)
+
+Both sources treat the underlying font data as public domain.
+
+Included Font Variants:
+- Roman: Simplex (simplex.jhf), Duplex (rowmand.jhf), Triplex (rowmant.jhf)
+- Gothic: German Bold (gothgbt.jhf), German (gothgrt.jhf), Italian (gothitt.jhf)
+- Script: Simplex (scripts.jhf), Complex (scriptc.jhf)
+- Times Italic: Regular (timesi.jhf), Bold (timesib.jhf)

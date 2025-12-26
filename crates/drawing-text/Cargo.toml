@@ -1,0 +1,14 @@
+[package]
+name = "drawing-text"
+version.workspace = true
+edition.workspace = true
+description = "Single-line font support for plotta-studio (Hershey, UFO, VSF, SVG formats)"
+
+[dependencies]
+drawing-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+kurbo = { version = "0.11", features = ["serde"] }
+roxmltree = "0.20"
+svgtypes = "0.15"
