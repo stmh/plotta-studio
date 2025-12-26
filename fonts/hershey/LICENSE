@@ -13,6 +13,14 @@ References:
   Naval Weapons Laboratory Technical Report 2101.
 - https://en.wikipedia.org/wiki/Hershey_fonts
 
-The JHF format files were sourced from the MIT-licensed p5-hershey-js 
-project (https://github.com/LingDong-/p5-hershey-js) which also treats
-the underlying font data as public domain.
+The JHF format files were sourced from:
+- The MIT-licensed p5-hershey-js project (https://github.com/LingDong-/p5-hershey-js)
+- The GPL-licensed hershey-fonts project (https://github.com/kamalmostafa/hershey-fonts)
+
+Both sources treat the underlying font data as public domain.
+
+Included Font Variants:
+- Roman: Simplex (simplex.jhf), Duplex (rowmand.jhf), Triplex (rowmant.jhf)
+- Gothic: German Bold (gothgbt.jhf), German (gothgrt.jhf), Italian (gothitt.jhf)
+- Script: Simplex (scripts.jhf), Complex (scriptc.jhf)
+- Times Italic: Regular (timesi.jhf), Bold (timesib.jhf)
