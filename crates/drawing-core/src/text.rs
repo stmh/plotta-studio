@@ -120,7 +120,12 @@ impl Text {
         {
             Some(f) => f,
             None => {
-                log::warn!("Font '{}' not found", self.font_name);
+                let available: Vec<_> = ctx.font_registry().list();
+                log::warn!(
+                    "Font '{}' not found. Available fonts: {:?}",
+                    self.font_name,
+                    available
+                );
                 return Vec::new();
             }
         };

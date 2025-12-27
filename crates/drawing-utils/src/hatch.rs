@@ -2,6 +2,9 @@
 
 use drawing_core::{Color, Element, Group, Point};
 
+/// Safety margin multiplier to ensure hatch lines cover rotated shapes
+const HATCH_EXTENT_MULTIPLIER: f64 = 1.5;
+
 /// Options for generating hatch lines
 #[derive(Debug, Clone)]
 pub struct HatchOptions {
@@ -82,7 +85,7 @@ pub fn generate_hatch_lines(center: Point, radius: f64, options: &HatchOptions) 
     let mut group = Group::new();
 
     // Extend beyond radius to ensure coverage after rotation
-    let extent = radius * 1.5;
+    let extent = radius * HATCH_EXTENT_MULTIPLIER;
 
     // Generate horizontal lines from -extent to +extent
     let mut y = -extent;

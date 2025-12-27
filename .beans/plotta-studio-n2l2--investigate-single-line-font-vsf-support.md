@@ -1,10 +1,11 @@
 ---
 # plotta-studio-n2l2
 title: Investigate Single Line Font (VSF) support
-status: done
+status: completed
 type: epic
+priority: normal
 created_at: 2025-12-23T19:14:41Z
-updated_at: 2025-12-25T00:00:00Z
+updated_at: 2025-12-27T14:12:54Z
 ---
 
 Research and plan Single Line Font support for plotta-studio. Vector Stroke Fonts (VSF) are essential for pen plotters as they draw text with single strokes rather than filled outlines.

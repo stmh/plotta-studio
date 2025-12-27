@@ -1,11 +1,11 @@
 ---
 # plotta-studio-xwfm
 title: Convert Processing fonts to VSF format
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2025-12-26T13:23:30Z
-updated_at: 2025-12-26T13:24:54Z
+updated_at: 2025-12-27T14:34:27Z
 parent: plotta-studio-ah5h
 ---
 
@@ -132,7 +132,7 @@ The converter will populate VSF metadata fields for proper attribution:
 
 ### Phase 4: Integration
 - [x] Update sketch-003-text to demo vintage fonts
-- [ ] Add to FontManager built-in fonts (when FontManager is implemented)
+- [x] Add to FontManager built-in fonts (added to sketch-runner's create_default_font_manager)
 
 ## References
 

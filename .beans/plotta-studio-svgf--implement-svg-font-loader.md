@@ -1,11 +1,12 @@
 ---
 # plotta-studio-svgf
 title: Implement SVG font loader
-status: done
+status: completed
 type: task
-parent: plotta-studio-n2l2
+priority: normal
 created_at: 2025-12-25T14:30:00Z
-updated_at: 2025-12-25T15:00:00Z
+updated_at: 2025-12-27T14:13:08Z
+parent: plotta-studio-n2l2
 ---
 
 Implement SVG font file support for drawing-text crate. SVG fonts use standard SVG path syntax and are well-suited for single-line stroke fonts.

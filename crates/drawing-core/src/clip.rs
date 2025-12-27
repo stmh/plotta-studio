@@ -27,6 +27,7 @@ impl ClipGroup {
         }
     }
 
+    // We use `add` for builder pattern, not arithmetic addition
     #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, element: Element) -> Self {
         self.children.push(element);
@@ -126,6 +127,9 @@ fn clip_stroke(stroke: &Stroke, clip_polygons: &[Polygon<f64>]) -> Vec<Stroke> {
 }
 
 /// Union multiple polygons into a MultiPolygon
+///
+/// Note: O(n²) complexity for n polygons due to repeated union operations.
+/// This is acceptable for typical use (1-3 clip shapes) but could be slow with many shapes.
 fn union_polygons(polygons: &[Polygon<f64>]) -> MultiPolygon<f64> {
     if polygons.is_empty() {
         return MultiPolygon::new(vec![]);
@@ -194,12 +198,20 @@ fn clip_linestring_to_region(
                         // Calculate t parameter along segment
                         let dx = current.x - prev.x;
                         let dy = current.y - prev.y;
-                        let t = if dx.abs() > dy.abs() {
+                        let t = if dx.abs() > 1e-10 && dx.abs() > dy.abs() {
                             (intersection.x - prev.x) / dx
                         } else if dy.abs() > 1e-10 {
                             (intersection.y - prev.y) / dy
                         } else {
-                            0.5
+                            // Degenerate segment - use distance ratio as fallback
+                            let segment_len_sq = dx * dx + dy * dy;
+                            if segment_len_sq > 1e-20 {
+                                let dx_to_int = intersection.x - prev.x;
+                                let dy_to_int = intersection.y - prev.y;
+                                ((dx_to_int * dx + dy_to_int * dy) / segment_len_sq).clamp(0.0, 1.0)
+                            } else {
+                                0.5 // Truly degenerate point
+                            }
                         };
                         if t > 1e-10 && t < 1.0 - 1e-10 {
                             intersections.push((
@@ -218,8 +230,8 @@ fn clip_linestring_to_region(
             }
         }
 
-        // Sort intersections by t parameter
-        intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        // Sort intersections by t parameter (handle NaN gracefully)
+        intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
         if intersections.is_empty() {
             // No intersection - simple case
