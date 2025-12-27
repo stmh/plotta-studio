@@ -54,7 +54,7 @@ impl Default for DvdSketch {
 }
 
 impl Sketch for DvdSketch {
-    fn setup(&mut self, _ctx: &RenderContext) -> Drawing {
+    fn setup(&mut self, _ctx: &SketchContext) -> Drawing {
         Drawing::a4_landscape().with_background(Color::gray(20))
     }
 

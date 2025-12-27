@@ -30,18 +30,18 @@ use winit::window::{Window, WindowId};
 pub use drawing_core::*;
 
 // Re-export drawing-text types for convenience
-pub use drawing_text::{FontManager, Hershey};
+pub use drawing_text::{FontFormat, FontManager, Hershey};
 
-/// Create a new FontRegistry with the Hershey Simplex font pre-loaded
-pub fn create_default_font_registry() -> Arc<FontRegistry> {
-    let registry = Arc::new(FontRegistry::new());
-    let manager = FontManager::with_registry(registry.clone());
+/// Create a FontManager with Hershey fonts pre-loaded
+pub fn create_default_font_manager() -> FontManager {
+    let manager = FontManager::new();
 
-    if let Err(e) = manager.load_hershey(Hershey::Simplex) {
-        log::warn!("Failed to load Hershey Simplex font: {}", e);
+    // Load all Hershey fonts (small, built-in)
+    if let Err(e) = manager.load_all_hershey() {
+        log::warn!("Failed to load Hershey fonts: {}", e);
     }
 
-    registry
+    manager
 }
 
 // Re-export keyboard types from winit for sketches to use
@@ -51,13 +51,25 @@ pub use winit::keyboard::{Key, NamedKey};
 pub use log;
 
 // ============================================================================
+// Sketch context
+// ============================================================================
+
+/// Context passed to sketch methods, providing access to fonts and rendering
+pub struct SketchContext<'a> {
+    /// Render context for flattening elements
+    pub render: &'a RenderContext,
+    /// Font manager for loading and retrieving fonts
+    pub fonts: &'a FontManager,
+}
+
+// ============================================================================
 // Sketch trait
 // ============================================================================
 
 /// Implement this trait for your sketch
 pub trait Sketch {
     /// Called once at startup, return initial drawing
-    fn setup(&mut self, ctx: &RenderContext) -> Drawing;
+    fn setup(&mut self, ctx: &SketchContext) -> Drawing;
 
     /// Called every frame when animating
     /// Return true if drawing changed and needs re-render
@@ -67,16 +79,16 @@ pub trait Sketch {
     }
 
     /// Optional: handle keyboard input
-    fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing, _ctx: &RenderContext) {}
+    fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing, _ctx: &SketchContext) {}
 
     /// Optional: handle mouse press
-    fn mouse_pressed(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &RenderContext) {}
+    fn mouse_pressed(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &SketchContext) {}
 
     /// Optional: handle mouse release
-    fn mouse_released(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &RenderContext) {}
+    fn mouse_released(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &SketchContext) {}
 
     /// Optional: handle mouse drag
-    fn mouse_dragged(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &RenderContext) {}
+    fn mouse_dragged(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &SketchContext) {}
 }
 
 // ============================================================================
@@ -215,6 +227,7 @@ struct AppState<S: Sketch> {
     sketch: S,
     config: RunnerConfig,
     drawing: Drawing,
+    font_manager: FontManager,
     render_ctx: RenderContext,
     ctx: UpdateContext,
     view: ViewState,
@@ -230,16 +243,22 @@ struct AppState<S: Sketch> {
 
 impl<S: Sketch> AppState<S> {
     fn new(mut sketch: S, config: RunnerConfig) -> Self {
-        // Create font registry with built-in fonts and render context
-        let registry = create_default_font_registry();
-        let render_ctx = RenderContext::new(registry);
-        let drawing = sketch.setup(&render_ctx);
+        // Create font manager with built-in Hershey fonts
+        let font_manager = create_default_font_manager();
+        let render_ctx = RenderContext::new(font_manager.registry().clone());
+
+        let sketch_ctx = SketchContext {
+            render: &render_ctx,
+            fonts: &font_manager,
+        };
+        let drawing = sketch.setup(&sketch_ctx);
         let now = Instant::now();
 
         Self {
             sketch,
             config,
             drawing,
+            font_manager,
             render_ctx,
             ctx: UpdateContext {
                 time: 0.0,
@@ -491,19 +510,21 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                     self.ctx.mouse_pressed = btn_state == ElementState::Pressed;
 
                     if self.ctx.mouse_pressed && !was_pressed {
-                        self.sketch.mouse_pressed(
-                            self.ctx.mouse,
-                            &mut self.drawing,
-                            &self.render_ctx,
-                        );
+                        let ctx = SketchContext {
+                            render: &self.render_ctx,
+                            fonts: &self.font_manager,
+                        };
+                        self.sketch
+                            .mouse_pressed(self.ctx.mouse, &mut self.drawing, &ctx);
                         self.strokes_dirty = true;
                         needs_redraw = true;
                     } else if !self.ctx.mouse_pressed && was_pressed {
-                        self.sketch.mouse_released(
-                            self.ctx.mouse,
-                            &mut self.drawing,
-                            &self.render_ctx,
-                        );
+                        let ctx = SketchContext {
+                            render: &self.render_ctx,
+                            fonts: &self.font_manager,
+                        };
+                        self.sketch
+                            .mouse_released(self.ctx.mouse, &mut self.drawing, &ctx);
                         self.strokes_dirty = true;
                         needs_redraw = true;
                     }
@@ -527,8 +548,12 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                 );
 
                 if self.ctx.mouse_pressed {
+                    let ctx = SketchContext {
+                        render: &self.render_ctx,
+                        fonts: &self.font_manager,
+                    };
                     self.sketch
-                        .mouse_dragged(self.ctx.mouse, &mut self.drawing, &self.render_ctx);
+                        .mouse_dragged(self.ctx.mouse, &mut self.drawing, &ctx);
                     self.strokes_dirty = true;
                     needs_redraw = true;
                 }
@@ -583,8 +608,11 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                     }
 
                     key => {
-                        self.sketch
-                            .key_pressed(key, &mut self.drawing, &self.render_ctx);
+                        let ctx = SketchContext {
+                            render: &self.render_ctx,
+                            fonts: &self.font_manager,
+                        };
+                        self.sketch.key_pressed(key, &mut self.drawing, &ctx);
                         self.strokes_dirty = true;
                         needs_redraw = true;
                     }

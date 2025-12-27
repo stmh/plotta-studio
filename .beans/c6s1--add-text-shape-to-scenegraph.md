@@ -1,10 +1,11 @@
 ---
 # c6s1
 title: Add Text shape to scenegraph
-status: done
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-25T17:30:48Z
-updated_at: 2025-12-25T19:45:00Z
+updated_at: 2025-12-27T14:13:02Z
 parent: plotta-studio-n2l2
 ---
 

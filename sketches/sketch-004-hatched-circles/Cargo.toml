@@ -1,0 +1,16 @@
+[package]
+name = "sketch-004-hatched-circles"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+# Enable AxiDraw plotting (requires libudev on Linux)
+hardware = ["drawing-plotter/hardware"]
+
+[dependencies]
+sketch-runner = { workspace = true }
+drawing-svg = { workspace = true }
+drawing-plotter = { workspace = true, default-features = false }
+drawing-text = { workspace = true }
+drawing-utils = { workspace = true }

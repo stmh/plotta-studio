@@ -1,9 +1,11 @@
 //! Element - a scene graph node with shape, transform, and style
 
+use crate::font_registry::FontRef;
 use crate::font_types::TextOptions;
 use kurbo::{Affine, Line, Point, Rect, Vec2};
 use serde::{Deserialize, Serialize};
 
+use crate::clip::ClipGroup;
 use crate::context::RenderContext;
 use crate::flatten::{
     flatten_arc, flatten_circle, flatten_ellipse, flatten_path, flatten_regular_polygon,
@@ -79,9 +81,14 @@ impl Element {
         Self::new(group)
     }
 
-    /// Create a text element
-    pub fn text(text: impl Into<String>, font_name: impl Into<String>) -> Self {
-        Self::new(Text::new(text, font_name))
+    /// Create a clip group that clips children to a closed shape
+    pub fn clip(clip_shape: Element) -> Self {
+        Self::new(ClipGroup::new(clip_shape))
+    }
+
+    /// Create a text element with a font reference
+    pub fn text(text: impl Into<String>, font: FontRef) -> Self {
+        Self::new(Text::new(text, font))
     }
 
     /// Create an element from a pre-flattened stroke
@@ -169,6 +176,17 @@ impl Element {
     pub fn text_debug(mut self, debug: bool) -> Self {
         if let Shape::Text(ref mut text) = self.shape {
             text.debug = debug;
+        }
+        self
+    }
+
+    // === ClipGroup-specific builders ===
+
+    /// Add a child element to a ClipGroup (only applies to ClipGroup shapes)
+    #[allow(clippy::should_implement_trait)]
+    pub fn add(mut self, element: Element) -> Self {
+        if let Shape::ClipGroup(ref mut clip_group) = self.shape {
+            clip_group.push(element);
         }
         self
     }
@@ -263,6 +281,8 @@ impl Element {
                 .iter()
                 .flat_map(|child| child.flatten_with_transform(ctx, transform))
                 .collect(),
+
+            Shape::ClipGroup(clip_group) => clip_group.flatten_with_transform(ctx, transform),
 
             Shape::Text(text) => text.flatten(ctx, transform, self.style),
         }

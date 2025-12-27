@@ -63,34 +63,36 @@ impl FontManager {
 
     /// Load a built-in Hershey font variant.
     ///
-    /// The font is registered with its canonical name (e.g., "Hershey Simplex").
-    pub fn load_hershey(&self, variant: Hershey) -> Result<(), FontError> {
+    /// The font is registered with its canonical name (e.g., "Hershey Simplex")
+    /// and returned for immediate use.
+    pub fn load_hershey(&self, variant: Hershey) -> Result<FontRef, FontError> {
         let font = variant.load()?;
         let font_ref: FontRef = Arc::new(font);
-        self.registry.register(font_ref);
-        Ok(())
+        self.registry.register(font_ref.clone());
+        Ok(font_ref)
     }
 
     /// Load all built-in Hershey font variants.
     ///
+    /// Fonts are registered silently. Use `registry().get()` to retrieve them.
     /// Returns the count of fonts loaded on success.
     /// Fails fast on the first error encountered.
     pub fn load_all_hershey(&self) -> Result<usize, FontError> {
         for variant in Hershey::all() {
-            self.load_hershey(*variant)?;
+            let _ = self.load_hershey(*variant)?;
         }
         Ok(Hershey::all().len())
     }
 
     /// Load a font from string content.
     ///
-    /// Returns the registered font name on success.
+    /// The font is registered and returned for immediate use.
     ///
     /// # Arguments
     ///
     /// * `content` - The font content as a string
     /// * `format` - The font format to use for parsing
-    pub fn load_from_str(&self, content: &str, format: FontFormat) -> Result<String, FontError> {
+    pub fn load_from_str(&self, content: &str, format: FontFormat) -> Result<FontRef, FontError> {
         let font: FontRef = match format {
             FontFormat::Hershey => {
                 return Err(FontError::UnsupportedFormat(
@@ -106,14 +108,13 @@ impl FontManager {
             }
         };
 
-        let name = font.name().to_string();
-        self.registry.register(font);
-        Ok(name)
+        self.registry.register(font.clone());
+        Ok(font)
     }
 
     /// Load a single font file.
     ///
-    /// Returns the registered name (filename stem) on success.
+    /// The font is registered and returned for immediate use.
     ///
     /// # Arguments
     ///
@@ -123,7 +124,7 @@ impl FontManager {
         &self,
         path: impl AsRef<Path>,
         format: FontFormat,
-    ) -> Result<String, FontError> {
+    ) -> Result<FontRef, FontError> {
         let path = path.as_ref();
 
         // Read file contents
@@ -191,6 +192,10 @@ impl FontManager {
 
         Ok(count)
     }
+
+    pub fn get(&self, name: impl AsRef<str>) -> Option<FontRef> {
+        self.registry.get(name)
+    }
 }
 
 #[cfg(test)]
@@ -216,13 +221,13 @@ mod tests {
         let result = manager.load_hershey(Hershey::Simplex);
         assert!(result.is_ok());
 
-        // Font should be in registry
+        let font = result.unwrap();
+        assert_eq!(font.name(), "Hershey Simplex");
+        assert!(font.has_glyph('A'));
+
+        // Font should also be in registry
         assert!(registry.has(Hershey::Simplex));
         assert!(registry.has("Hershey Simplex"));
-
-        let font = registry.get(Hershey::Simplex);
-        assert!(font.is_some());
-        assert!(font.unwrap().has_glyph('A'));
     }
 
     #[test]
@@ -246,12 +251,11 @@ mod tests {
         let result = manager.load_file("../../fonts/vsf/asteroids.vsf", FontFormat::Vsf);
 
         assert!(result.is_ok());
-        let name = result.unwrap();
-        assert!(registry.has(&name));
+        let font = result.unwrap();
+        assert!(font.has_glyph('A'));
 
-        let font = registry.get(&name);
-        assert!(font.is_some());
-        assert!(font.unwrap().has_glyph('A'));
+        // Font should also be in registry
+        assert!(registry.has(font.name()));
     }
 
     #[test]

@@ -14,26 +14,58 @@ use crate::stroke::Stroke;
 use crate::{Color, Point, Rect, Style};
 
 /// Text shape for rendering single-line font text
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Text {
     /// The text content to render
     pub text: String,
-    /// Name of the font (looked up from RenderContext)
+    /// Name of the font (for serialization and fallback lookup)
     pub font_name: String,
     /// Text layout options
     pub options: TextOptions,
     /// Whether to render debug visualization
     pub debug: bool,
+    /// Cached font reference (skipped during serialization)
+    #[serde(skip)]
+    cached_font: Option<FontRef>,
+}
+
+impl std::fmt::Debug for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Text")
+            .field("text", &self.text)
+            .field("font_name", &self.font_name)
+            .field("options", &self.options)
+            .field("debug", &self.debug)
+            .field("cached_font", &self.cached_font.as_ref().map(|_| "..."))
+            .finish()
+    }
 }
 
 impl Text {
-    /// Create a new text shape
-    pub fn new(text: impl Into<String>, font_name: impl Into<String>) -> Self {
+    /// Create a new text shape with a font reference
+    ///
+    /// This is the preferred way to create text elements as it avoids
+    /// string-based font lookups at render time.
+    pub fn new(text: impl Into<String>, font: FontRef) -> Self {
+        Self {
+            text: text.into(),
+            font_name: font.name().to_string(),
+            options: TextOptions::default(),
+            debug: false,
+            cached_font: Some(font),
+        }
+    }
+
+    /// Create a new text shape with a font name (for deserialization)
+    ///
+    /// The font will be looked up from the RenderContext at render time.
+    pub fn with_font_name(text: impl Into<String>, font_name: impl Into<String>) -> Self {
         Self {
             text: text.into(),
             font_name: font_name.into(),
             options: TextOptions::default(),
             debug: false,
+            cached_font: None,
         }
     }
 
@@ -80,10 +112,20 @@ impl Text {
         transform: Affine,
         style: Style,
     ) -> Vec<Stroke> {
-        let font = match ctx.font(&self.font_name) {
+        // Use cached font if available, otherwise look up by name (for deserialized text)
+        let font = match self
+            .cached_font
+            .clone()
+            .or_else(|| ctx.font(&self.font_name))
+        {
             Some(f) => f,
             None => {
-                log::warn!("Font '{}' not found in RenderContext", self.font_name);
+                let available: Vec<_> = ctx.font_registry().list();
+                log::warn!(
+                    "Font '{}' not found. Available fonts: {:?}",
+                    self.font_name,
+                    available
+                );
                 return Vec::new();
             }
         };
@@ -283,16 +325,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_text_creation() {
-        let text = Text::new("Hello", "Hershey Simplex");
+    fn test_text_creation_with_font_name() {
+        let text = Text::with_font_name("Hello", "Hershey Simplex");
         assert_eq!(text.text, "Hello");
         assert_eq!(text.font_name, "Hershey Simplex");
         assert!(!text.debug);
+        assert!(text.cached_font.is_none());
     }
 
     #[test]
     fn test_text_builder() {
-        let text = Text::new("Hello", "Hershey Simplex")
+        let text = Text::with_font_name("Hello", "Hershey Simplex")
             .size(24.0)
             .align(TextAlign::Center)
             .at((100.0, 200.0))
@@ -309,7 +352,8 @@ mod tests {
         use crate::FontRegistry;
         use std::sync::Arc;
 
-        let text = Text::new("Hello", "NonExistent");
+        // Text created with font name but font not in registry
+        let text = Text::with_font_name("Hello", "NonExistent");
         let registry = Arc::new(FontRegistry::new());
         let ctx = RenderContext::new(registry);
         let strokes = text.flatten(&ctx, Affine::IDENTITY, Style::default());
