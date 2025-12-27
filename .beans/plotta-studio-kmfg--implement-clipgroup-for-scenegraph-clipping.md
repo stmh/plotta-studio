@@ -1,10 +1,11 @@
 ---
 # plotta-studio-kmfg
 title: Implement ClipGroup for scenegraph clipping
-status: todo
+status: completed
 type: feature
+priority: normal
 created_at: 2025-12-27T14:03:47Z
-updated_at: 2025-12-27T14:03:47Z
+updated_at: 2025-12-27T14:12:44Z
 ---
 
 Add ClipGroup to the scenegraph that clips its children to a closed shape. Enables hatched shapes, clipping to paper bounds, and nested clips.
@@ -232,14 +233,14 @@ crates/drawing-core/
 
 ## Checklist
 
-- [ ] Add `geo` dependency to `drawing-core/Cargo.toml`
-- [ ] Create `clip.rs` with ClipGroup struct and geo conversions
-- [ ] Add ClipGroup variant to Shape enum
-- [ ] Add Element::clip() constructor
-- [ ] Implement flatten_with_transform for ClipGroup
-- [ ] Implement clip_stroke and union_polygons
-- [ ] Add tests for basic clipping
-- [ ] Add tests for boundary crossing (stroke splitting)
-- [ ] Add tests for multiple clip shapes (union)
-- [ ] Add tests for nested clips (intersection)
-- [ ] Add tests for invalid/empty clip shapes
+- [x] Add `geo` dependency to `drawing-core/Cargo.toml`
+- [x] Create `clip.rs` with ClipGroup struct and geo conversions
+- [x] Add ClipGroup variant to Shape enum
+- [x] Add Element::clip() constructor
+- [x] Implement flatten_with_transform for ClipGroup
+- [x] Implement clip_stroke and union_polygons
+- [x] Add tests for basic clipping
+- [x] Add tests for boundary crossing (stroke splitting)
+- [x] Add tests for multiple clip shapes (union)
+- [x] Add tests for nested clips (intersection)
+- [x] Add tests for invalid/empty clip shapes

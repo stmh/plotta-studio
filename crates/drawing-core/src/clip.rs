@@ -1,0 +1,500 @@
+//! ClipGroup - clips children to a closed shape
+
+use geo::{BooleanOps, Coord, LineString, MultiLineString, MultiPolygon, Polygon};
+use kurbo::Affine;
+use serde::{Deserialize, Serialize};
+
+use crate::context::RenderContext;
+use crate::stroke::Stroke;
+use crate::Element;
+use crate::Point;
+use crate::Style;
+
+/// A group that clips its children to a closed shape
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipGroup {
+    /// The clipping shape (must be closed when flattened)
+    pub clip: Box<Element>,
+    /// Children to be clipped
+    pub children: Vec<Element>,
+}
+
+impl ClipGroup {
+    pub fn new(clip: Element) -> Self {
+        Self {
+            clip: Box::new(clip),
+            children: Vec::new(),
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn add(mut self, element: Element) -> Self {
+        self.children.push(element);
+        self
+    }
+
+    pub fn push(&mut self, element: Element) {
+        self.children.push(element);
+    }
+
+    pub fn len(&self) -> usize {
+        self.children.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.children.is_empty()
+    }
+
+    pub(crate) fn flatten_with_transform(
+        &self,
+        ctx: &RenderContext,
+        parent_transform: Affine,
+    ) -> Vec<Stroke> {
+        // 1. Flatten clip shape to get clip polygons
+        let clip_strokes = self.clip.flatten_with_transform(ctx, parent_transform);
+        let clip_polygons: Vec<Polygon<f64>> =
+            clip_strokes.iter().filter_map(stroke_to_polygon).collect();
+
+        if clip_polygons.is_empty() {
+            return vec![]; // No valid clip region = nothing visible
+        }
+
+        // 2. Flatten children
+        let child_strokes: Vec<Stroke> = self
+            .children
+            .iter()
+            .flat_map(|child| child.flatten_with_transform(ctx, parent_transform))
+            .collect();
+
+        // 3. Clip each stroke against the union of clip polygons
+        child_strokes
+            .iter()
+            .flat_map(|stroke| clip_stroke(stroke, &clip_polygons))
+            .collect()
+    }
+}
+
+// ============================================================================
+// Geo Conversions
+// ============================================================================
+
+fn point_to_coord(p: Point) -> Coord<f64> {
+    Coord { x: p.x, y: p.y }
+}
+
+fn coord_to_point(c: Coord<f64>) -> Point {
+    Point::new(c.x, c.y)
+}
+
+fn stroke_to_linestring(stroke: &Stroke) -> LineString<f64> {
+    LineString::new(stroke.points.iter().map(|p| point_to_coord(*p)).collect())
+}
+
+fn linestring_to_points(ls: &LineString<f64>) -> Vec<Point> {
+    ls.coords().map(|c| coord_to_point(*c)).collect()
+}
+
+/// Convert a closed stroke to a geo Polygon
+fn stroke_to_polygon(stroke: &Stroke) -> Option<Polygon<f64>> {
+    if !stroke.closed || stroke.points.len() < 3 {
+        return None;
+    }
+    let exterior = stroke_to_linestring(stroke);
+    Some(Polygon::new(exterior, vec![]))
+}
+
+// ============================================================================
+// Clipping Algorithm
+// ============================================================================
+
+/// Clip a stroke against a set of clip polygons (union semantics)
+fn clip_stroke(stroke: &Stroke, clip_polygons: &[Polygon<f64>]) -> Vec<Stroke> {
+    let clip_region = union_polygons(clip_polygons);
+
+    if stroke.closed {
+        // For closed strokes, use polygon intersection
+        if let Some(poly) = stroke_to_polygon(stroke) {
+            let clipped = clip_region.intersection(&poly);
+            return polygons_to_strokes(&clipped, stroke.style);
+        }
+    }
+
+    // Open strokes: line clipping
+    let line = stroke_to_linestring(stroke);
+    let clipped = clip_linestring_to_region(&line, &clip_region);
+    linestrings_to_strokes(&clipped, stroke.style)
+}
+
+/// Union multiple polygons into a MultiPolygon
+fn union_polygons(polygons: &[Polygon<f64>]) -> MultiPolygon<f64> {
+    if polygons.is_empty() {
+        return MultiPolygon::new(vec![]);
+    }
+
+    let mut result = MultiPolygon::new(vec![polygons[0].clone()]);
+    for poly in &polygons[1..] {
+        result = result.union(&MultiPolygon::new(vec![poly.clone()]));
+    }
+    result
+}
+
+/// Clip a linestring to a multi-polygon region
+fn clip_linestring_to_region(
+    line: &LineString<f64>,
+    clip_region: &MultiPolygon<f64>,
+) -> MultiLineString<f64> {
+    use geo::{Contains, Line as GeoLine, LineIntersection};
+
+    let mut result_lines: Vec<LineString<f64>> = vec![];
+    let mut current_segment: Vec<Coord<f64>> = vec![];
+
+    let coords: Vec<_> = line.coords().collect();
+    if coords.len() < 2 {
+        return MultiLineString::new(vec![]);
+    }
+
+    // Get all boundary lines from the clip region
+    let boundary_lines: Vec<GeoLine<f64>> = clip_region
+        .0
+        .iter()
+        .flat_map(|poly| {
+            let exterior_lines = poly.exterior().lines();
+            let interior_lines = poly.interiors().iter().flat_map(|ring| ring.lines());
+            exterior_lines.chain(interior_lines)
+        })
+        .collect();
+
+    for i in 0..coords.len() {
+        let current = coords[i];
+        let current_point = geo::Point::new(current.x, current.y);
+        let current_inside = clip_region.contains(&current_point);
+
+        if i == 0 {
+            // First point
+            if current_inside {
+                current_segment.push(*current);
+            }
+            continue;
+        }
+
+        let prev = coords[i - 1];
+        let prev_point = geo::Point::new(prev.x, prev.y);
+        let prev_inside = clip_region.contains(&prev_point);
+
+        let segment = GeoLine::new(*prev, *current);
+
+        // Find intersections with boundary
+        let mut intersections: Vec<(f64, Coord<f64>)> = vec![];
+        for boundary in &boundary_lines {
+            if let Some(intersection) =
+                geo::algorithm::line_intersection::line_intersection(segment, *boundary)
+            {
+                match intersection {
+                    LineIntersection::SinglePoint { intersection, .. } => {
+                        // Calculate t parameter along segment
+                        let dx = current.x - prev.x;
+                        let dy = current.y - prev.y;
+                        let t = if dx.abs() > dy.abs() {
+                            (intersection.x - prev.x) / dx
+                        } else if dy.abs() > 1e-10 {
+                            (intersection.y - prev.y) / dy
+                        } else {
+                            0.5
+                        };
+                        if t > 1e-10 && t < 1.0 - 1e-10 {
+                            intersections.push((
+                                t,
+                                Coord {
+                                    x: intersection.x,
+                                    y: intersection.y,
+                                },
+                            ));
+                        }
+                    }
+                    LineIntersection::Collinear { .. } => {
+                        // Handle collinear case if needed
+                    }
+                }
+            }
+        }
+
+        // Sort intersections by t parameter
+        intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+        if intersections.is_empty() {
+            // No intersection - simple case
+            if current_inside {
+                if current_segment.is_empty() && prev_inside {
+                    current_segment.push(*prev);
+                }
+                current_segment.push(*current);
+            } else if !current_segment.is_empty() {
+                // Leaving clip region
+                if current_segment.len() >= 2 {
+                    result_lines.push(LineString::new(current_segment.clone()));
+                }
+                current_segment.clear();
+            }
+        } else {
+            // Has intersections - process each segment
+            let mut inside = prev_inside;
+
+            for (_t, intersection_coord) in &intersections {
+                if inside {
+                    // We're inside, add point up to intersection
+                    if current_segment.is_empty() {
+                        current_segment.push(*prev);
+                    }
+                    current_segment.push(*intersection_coord);
+                    if current_segment.len() >= 2 {
+                        result_lines.push(LineString::new(current_segment.clone()));
+                    }
+                    current_segment.clear();
+                } else {
+                    // We're outside, start new segment at intersection
+                    current_segment.push(*intersection_coord);
+                }
+                inside = !inside;
+            }
+
+            // Handle final segment
+            if inside && current_inside {
+                if current_segment.is_empty() {
+                    // Find last intersection point
+                    if let Some((_, coord)) = intersections.last() {
+                        current_segment.push(*coord);
+                    }
+                }
+                current_segment.push(*current);
+            } else if !inside && !current_segment.is_empty() {
+                if current_segment.len() >= 2 {
+                    result_lines.push(LineString::new(current_segment.clone()));
+                }
+                current_segment.clear();
+            }
+        }
+    }
+
+    // Don't forget the last segment
+    if current_segment.len() >= 2 {
+        result_lines.push(LineString::new(current_segment));
+    }
+
+    MultiLineString::new(result_lines)
+}
+
+/// Convert a MultiPolygon to strokes
+fn polygons_to_strokes(mp: &MultiPolygon<f64>, style: Style) -> Vec<Stroke> {
+    mp.0.iter()
+        .map(|poly| {
+            let points = linestring_to_points(poly.exterior());
+            Stroke {
+                points,
+                style,
+                closed: true,
+            }
+        })
+        .filter(|s| s.points.len() >= 3)
+        .collect()
+}
+
+/// Convert a MultiLineString to strokes
+fn linestrings_to_strokes(mls: &MultiLineString<f64>, style: Style) -> Vec<Stroke> {
+    mls.0
+        .iter()
+        .map(|ls| Stroke {
+            points: linestring_to_points(ls),
+            style,
+            closed: false,
+        })
+        .filter(|s| s.points.len() >= 2)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{FontRegistry, Group};
+    use std::sync::Arc;
+
+    fn test_ctx() -> RenderContext {
+        RenderContext::new(Arc::new(FontRegistry::new()))
+    }
+
+    #[test]
+    fn test_clip_lines_inside_circle() {
+        let ctx = test_ctx();
+
+        // Create a horizontal line fully inside a circle
+        let line = Element::polyline(vec![Point::new(40.0, 50.0), Point::new(60.0, 50.0)]);
+
+        let clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Line is fully inside, should have 1 stroke
+        assert_eq!(strokes.len(), 1);
+        assert_eq!(strokes[0].points.len(), 2);
+    }
+
+    #[test]
+    fn test_clip_lines_crossing_boundary() {
+        let ctx = test_ctx();
+
+        // Create a horizontal line crossing through a circle
+        let line = Element::polyline(vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]);
+
+        let clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Line crosses boundary, should have clipped segment(s)
+        assert!(!strokes.is_empty());
+        // The clipped portion should be shorter than original
+        let total_points: usize = strokes.iter().map(|s| s.points.len()).sum();
+        assert!(total_points < 100); // Original line would have ~2 points, clipped has fewer spans
+    }
+
+    #[test]
+    fn test_clip_lines_outside() {
+        let ctx = test_ctx();
+
+        // Create a line completely outside the clip region
+        let line = Element::polyline(vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)]);
+
+        let clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Line is fully outside, should have no strokes
+        assert!(strokes.is_empty());
+    }
+
+    #[test]
+    fn test_clip_with_rect() {
+        let ctx = test_ctx();
+
+        // Create diagonal lines
+        let line = Element::polyline(vec![Point::new(0.0, 0.0), Point::new(100.0, 100.0)]);
+
+        let clipped = Element::clip(Element::rect(25.0, 25.0, 50.0, 50.0)).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Line should be clipped to rect bounds
+        assert!(!strokes.is_empty());
+    }
+
+    #[test]
+    fn test_clip_multiple_shapes_union() {
+        let ctx = test_ctx();
+
+        // Two circles as clip region
+        let clip_shape = Element::group(
+            Group::new()
+                .add(Element::circle((30.0, 50.0), 15.0))
+                .add(Element::circle((70.0, 50.0), 15.0)),
+        );
+
+        // Horizontal line through both circles
+        let line = Element::polyline(vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]);
+
+        let clipped = Element::clip(clip_shape).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Should have segments in both circles
+        assert!(strokes.len() >= 2);
+    }
+
+    #[test]
+    fn test_clip_closed_shape() {
+        let ctx = test_ctx();
+
+        // A square that partially overlaps with clip circle
+        let square = Element::rect(40.0, 40.0, 30.0, 30.0);
+
+        let clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(square);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Should have clipped polygon(s)
+        assert!(!strokes.is_empty());
+        // Result should be closed
+        assert!(strokes.iter().all(|s| s.closed));
+    }
+
+    #[test]
+    fn test_clip_empty_clip_region() {
+        let ctx = test_ctx();
+
+        // Use an open line as clip (invalid - not closed)
+        let invalid_clip = Element::polyline(vec![Point::new(0.0, 0.0), Point::new(100.0, 100.0)]);
+
+        let line = Element::polyline(vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]);
+
+        let clipped = Element::clip(invalid_clip).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // No valid clip region = nothing visible
+        assert!(strokes.is_empty());
+    }
+
+    #[test]
+    fn test_clip_with_transform() {
+        let ctx = test_ctx();
+
+        // Create clipped content with rotation
+        let line = Element::polyline(vec![Point::new(-20.0, 0.0), Point::new(20.0, 0.0)]);
+
+        let clipped = Element::clip(Element::circle((0.0, 0.0), 15.0))
+            .add(line)
+            .translate(50.0, 50.0);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Should have clipped line, translated to (50, 50)
+        assert!(!strokes.is_empty());
+        // Check that points are around (50, 50)
+        for stroke in &strokes {
+            for p in &stroke.points {
+                assert!(p.x > 30.0 && p.x < 70.0);
+                assert!(p.y > 30.0 && p.y < 70.0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_nested_clips_intersection() {
+        let ctx = test_ctx();
+
+        // Outer clip: large circle
+        // Inner clip: overlapping circle
+        // Content: horizontal line through both
+        let line = Element::polyline(vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]);
+
+        // Inner clip intersects with outer clip
+        let inner_clipped = Element::clip(Element::circle((60.0, 50.0), 25.0)).add(line);
+
+        // Outer clip
+        let outer_clipped = Element::clip(Element::circle((40.0, 50.0), 25.0)).add(inner_clipped);
+
+        let strokes = outer_clipped.flatten(&ctx);
+
+        // Line should only appear in the intersection of both circles
+        assert!(!strokes.is_empty());
+
+        // All points should be within BOTH clip regions (intersection area is roughly 40-60 on x-axis)
+        for stroke in &strokes {
+            for p in &stroke.points {
+                // Points should be in the overlapping region
+                assert!(
+                    p.x >= 35.0 && p.x <= 65.0,
+                    "Point x={} outside intersection",
+                    p.x
+                );
+            }
+        }
+    }
+}

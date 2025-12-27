@@ -4,8 +4,10 @@
 //! - Primitives: Line, Circle, Rect, Path, etc. (using kurbo for geometry)
 //! - Element: A shape with transform and style
 //! - Group: Nested elements that transform together
+//! - ClipGroup: Elements clipped to a closed shape
 //! - Drawing: The top-level container
 
+mod clip;
 mod color;
 mod context;
 mod drawing;
@@ -28,6 +30,7 @@ pub use kurbo::{Affine, BezPath, Line, PathEl, Point, Rect, Vec2};
 pub type Transform = Affine;
 
 // Re-export our types
+pub use clip::ClipGroup;
 pub use color::Color;
 pub use context::RenderContext;
 pub use drawing::Drawing;

@@ -3,6 +3,7 @@
 use kurbo::{Line, Rect};
 use serde::{Deserialize, Serialize};
 
+use crate::clip::ClipGroup;
 use crate::group::Group;
 use crate::path::Path;
 use crate::primitives::{Arc, Circle, Ellipse, Polyline, RegularPolygon};
@@ -19,6 +20,7 @@ pub enum Shape {
     RegularPolygon(RegularPolygon),
     Path(Path),
     Group(Group),
+    ClipGroup(ClipGroup),
     Text(Text),
 }
 
@@ -79,5 +81,11 @@ impl From<Group> for Shape {
 impl From<Text> for Shape {
     fn from(v: Text) -> Self {
         Shape::Text(v)
+    }
+}
+
+impl From<ClipGroup> for Shape {
+    fn from(v: ClipGroup) -> Self {
+        Shape::ClipGroup(v)
     }
 }
