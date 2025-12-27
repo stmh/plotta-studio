@@ -22,26 +22,37 @@ use crate::vsf::VsfFont;
 /// # Example
 ///
 /// ```rust,ignore
-/// use drawing_core::FontRegistry;
 /// use drawing_text::{FontManager, Hershey};
-/// use std::sync::Arc;
 ///
-/// let registry = Arc::new(FontRegistry::new());
-/// let manager = FontManager::new(registry.clone());
+/// // Create manager with its own registry
+/// let manager = FontManager::new();
 ///
 /// // Load a built-in Hershey font
 /// manager.load_hershey(Hershey::Simplex)?;
 ///
 /// // Get font from registry using the enum
-/// let font = registry.get(Hershey::Simplex);
+/// let font = manager.registry().get(Hershey::Simplex);
 /// ```
 pub struct FontManager {
     registry: Arc<FontRegistry>,
 }
 
+impl Default for FontManager {
+    fn default() -> Self {
+        Self {
+            registry: Arc::new(FontRegistry::new()),
+        }
+    }
+}
+
 impl FontManager {
+    /// Create a new font manager with a new empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Create a new font manager with the given registry.
-    pub fn new(registry: Arc<FontRegistry>) -> Self {
+    pub fn with_registry(registry: Arc<FontRegistry>) -> Self {
         Self { registry }
     }
 
@@ -71,6 +82,35 @@ impl FontManager {
         Ok(Hershey::all().len())
     }
 
+    /// Load a font from string content.
+    ///
+    /// Returns the registered font name on success.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The font content as a string
+    /// * `format` - The font format to use for parsing
+    pub fn load_from_str(&self, content: &str, format: FontFormat) -> Result<String, FontError> {
+        let font: FontRef = match format {
+            FontFormat::Hershey => {
+                return Err(FontError::UnsupportedFormat(
+                    "Use load_hershey() for Hershey fonts".to_string(),
+                ));
+            }
+            FontFormat::Vsf => Arc::new(VsfFont::from_json(content)?),
+            FontFormat::SvgFont => Arc::new(SvgFont::parse(content)?),
+            FontFormat::Ufo => {
+                return Err(FontError::UnsupportedFormat(
+                    "UFO format not yet implemented".to_string(),
+                ));
+            }
+        };
+
+        let name = font.name().to_string();
+        self.registry.register(font);
+        Ok(name)
+    }
+
     /// Load a single font file.
     ///
     /// Returns the registered name (filename stem) on success.
@@ -90,29 +130,7 @@ impl FontManager {
         let contents = std::fs::read_to_string(path)
             .map_err(|e| FontError::IoError(path.to_path_buf(), e.to_string()))?;
 
-        // Parse based on format
-        let font: FontRef = match format {
-            FontFormat::Hershey => {
-                return Err(FontError::UnsupportedFormat(
-                    "Use load_hershey() for Hershey fonts".to_string(),
-                ));
-            }
-            FontFormat::Vsf => Arc::new(VsfFont::from_json(&contents)?),
-            FontFormat::SvgFont => Arc::new(SvgFont::parse(&contents)?),
-            FontFormat::Ufo => {
-                return Err(FontError::UnsupportedFormat(
-                    "UFO format not yet implemented".to_string(),
-                ));
-            }
-        };
-
-        // Get the name from the font itself
-        let name = font.name().to_string();
-
-        // Register the font
-        self.registry.register(font);
-
-        Ok(name)
+        self.load_from_str(&contents, format)
     }
 
     /// Load all fonts from a directory.
@@ -181,7 +199,7 @@ mod tests {
 
     fn create_manager() -> (Arc<FontRegistry>, FontManager) {
         let registry = Arc::new(FontRegistry::new());
-        let manager = FontManager::new(registry.clone());
+        let manager = FontManager::with_registry(registry.clone());
         (registry, manager)
     }
 

@@ -13,11 +13,8 @@
 //! - Space: Fit to window
 //! - Escape: Quit
 
-use drawing_text::{
-    FontManager, SvgFont, TextAlign, TextLayout, TextOptions, TextRenderer, VsfFont,
-};
+use drawing_text::{FontFormat, FontManager, TextAlign, TextLayout, TextOptions, TextRenderer};
 use sketch_runner::*;
-use std::sync::Arc;
 
 /// Embedded Relief SingleLine SVG font
 const RELIEF_SINGLE_LINE_SVG: &str =
@@ -38,7 +35,7 @@ const SAMPLE_TEXTS: &[&str] = &[
 ];
 
 struct TextSketch {
-    registry: Arc<FontRegistry>,
+    manager: FontManager,
     font_names: Vec<String>,
     font_index: usize,
     font_size: f64,
@@ -49,37 +46,36 @@ struct TextSketch {
 
 impl Default for TextSketch {
     fn default() -> Self {
-        // Create font registry and manager
-        let registry = Arc::new(FontRegistry::new());
-        let manager = FontManager::new(registry.clone());
+        // Create font manager (with its own registry)
+        let manager = FontManager::default();
 
         // Load all built-in Hershey fonts
         if let Err(e) = manager.load_all_hershey() {
             log::warn!("Failed to load Hershey fonts: {}", e);
         }
 
-        // Register SVG font
-        if let Ok(font) = SvgFont::parse(RELIEF_SINGLE_LINE_SVG) {
-            registry.register(Arc::new(font));
+        // Load SVG font from embedded content
+        if let Err(e) = manager.load_from_str(RELIEF_SINGLE_LINE_SVG, FontFormat::SvgFont) {
+            log::warn!("Failed to load SVG font: {}", e);
         }
 
-        // Register VSF fonts
-        if let Ok(font) = VsfFont::from_json(ASTEROIDS_VSF) {
-            registry.register(Arc::new(font));
+        // Load VSF fonts from embedded content
+        if let Err(e) = manager.load_from_str(ASTEROIDS_VSF, FontFormat::Vsf) {
+            log::warn!("Failed to load Asteroids VSF font: {}", e);
         }
-        if let Ok(font) = VsfFont::from_json(APPLE410_VSF) {
-            registry.register(Arc::new(font));
+        if let Err(e) = manager.load_from_str(APPLE410_VSF, FontFormat::Vsf) {
+            log::warn!("Failed to load Apple410 VSF font: {}", e);
         }
-        if let Ok(font) = VsfFont::from_json(MINF_VSF) {
-            registry.register(Arc::new(font));
+        if let Err(e) = manager.load_from_str(MINF_VSF, FontFormat::Vsf) {
+            log::warn!("Failed to load Minf VSF font: {}", e);
         }
 
         // Get sorted list of all available fonts
-        let mut font_names = registry.list();
+        let mut font_names = manager.registry().list();
         font_names.sort();
 
         Self {
-            registry,
+            manager,
             font_names,
             font_index: 0,
             font_size: 12.0, // 12mm tall text
@@ -150,7 +146,7 @@ impl TextSketch {
     }
 
     fn load_font(&self) -> Option<FontRef> {
-        self.registry.get(self.current_font_name())
+        self.manager.registry().get(self.current_font_name())
     }
 
     fn generate(&self, drawing: &mut Drawing, ctx: &RenderContext) {

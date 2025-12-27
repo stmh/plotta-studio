@@ -35,7 +35,7 @@ pub use drawing_text::{FontManager, Hershey};
 /// Create a new FontRegistry with the Hershey Simplex font pre-loaded
 pub fn create_default_font_registry() -> Arc<FontRegistry> {
     let registry = Arc::new(FontRegistry::new());
-    let manager = FontManager::new(registry.clone());
+    let manager = FontManager::with_registry(registry.clone());
 
     if let Err(e) = manager.load_hershey(Hershey::Simplex) {
         log::warn!("Failed to load Hershey Simplex font: {}", e);

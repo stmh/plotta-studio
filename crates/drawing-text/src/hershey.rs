@@ -32,11 +32,11 @@ use crate::types::{Contour, ContourSegment, FontMetrics, Glyph};
 /// ```rust,ignore
 /// use drawing_text::{FontManager, Hershey};
 ///
-/// let manager = FontManager::new(registry);
+/// let manager = FontManager::new();
 /// manager.load_hershey(Hershey::Simplex)?;
 ///
 /// // Get font using the enum (implements AsRef<str>)
-/// let font = registry.get(Hershey::Simplex);
+/// let font = manager.registry().get(Hershey::Simplex);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Hershey {
