@@ -13,6 +13,12 @@ cargo run -p sketch-003-text
 
 # Run the hatched circles demo (shows clipping)
 cargo run -p sketch-004-hatched-circles
+
+# Run the SVG viewer
+cargo run -p sketch-005-svg-viewer
+
+# Run the Hamburg SVG demo
+cargo run -p sketch-006-hamburg
 ```
 
 ## Controls
@@ -35,7 +41,7 @@ plotta-studio/
 ├── crates/
 │   ├── drawing-core/      # Primitives, transforms, scene graph, clipping
 │   ├── drawing-text/      # Single-line font support (Hershey, VSF, SVG fonts)
-│   ├── drawing-svg/       # SVG export
+│   ├── drawing-svg/       # SVG import/export
 │   ├── drawing-plotter/   # AxiDraw plotter control & path optimization
 │   ├── drawing-utils/     # Hatching, frames, and other utilities
 │   └── sketch-runner/     # Window, rendering, input handling
@@ -47,7 +53,9 @@ plotta-studio/
     ├── sketch-001-radial/
     ├── sketch-002-dvd-screensaver/
     ├── sketch-003-text/
-    └── sketch-004-hatched-circles/
+    ├── sketch-004-hatched-circles/
+    ├── sketch-005-svg-viewer/
+    └── sketch-006-hamburg/
 ```
 
 ## Creating a Sketch
@@ -262,6 +270,32 @@ drawing.add(draw_frame_with_title(
 ));
 ```
 
+## SVG Import
+
+```rust
+use drawing_svg::{import_svg, import_svg_with_options, ImportOptions, FillBehavior};
+
+// Basic import
+let result = import_svg("input.svg")?;
+let drawing = result.drawing;
+
+// Import with options
+let options = ImportOptions {
+    fill_behavior: FillBehavior::ConvertToOutline,  // or Ignore
+    default_stroke_width: 1.0,
+    default_stroke_color: Color::BLACK,
+    import_clip_paths: true,
+};
+let result = import_svg_with_options("input.svg", &options)?;
+
+// Check for warnings about unsupported elements
+for warning in result.warnings {
+    println!("Warning: {:?}", warning);
+}
+```
+
+Note: SVG import is lossy - only path/line data is preserved. Complex SVG features (gradients, filters, text) are ignored.
+
 ## Export
 
 ```rust
@@ -336,7 +370,7 @@ Drawing::new(w, h)       // Custom size
 - [x] ClipGroup for clipping elements to shapes
 - [x] Hatching utilities
 - [x] AxiDraw plotter control
-- [ ] SVG import
+- [x] SVG import
 - [ ] 2-opt path optimization
 - [ ] Stroke reversal optimization
 - [ ] GUI for parameters (egui)
