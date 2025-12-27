@@ -1,10 +1,11 @@
 ---
 # plotta-studio-svg1
 title: SVG import
-status: todo
+status: completed
 type: epic
+priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-27T17:30:00Z
+updated_at: 2025-12-27T18:06:40Z
 ---
 
 Add SVG import capability to the drawing-svg crate, allowing users to load existing SVG files and convert them to Drawing structures.

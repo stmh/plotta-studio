@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 drawing-core = { workspace = true }
 thiserror = { workspace = true }
+usvg = "0.45"

@@ -86,6 +86,11 @@ impl Element {
         Self::new(ClipGroup::new(clip_shape))
     }
 
+    /// Create an element from an existing ClipGroup
+    pub fn clip_group(clip_group: ClipGroup) -> Self {
+        Self::new(clip_group)
+    }
+
     /// Create a text element with a font reference
     pub fn text(text: impl Into<String>, font: FontRef) -> Self {
         Self::new(Text::new(text, font))
@@ -103,6 +108,18 @@ impl Element {
     }
 
     // === Transform builders ===
+
+    /// Set the transform directly
+    pub fn with_transform(mut self, transform: Affine) -> Self {
+        self.transform = transform;
+        self
+    }
+
+    /// Set the style directly
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 
     pub fn translate(mut self, x: f64, y: f64) -> Self {
         self.transform = self.transform.then_translate(Vec2::new(x, y));
