@@ -2300,6 +2300,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sketch-005-svg-viewer"
+version = "0.1.0"
+dependencies = [
+ "drawing-svg",
+ "drawing-text",
+ "sketch-runner",
+]
+
+[[package]]
+name = "sketch-006-hamburg"
+version = "0.1.0"
+dependencies = [
+ "drawing-plotter",
+ "drawing-svg",
+ "drawing-text",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
 name = "sketch-runner"
 version = "0.1.0"
 dependencies = [

@@ -280,13 +280,25 @@ impl<S: Sketch> AppState<S> {
 
     fn refresh_strokes(&mut self) {
         if self.strokes_dirty {
+            let start = std::time::Instant::now();
             self.cached_strokes = self.drawing.flatten(&self.render_ctx);
+            let elapsed = start.elapsed();
+            if elapsed.as_millis() > 100 {
+                log::info!(
+                    "Flattened {} strokes in {:?}",
+                    self.cached_strokes.len(),
+                    elapsed
+                );
+            }
             self.strokes_dirty = false;
         }
     }
 
     fn render(&mut self, state: &mut RenderState) {
+        let render_start = std::time::Instant::now();
+
         self.refresh_strokes();
+        let after_flatten = std::time::Instant::now();
 
         let mut scene = Scene::new();
 
@@ -317,8 +329,20 @@ impl<S: Sketch> AppState<S> {
             &KurboRect::new(0.0, 0.0, self.drawing.width, self.drawing.height),
         );
 
-        // Draw all strokes
-        for stroke in &self.cached_strokes {
+        let before_strokes = std::time::Instant::now();
+
+        // Draw all strokes (limit to prevent GPU overload)
+        let max_strokes = 75000; // Limit strokes to prevent GPU hang
+        let stroke_count = self.cached_strokes.len();
+        if stroke_count > max_strokes {
+            log::warn!(
+                "Limiting render from {} to {} strokes to prevent GPU overload",
+                stroke_count,
+                max_strokes
+            );
+        }
+
+        for stroke in self.cached_strokes.iter().take(max_strokes) {
             if stroke.points.len() < 2 {
                 continue;
             }
@@ -342,9 +366,12 @@ impl<S: Sketch> AppState<S> {
             scene.stroke(&style, transform, &brush, None, &path);
         }
 
+        let after_strokes = std::time::Instant::now();
+
         // Render
         let surface_texture = state.surface.get_current_texture().unwrap();
 
+        let before_gpu = std::time::Instant::now();
         state
             .renderer
             .render_to_surface(
@@ -360,8 +387,19 @@ impl<S: Sketch> AppState<S> {
                 },
             )
             .unwrap();
+        let after_gpu = std::time::Instant::now();
 
         surface_texture.present();
+
+        let total = render_start.elapsed();
+        log::info!(
+            "Render: flatten={:?}, scene_build={:?}, gpu={:?}, total={:?}, strokes={}",
+            after_flatten.duration_since(render_start),
+            after_strokes.duration_since(before_strokes),
+            after_gpu.duration_since(before_gpu),
+            total,
+            self.cached_strokes.len()
+        );
     }
 }
 

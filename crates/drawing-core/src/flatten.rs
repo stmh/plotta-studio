@@ -74,15 +74,19 @@ pub fn flatten_path(path: &Path, transform: &Affine, style: Style) -> Vec<Stroke
     let mut current_points: Vec<Point> = Vec::new();
     let mut last_point = Point::ZERO;
     let mut start_point = Point::ZERO;
+    let mut is_closed = false;
 
     for el in bezpath.elements() {
         match el {
             PathEl::MoveTo(p) => {
                 if current_points.len() > 1 {
-                    strokes.push(Stroke::new(std::mem::take(&mut current_points), style));
+                    let mut stroke = Stroke::new(std::mem::take(&mut current_points), style);
+                    stroke.closed = is_closed;
+                    strokes.push(stroke);
                 } else {
                     current_points.clear();
                 }
+                is_closed = false;
                 start_point = *p;
                 last_point = *p;
                 current_points.push(*transform * *p);
@@ -113,12 +117,15 @@ pub fn flatten_path(path: &Path, transform: &Affine, style: Style) -> Vec<Stroke
             }
             PathEl::ClosePath => {
                 current_points.push(*transform * start_point);
+                is_closed = true;
             }
         }
     }
 
     if current_points.len() > 1 {
-        strokes.push(Stroke::new(current_points, style));
+        let mut stroke = Stroke::new(current_points, style);
+        stroke.closed = is_closed;
+        strokes.push(stroke);
     }
 
     strokes

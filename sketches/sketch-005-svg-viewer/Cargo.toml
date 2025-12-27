@@ -1,0 +1,9 @@
+[package]
+name = "sketch-005-svg-viewer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sketch-runner = { workspace = true }
+drawing-svg = { workspace = true }
+drawing-text = { workspace = true }
