@@ -14,6 +14,7 @@ repository = "https://github.com/stmh/plotta-studio"
 [workspace.dependencies]
 drawing-core = { path = "crates/drawing-core" }
 drawing-text = { path = "crates/drawing-text" }
+drawing-utils = { path = "crates/drawing-utils" }
 sketch-runner = { path = "crates/sketch-runner" }
 drawing-svg = { path = "crates/drawing-svg" }
 drawing-plotter = { path = "crates/drawing-plotter", default-features = false }

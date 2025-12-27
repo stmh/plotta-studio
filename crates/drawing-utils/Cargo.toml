@@ -1,0 +1,9 @@
+[package]
+name = "drawing-utils"
+version.workspace = true
+edition.workspace = true
+description = "Reusable utilities for plotta-studio drawings"
+
+[dependencies]
+drawing-core = { workspace = true }
+drawing-text = { workspace = true }
