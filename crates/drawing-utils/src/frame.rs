@@ -1,6 +1,9 @@
 //! Frame and title utilities for drawings
 
 use drawing_core::{Color, Drawing, Element, FontRef, Group, TextAlign, TextOptions};
+use drawing_text::FontManager;
+
+use crate::signature::{signature_bounds, signature_normalized};
 
 /// Options for drawing a frame with title
 #[derive(Clone)]
@@ -25,6 +28,12 @@ pub struct FrameOptions {
     pub title_offset: f64,
     /// Horizontal offset of title from left of frame
     pub title_margin: f64,
+    /// Whether to include a signature in the bottom right corner
+    pub with_signature: bool,
+    /// Height of the signature in drawing units (width scales proportionally)
+    pub signature_height: f64,
+    /// Horizontal offset of signature from right edge of frame
+    pub signature_margin: f64,
 }
 
 impl FrameOptions {
@@ -41,7 +50,19 @@ impl FrameOptions {
             font_size: 3.0,
             title_offset: 2.0,
             title_margin: 0.0,
+            with_signature: false,
+            signature_height: 5.0,
+            signature_margin: 0.0,
         }
+    }
+
+    /// Create new frame options with the default font (ReliefSingleLine).
+    ///
+    /// Returns None if the default font is not loaded in the FontManager.
+    /// Make sure to call `manager.load_relief_single_line()` or
+    /// `manager.load_all_builtin()` first.
+    pub fn with_default_font(manager: &FontManager) -> Option<Self> {
+        manager.default_font().map(Self::new)
     }
 
     /// Set all margins to the same value
@@ -95,6 +116,24 @@ impl FrameOptions {
 
     pub fn title_margin(mut self, margin: f64) -> Self {
         self.title_margin = margin;
+        self
+    }
+
+    /// Enable signature in the bottom right corner
+    pub fn with_signature(mut self) -> Self {
+        self.with_signature = true;
+        self
+    }
+
+    /// Set the height of the signature (width scales proportionally)
+    pub fn signature_height(mut self, height: f64) -> Self {
+        self.signature_height = height;
+        self
+    }
+
+    /// Set the horizontal margin of the signature from the right edge
+    pub fn signature_margin(mut self, margin: f64) -> Self {
+        self.signature_margin = margin;
         self
     }
 }
@@ -170,6 +209,26 @@ pub fn draw_frame_with_title(drawing: &Drawing, title: &str, options: &FrameOpti
             .stroke_width(options.stroke_width)
             .stroke_color(options.color),
     );
+
+    // Add signature if enabled
+    if options.with_signature {
+        let (_, _, sig_width, sig_height) = signature_bounds();
+        let scale = options.signature_height / sig_height;
+        let scaled_width = sig_width * scale;
+
+        // Position in bottom right corner, below the frame line
+        let sig_x = drawing.width - options.margin_right - scaled_width - options.signature_margin;
+        let sig_y = drawing.height - options.margin_bottom + options.title_offset;
+
+        group.push(
+            signature_normalized()
+                .scale(scale, scale)
+                .translate(sig_x, sig_y)
+                .stroke_width(options.stroke_width)
+                .stroke_color(options.color)
+                .scale_stroke(false),
+        );
+    }
 
     Element::group(group)
 }

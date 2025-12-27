@@ -3,18 +3,19 @@
 use kurbo::Point;
 use serde::{Deserialize, Serialize};
 
-use crate::Style;
+use crate::style::ResolvedStyle;
 
 /// A flattened stroke - the final output for rendering/plotting
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stroke {
     pub points: Vec<Point>,
-    pub style: Style,
+    #[serde(flatten)]
+    pub style: ResolvedStyle,
     pub closed: bool,
 }
 
 impl Stroke {
-    pub fn new(points: Vec<Point>, style: Style) -> Self {
+    pub fn new(points: Vec<Point>, style: ResolvedStyle) -> Self {
         Self {
             points,
             style,
@@ -27,7 +28,7 @@ impl Stroke {
         self
     }
 
-    pub fn line(from: Point, to: Point, style: Style) -> Self {
+    pub fn line(from: Point, to: Point, style: ResolvedStyle) -> Self {
         Self::new(vec![from, to], style)
     }
 
@@ -67,7 +68,7 @@ mod tests {
     fn test_stroke_length() {
         let stroke = Stroke::new(
             vec![Point::new(0.0, 0.0), Point::new(3.0, 4.0)],
-            Style::default(),
+            ResolvedStyle::default(),
         );
         assert!(approx_eq(stroke.length(), 5.0));
     }

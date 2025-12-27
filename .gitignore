@@ -10,3 +10,4 @@
 # OS
 .DS_Store
 Thumbs.db
+/drawing.json

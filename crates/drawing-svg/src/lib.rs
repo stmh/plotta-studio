@@ -130,7 +130,7 @@ pub fn write_svg<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use drawing_core::{Element, FontRegistry, Point, Style};
+    use drawing_core::{Element, FontRegistry, Point, ResolvedStyle};
     use std::sync::Arc;
 
     fn test_ctx() -> RenderContext {
@@ -192,7 +192,7 @@ mod tests {
     fn test_stroke_to_svg_simple_line() {
         let stroke = Stroke::new(
             vec![Point::new(0.0, 0.0), Point::new(100.0, 50.0)],
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let svg = stroke_to_svg(&stroke);
 
@@ -210,7 +210,7 @@ mod tests {
                 Point::new(100.0, 0.0),
                 Point::new(50.0, 100.0),
             ],
-            Style::default(),
+            ResolvedStyle::default(),
         )
         .closed();
         let svg = stroke_to_svg(&stroke);
@@ -222,7 +222,7 @@ mod tests {
     fn test_stroke_to_svg_open_path() {
         let stroke = Stroke::new(
             vec![Point::new(0.0, 0.0), Point::new(100.0, 0.0)],
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let svg = stroke_to_svg(&stroke);
 
@@ -233,7 +233,7 @@ mod tests {
     fn test_stroke_to_svg_stroke_width() {
         let stroke = Stroke::new(
             vec![Point::new(0.0, 0.0), Point::new(10.0, 10.0)],
-            Style::new(2.5, Color::BLACK),
+            ResolvedStyle::new(2.5, Color::BLACK),
         );
         let svg = stroke_to_svg(&stroke);
 
@@ -244,7 +244,7 @@ mod tests {
     fn test_stroke_to_svg_stroke_color() {
         let stroke = Stroke::new(
             vec![Point::new(0.0, 0.0), Point::new(10.0, 10.0)],
-            Style::new(1.0, Color::RED),
+            ResolvedStyle::new(1.0, Color::RED),
         );
         let svg = stroke_to_svg(&stroke);
 
@@ -255,7 +255,7 @@ mod tests {
     fn test_stroke_to_svg_negative_coordinates() {
         let stroke = Stroke::new(
             vec![Point::new(-10.0, -20.0), Point::new(10.0, 20.0)],
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let svg = stroke_to_svg(&stroke);
 

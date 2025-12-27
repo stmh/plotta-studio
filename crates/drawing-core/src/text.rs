@@ -11,7 +11,8 @@ use crate::context::RenderContext;
 use crate::font_registry::FontRef;
 use crate::font_types::{TextAlign, TextLayout, TextOptions, TextRenderer};
 use crate::stroke::Stroke;
-use crate::{Color, Point, Rect, Style};
+use crate::style::ResolvedStyle;
+use crate::{Color, Point, Rect};
 
 /// Text shape for rendering single-line font text
 #[derive(Clone, Serialize, Deserialize)]
@@ -110,7 +111,7 @@ impl Text {
         &self,
         ctx: &RenderContext,
         transform: Affine,
-        style: Style,
+        style: ResolvedStyle,
     ) -> Vec<Stroke> {
         // Use cached font if available, otherwise look up by name (for deserialized text)
         let font = match self
@@ -162,7 +163,7 @@ impl Text {
         layout: &TextLayout,
         font: &FontRef,
         transform: Affine,
-        style: Style,
+        style: ResolvedStyle,
     ) -> Vec<Stroke> {
         let metrics = font.metrics();
         let mut strokes = Vec::new();
@@ -215,40 +216,28 @@ impl Text {
                 };
 
                 // Baseline (red)
-                strokes.push(
-                    self.make_line(
-                        (line_start_x, baseline_y),
-                        (line_end_x, baseline_y),
-                        transform,
-                        Style::default()
-                            .with_stroke_width(debug_stroke_width)
-                            .with_stroke_color(baseline_color),
-                    ),
-                );
+                strokes.push(self.make_line(
+                    (line_start_x, baseline_y),
+                    (line_end_x, baseline_y),
+                    transform,
+                    ResolvedStyle::new(debug_stroke_width, baseline_color),
+                ));
 
                 // Ascender line (green)
-                strokes.push(
-                    self.make_line(
-                        (line_start_x, ascender_y),
-                        (line_end_x, ascender_y),
-                        transform,
-                        Style::default()
-                            .with_stroke_width(debug_stroke_width)
-                            .with_stroke_color(ascender_color),
-                    ),
-                );
+                strokes.push(self.make_line(
+                    (line_start_x, ascender_y),
+                    (line_end_x, ascender_y),
+                    transform,
+                    ResolvedStyle::new(debug_stroke_width, ascender_color),
+                ));
 
                 // Descender line (blue)
-                strokes.push(
-                    self.make_line(
-                        (line_start_x, descender_y),
-                        (line_end_x, descender_y),
-                        transform,
-                        Style::default()
-                            .with_stroke_width(debug_stroke_width)
-                            .with_stroke_color(descender_color),
-                    ),
-                );
+                strokes.push(self.make_line(
+                    (line_start_x, descender_y),
+                    (line_end_x, descender_y),
+                    transform,
+                    ResolvedStyle::new(debug_stroke_width, descender_color),
+                ));
             }
 
             // Draw glyph bounding box (orange)
@@ -258,29 +247,21 @@ impl Text {
                 let w = glyph_bounds.width() * scale;
                 let h = glyph_bounds.height() * scale;
 
-                strokes.push(
-                    self.make_rect(
-                        Rect::from_origin_size((x, y), (w, h)),
-                        transform,
-                        Style::default()
-                            .with_stroke_width(debug_stroke_width)
-                            .with_stroke_color(bbox_color),
-                    ),
-                );
+                strokes.push(self.make_rect(
+                    Rect::from_origin_size((x, y), (w, h)),
+                    transform,
+                    ResolvedStyle::new(debug_stroke_width, bbox_color),
+                ));
             }
 
             // Draw advance width marker (purple vertical line)
             let advance_x = pos.x + glyph.advance_width * scale;
-            strokes.push(
-                self.make_line(
-                    (advance_x, ascender_y),
-                    (advance_x, descender_y),
-                    transform,
-                    Style::default()
-                        .with_stroke_width(debug_stroke_width * 0.5)
-                        .with_stroke_color(advance_color),
-                ),
-            );
+            strokes.push(self.make_line(
+                (advance_x, ascender_y),
+                (advance_x, descender_y),
+                transform,
+                ResolvedStyle::new(debug_stroke_width * 0.5, advance_color),
+            ));
         }
 
         strokes
@@ -292,7 +273,7 @@ impl Text {
         from: impl Into<Point>,
         to: impl Into<Point>,
         transform: Affine,
-        style: Style,
+        style: ResolvedStyle,
     ) -> Stroke {
         let p1 = transform * from.into();
         let p2 = transform * to.into();
@@ -304,7 +285,7 @@ impl Text {
     }
 
     /// Helper to create a rectangle stroke
-    fn make_rect(&self, rect: Rect, transform: Affine, style: Style) -> Stroke {
+    fn make_rect(&self, rect: Rect, transform: Affine, style: ResolvedStyle) -> Stroke {
         let corners = [
             Point::new(rect.x0, rect.y0),
             Point::new(rect.x1, rect.y0),
@@ -356,7 +337,7 @@ mod tests {
         let text = Text::with_font_name("Hello", "NonExistent");
         let registry = Arc::new(FontRegistry::new());
         let ctx = RenderContext::new(registry);
-        let strokes = text.flatten(&ctx, Affine::IDENTITY, Style::default());
+        let strokes = text.flatten(&ctx, Affine::IDENTITY, ResolvedStyle::default());
         assert!(strokes.is_empty());
     }
 

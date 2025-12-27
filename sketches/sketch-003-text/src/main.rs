@@ -170,7 +170,7 @@ impl TextSketch {
             .letter_spacing(self.letter_spacing);
 
         let layout = renderer.layout(text, font.clone(), &options);
-        let strokes = layout.to_strokes(Style::default().with_stroke_width(0.5), 0.5);
+        let strokes = layout.to_strokes(ResolvedStyle::default().with_stroke_width(0.5), 0.5);
 
         for stroke in strokes {
             drawing.add(Element::from_stroke(stroke));
@@ -189,7 +189,7 @@ impl TextSketch {
         let title = self.current_font_name();
         let title_layout = renderer.layout(title, font.clone(), &title_options);
         let title_strokes = title_layout.to_strokes(
-            Style::default()
+            ResolvedStyle::default()
                 .with_stroke_width(0.3)
                 .with_stroke_color(Color::gray(100)),
             0.5,
@@ -210,7 +210,7 @@ impl TextSketch {
 
         let info_layout = renderer.layout(&info, font.clone(), &info_options);
         let info_strokes = info_layout.to_strokes(
-            Style::default()
+            ResolvedStyle::default()
                 .with_stroke_width(0.2)
                 .with_stroke_color(Color::gray(120)),
             0.5,
@@ -234,7 +234,7 @@ impl TextSketch {
 
             let sample_layout = renderer.layout(sample, font.clone(), &sample_options);
             let sample_strokes = sample_layout.to_strokes(
-                Style::default()
+                ResolvedStyle::default()
                     .with_stroke_width(0.2)
                     .with_stroke_color(Color::gray(80)),
                 0.5,

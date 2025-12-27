@@ -36,7 +36,7 @@ pub mod vsf;
 pub use error::FontError;
 pub use font::{Font, FontFormat, FontLoader, FontSource};
 pub use hershey::{Hershey, HersheyFont};
-pub use manager::FontManager;
+pub use manager::{FontManager, DEFAULT_FONT_NAME};
 pub use svgfont::SvgFont;
 pub use types::{
     Contour, ContourSegment, FontMetrics, Glyph, PositionedGlyph, TextAlign, TextLayout,

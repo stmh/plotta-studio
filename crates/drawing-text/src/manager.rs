@@ -14,6 +14,13 @@ use crate::hershey::Hershey;
 use crate::svgfont::SvgFont;
 use crate::vsf::VsfFont;
 
+/// Embedded ReliefSingleLine SVG font
+const RELIEF_SINGLE_LINE_SVG: &str =
+    include_str!("../../../fonts/svg/ReliefSingleLine-Regular.svg");
+
+/// Name of the default font
+pub const DEFAULT_FONT_NAME: &str = "Relief SingleLine SVG";
+
 /// Font manager for loading fonts into a registry.
 ///
 /// The FontManager handles font loading from various sources (files, directories,
@@ -82,6 +89,33 @@ impl FontManager {
             let _ = self.load_hershey(*variant)?;
         }
         Ok(Hershey::all().len())
+    }
+
+    /// Load the built-in ReliefSingleLine font (the default font).
+    ///
+    /// This is a high-quality single-line font suitable for pen plotting.
+    pub fn load_relief_single_line(&self) -> Result<FontRef, FontError> {
+        let font = SvgFont::parse(RELIEF_SINGLE_LINE_SVG)?;
+        let font_ref: FontRef = Arc::new(font);
+        self.registry.register(font_ref.clone());
+        Ok(font_ref)
+    }
+
+    /// Load all built-in fonts (Hershey fonts + ReliefSingleLine).
+    ///
+    /// Returns the count of fonts loaded on success.
+    pub fn load_all_builtin(&self) -> Result<usize, FontError> {
+        let mut count = self.load_all_hershey()?;
+        self.load_relief_single_line()?;
+        count += 1;
+        Ok(count)
+    }
+
+    /// Get the default font (ReliefSingleLine).
+    ///
+    /// Returns None if the font hasn't been loaded yet.
+    pub fn default_font(&self) -> Option<FontRef> {
+        self.registry.get(DEFAULT_FONT_NAME)
     }
 
     /// Load a font from string content.

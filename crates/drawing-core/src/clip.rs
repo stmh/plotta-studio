@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::context::RenderContext;
 use crate::stroke::Stroke;
+use crate::style::ResolvedStyle;
 use crate::Element;
 use crate::Point;
-use crate::Style;
 
 /// Tolerance for geometric distance comparisons (in coordinate units, typically mm).
 /// This is used to determine if two points are "close enough" to be considered the same.
@@ -54,13 +54,16 @@ impl ClipGroup {
         self.children.is_empty()
     }
 
-    pub(crate) fn flatten_with_transform(
+    pub(crate) fn flatten_with_inherited(
         &self,
         ctx: &RenderContext,
         parent_transform: Affine,
+        parent_style: &ResolvedStyle,
     ) -> Vec<Stroke> {
         // 1. Flatten clip shape to get clip polygons
-        let clip_strokes = self.clip.flatten_with_transform(ctx, parent_transform);
+        let clip_strokes = self
+            .clip
+            .flatten_with_inherited(ctx, parent_transform, parent_style);
         let clip_polygons: Vec<Polygon<f64>> =
             clip_strokes.iter().filter_map(stroke_to_polygon).collect();
 
@@ -72,7 +75,7 @@ impl ClipGroup {
         let child_strokes: Vec<Stroke> = self
             .children
             .iter()
-            .flat_map(|child| child.flatten_with_transform(ctx, parent_transform))
+            .flat_map(|child| child.flatten_with_inherited(ctx, parent_transform, parent_style))
             .collect();
 
         // 3. Clip each stroke against the union of clip polygons
@@ -335,7 +338,7 @@ fn clip_linestring_to_region(
 }
 
 /// Convert a MultiLineString to strokes
-fn linestrings_to_strokes(mls: &MultiLineString<f64>, style: Style) -> Vec<Stroke> {
+fn linestrings_to_strokes(mls: &MultiLineString<f64>, style: ResolvedStyle) -> Vec<Stroke> {
     mls.0
         .iter()
         .map(|ls| Stroke {

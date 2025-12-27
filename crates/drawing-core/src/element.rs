@@ -15,6 +15,7 @@ use crate::path::Path;
 use crate::primitives::{Arc, Circle, Ellipse, Polyline, RegularPolygon};
 use crate::shape::Shape;
 use crate::stroke::Stroke;
+use crate::style::ResolvedStyle;
 use crate::text::Text;
 use crate::{Color, Style};
 
@@ -104,7 +105,7 @@ impl Element {
         } else {
             Polyline::new(stroke.points)
         };
-        Self::new(polyline).style(stroke.style)
+        Self::new(polyline).with_style(stroke.style.into())
     }
 
     // === Transform builders ===
@@ -162,12 +163,22 @@ impl Element {
     }
 
     pub fn stroke_width(mut self, w: f64) -> Self {
-        self.style.stroke_width = w;
+        self.style.stroke_width = Some(w);
         self
     }
 
     pub fn stroke_color(mut self, c: Color) -> Self {
-        self.style.stroke_color = c;
+        self.style.stroke_color = Some(c);
+        self
+    }
+
+    /// Set whether stroke width should scale with transforms (default: true)
+    ///
+    /// When false, the stroke width remains constant regardless of element scaling.
+    /// Useful for signatures, icons, or other elements that should maintain
+    /// consistent line weight when scaled.
+    pub fn scale_stroke(mut self, scale: bool) -> Self {
+        self.style.scale_stroke = Some(scale);
         self
     }
 
@@ -212,26 +223,35 @@ impl Element {
 
     /// Flatten to strokes, applying transform
     pub fn flatten(&self, ctx: &RenderContext) -> Vec<Stroke> {
-        self.flatten_with_transform(ctx, Affine::IDENTITY)
+        self.flatten_with_inherited(ctx, Affine::IDENTITY, &ResolvedStyle::default())
     }
 
-    pub(crate) fn flatten_with_transform(
+    pub(crate) fn flatten_with_inherited(
         &self,
         ctx: &RenderContext,
         parent_transform: Affine,
+        parent_style: &ResolvedStyle,
     ) -> Vec<Stroke> {
         let transform = parent_transform * self.transform;
 
-        // Scale stroke width based on transform's scale factor
-        // Extract approximate uniform scale from the transform matrix
-        let coeffs = transform.as_coeffs();
-        let scale_x = (coeffs[0] * coeffs[0] + coeffs[1] * coeffs[1]).sqrt();
-        let scale_y = (coeffs[2] * coeffs[2] + coeffs[3] * coeffs[3]).sqrt();
-        let scale_factor = (scale_x + scale_y) / 2.0; // Average scale
+        // Resolve style by inheriting from parent
+        let resolved_style = self.style.resolve(parent_style);
 
-        let scaled_style = Style {
-            stroke_width: self.style.stroke_width * scale_factor,
-            stroke_color: self.style.stroke_color,
+        // Scale stroke width based on transform's scale factor (if enabled)
+        let scaled_style = if resolved_style.scale_stroke {
+            // Extract approximate uniform scale from the transform matrix
+            let coeffs = transform.as_coeffs();
+            let scale_x = (coeffs[0] * coeffs[0] + coeffs[1] * coeffs[1]).sqrt();
+            let scale_y = (coeffs[2] * coeffs[2] + coeffs[3] * coeffs[3]).sqrt();
+            let scale_factor = (scale_x + scale_y) / 2.0; // Average scale
+
+            ResolvedStyle {
+                stroke_width: resolved_style.stroke_width * scale_factor,
+                stroke_color: resolved_style.stroke_color,
+                scale_stroke: resolved_style.scale_stroke,
+            }
+        } else {
+            resolved_style
         };
 
         match &self.shape {
@@ -308,12 +328,14 @@ impl Element {
             Shape::Group(group) => group
                 .children
                 .iter()
-                .flat_map(|child| child.flatten_with_transform(ctx, transform))
+                .flat_map(|child| child.flatten_with_inherited(ctx, transform, &resolved_style))
                 .collect(),
 
-            Shape::ClipGroup(clip_group) => clip_group.flatten_with_transform(ctx, transform),
+            Shape::ClipGroup(clip_group) => {
+                clip_group.flatten_with_inherited(ctx, transform, &resolved_style)
+            }
 
-            Shape::Text(text) => text.flatten(ctx, transform, self.style),
+            Shape::Text(text) => text.flatten(ctx, transform, resolved_style),
         }
     }
 }

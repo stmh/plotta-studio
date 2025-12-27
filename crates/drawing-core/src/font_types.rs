@@ -5,7 +5,7 @@
 
 use crate::font_registry::FontRef;
 use crate::stroke::Stroke;
-use crate::style::Style;
+use crate::style::ResolvedStyle;
 use crate::Path;
 use kurbo::Rect;
 use kurbo::{Point, Shape};
@@ -159,7 +159,7 @@ impl Contour {
     }
 
     /// Convert to a drawing-core Stroke by flattening curves
-    pub fn to_stroke(&self, style: Style, tolerance: f64) -> Stroke {
+    pub fn to_stroke(&self, style: ResolvedStyle, tolerance: f64) -> Stroke {
         let points = self.flatten(tolerance);
         let mut stroke = Stroke::new(points, style);
         if self.closed {
@@ -244,7 +244,7 @@ impl Glyph {
     }
 
     /// Convert all contours to strokes
-    pub fn to_strokes(&self, style: Style, tolerance: f64) -> Vec<Stroke> {
+    pub fn to_strokes(&self, style: ResolvedStyle, tolerance: f64) -> Vec<Stroke> {
         self.contours
             .iter()
             .map(|c| c.to_stroke(style, tolerance))
@@ -402,7 +402,7 @@ impl std::fmt::Debug for TextLayout {
 
 impl TextLayout {
     /// Convert entire layout to strokes
-    pub fn to_strokes(&self, style: Style, tolerance: f64) -> Vec<Stroke> {
+    pub fn to_strokes(&self, style: ResolvedStyle, tolerance: f64) -> Vec<Stroke> {
         let font = &self.font;
         self.glyphs
             .iter()

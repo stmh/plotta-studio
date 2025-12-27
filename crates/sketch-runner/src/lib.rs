@@ -32,13 +32,13 @@ pub use drawing_core::*;
 // Re-export drawing-text types for convenience
 pub use drawing_text::{FontFormat, FontManager, Hershey};
 
-/// Create a FontManager with Hershey fonts pre-loaded
+/// Create a FontManager with all built-in fonts pre-loaded
 pub fn create_default_font_manager() -> FontManager {
     let manager = FontManager::new();
 
-    // Load all Hershey fonts (small, built-in)
-    if let Err(e) = manager.load_all_hershey() {
-        log::warn!("Failed to load Hershey fonts: {}", e);
+    // Load all built-in fonts (Hershey + ReliefSingleLine)
+    if let Err(e) = manager.load_all_builtin() {
+        log::warn!("Failed to load built-in fonts: {}", e);
     }
 
     manager
