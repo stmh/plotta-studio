@@ -1,10 +1,11 @@
 ---
 # plotta-studio-axi4
 title: Implement plot drawing function
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-23T19:00:00Z
+updated_at: 2025-12-27T13:42:10Z
 parent: plotta-studio-axi1
 ---
 
