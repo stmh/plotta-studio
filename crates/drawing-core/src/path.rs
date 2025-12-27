@@ -33,6 +33,15 @@ impl Path {
         }
     }
 
+    /// Create a new path with pre-allocated capacity
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            segments: Vec::with_capacity(capacity),
+        }
+    }
+
+    // Builder methods (consume self, return Self)
+
     pub fn move_to(mut self, p: impl Into<Point>) -> Self {
         self.segments.push(PathSegment::MoveTo(p.into()));
         self
@@ -68,6 +77,40 @@ impl Path {
     pub fn close(mut self) -> Self {
         self.segments.push(PathSegment::Close);
         self
+    }
+
+    // Mutable methods (borrow &mut self, for use in loops)
+
+    pub fn push_move_to(&mut self, p: impl Into<Point>) {
+        self.segments.push(PathSegment::MoveTo(p.into()));
+    }
+
+    pub fn push_line_to(&mut self, p: impl Into<Point>) {
+        self.segments.push(PathSegment::LineTo(p.into()));
+    }
+
+    pub fn push_quad_to(&mut self, ctrl: impl Into<Point>, to: impl Into<Point>) {
+        self.segments.push(PathSegment::QuadTo {
+            ctrl: ctrl.into(),
+            to: to.into(),
+        });
+    }
+
+    pub fn push_cubic_to(
+        &mut self,
+        ctrl1: impl Into<Point>,
+        ctrl2: impl Into<Point>,
+        to: impl Into<Point>,
+    ) {
+        self.segments.push(PathSegment::CubicTo {
+            ctrl1: ctrl1.into(),
+            ctrl2: ctrl2.into(),
+            to: to.into(),
+        });
+    }
+
+    pub fn push_close(&mut self) {
+        self.segments.push(PathSegment::Close);
     }
 
     /// Convert to kurbo BezPath

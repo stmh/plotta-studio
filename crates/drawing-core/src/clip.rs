@@ -10,6 +10,14 @@ use crate::Element;
 use crate::Point;
 use crate::Style;
 
+/// Tolerance for geometric distance comparisons (in coordinate units, typically mm).
+/// This is used to determine if two points are "close enough" to be considered the same.
+const DISTANCE_TOLERANCE: f64 = 1e-6;
+
+/// Tolerance for comparing normalized parameters (t values in 0..1 range).
+/// Used for deduplicating intersection points along a line segment.
+const PARAMETER_TOLERANCE: f64 = 1e-6;
+
 /// A group that clips its children to a closed shape
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipGroup {
@@ -109,21 +117,36 @@ fn stroke_to_polygon(stroke: &Stroke) -> Option<Polygon<f64>> {
 // ============================================================================
 
 /// Clip a stroke against a set of clip polygons (union semantics)
+///
+/// For pen plotting, all strokes are treated as lines (not filled shapes),
+/// so we always use line clipping even for closed paths.
 fn clip_stroke(stroke: &Stroke, clip_polygons: &[Polygon<f64>]) -> Vec<Stroke> {
     let clip_region = union_polygons(clip_polygons);
 
-    if stroke.closed {
-        // For closed strokes, use polygon intersection
-        if let Some(poly) = stroke_to_polygon(stroke) {
-            let clipped = clip_region.intersection(&poly);
-            return polygons_to_strokes(&clipped, stroke.style);
+    // Always use line clipping for pen plotting
+    // Even closed strokes are just outlines that need to be clipped as lines
+    let line = stroke_to_linestring(stroke);
+    let clipped = clip_linestring_to_region(&line, &clip_region);
+
+    // Preserve the closed flag if the original stroke was closed and we got a single result
+    let mut result = linestrings_to_strokes(&clipped, stroke.style);
+
+    // If original was closed and result has exactly one segment that forms a complete loop,
+    // keep it closed. Otherwise, the clipping broke it into segments.
+    if stroke.closed && result.len() == 1 {
+        if let Some(first) = result.first_mut() {
+            // Check if it's still a closed loop (first and last point are close)
+            if first.points.len() >= 3 {
+                let first_pt = first.points.first().unwrap();
+                let last_pt = first.points.last().unwrap();
+                if first_pt.distance(*last_pt) < DISTANCE_TOLERANCE {
+                    first.closed = true;
+                }
+            }
         }
     }
 
-    // Open strokes: line clipping
-    let line = stroke_to_linestring(stroke);
-    let clipped = clip_linestring_to_region(&line, &clip_region);
-    linestrings_to_strokes(&clipped, stroke.style)
+    result
 }
 
 /// Union multiple polygons into a MultiPolygon
@@ -230,8 +253,13 @@ fn clip_linestring_to_region(
             }
         }
 
-        // Sort intersections by t parameter (handle NaN gracefully)
+        // Sort intersections by t parameter, then deduplicate nearby values.
+        // Sorting first ensures dedup_by (which only removes consecutive duplicates)
+        // will find all duplicates, since equal values become adjacent after sorting.
+        // This handles the case where a line passes through a polygon corner,
+        // producing two intersection points at nearly the same t value.
         intersections.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        intersections.dedup_by(|a, b| (a.0 - b.0).abs() < PARAMETER_TOLERANCE);
 
         if intersections.is_empty() {
             // No intersection - simple case
@@ -253,8 +281,9 @@ fn clip_linestring_to_region(
 
             for (_t, intersection_coord) in &intersections {
                 if inside {
-                    // We're inside, add point up to intersection
+                    // We're inside, add point up to intersection (exiting)
                     if current_segment.is_empty() {
+                        // If segment is empty, we should have started from prev point
                         current_segment.push(*prev);
                     }
                     current_segment.push(*intersection_coord);
@@ -263,26 +292,36 @@ fn clip_linestring_to_region(
                     }
                     current_segment.clear();
                 } else {
-                    // We're outside, start new segment at intersection
+                    // We're outside, start new segment at intersection (entering)
                     current_segment.push(*intersection_coord);
                 }
                 inside = !inside;
             }
 
-            // Handle final segment
-            if inside && current_inside {
-                if current_segment.is_empty() {
-                    // Find last intersection point
-                    if let Some((_, coord)) = intersections.last() {
-                        current_segment.push(*coord);
+            // Handle final segment after all intersections
+            if inside {
+                // We ended up inside after all intersections
+                if current_inside {
+                    // Current point is also inside, continue the segment
+                    current_segment.push(*current);
+                } else {
+                    // Current point is outside but we're inside - shouldn't happen
+                    // with proper intersection detection, but handle gracefully
+                    if current_segment.len() >= 2 {
+                        result_lines.push(LineString::new(current_segment.clone()));
                     }
+                    current_segment.clear();
                 }
-                current_segment.push(*current);
-            } else if !inside && !current_segment.is_empty() {
-                if current_segment.len() >= 2 {
-                    result_lines.push(LineString::new(current_segment.clone()));
+            } else {
+                // We ended up outside after all intersections
+                if !current_segment.is_empty() {
+                    // We have a dangling segment start - shouldn't have content
+                    // unless something went wrong
+                    if current_segment.len() >= 2 {
+                        result_lines.push(LineString::new(current_segment.clone()));
+                    }
+                    current_segment.clear();
                 }
-                current_segment.clear();
             }
         }
     }
@@ -293,21 +332,6 @@ fn clip_linestring_to_region(
     }
 
     MultiLineString::new(result_lines)
-}
-
-/// Convert a MultiPolygon to strokes
-fn polygons_to_strokes(mp: &MultiPolygon<f64>, style: Style) -> Vec<Stroke> {
-    mp.0.iter()
-        .map(|poly| {
-            let points = linestring_to_points(poly.exterior());
-            Stroke {
-                points,
-                style,
-                closed: true,
-            }
-        })
-        .filter(|s| s.points.len() >= 3)
-        .collect()
 }
 
 /// Convert a MultiLineString to strokes
@@ -365,6 +389,39 @@ mod tests {
         // The clipped portion should be shorter than original
         let total_points: usize = strokes.iter().map(|s| s.points.len()).sum();
         assert!(total_points < 100); // Original line would have ~2 points, clipped has fewer spans
+    }
+
+    #[test]
+    fn test_clip_diagonal_through_center() {
+        let ctx = test_ctx();
+
+        // Create a diagonal line from (0,0) to (200,200) through a circle at (100,100) r=70
+        // This is the exact case from the clipped.svg that was failing
+        let line = Element::polyline(vec![Point::new(0.0, 0.0), Point::new(200.0, 200.0)]);
+
+        let clipped = Element::clip(Element::circle((100.0, 100.0), 70.0)).add(line);
+
+        let strokes = clipped.flatten(&ctx);
+
+        // Line should be clipped - the diagonal passes through the circle
+        assert!(
+            !strokes.is_empty(),
+            "Diagonal line through circle center should produce clipped strokes"
+        );
+
+        // Verify points are inside the circle (with tolerance for bezier approximation)
+        for stroke in &strokes {
+            for p in &stroke.points {
+                let dist = ((p.x - 100.0).powi(2) + (p.y - 100.0).powi(2)).sqrt();
+                assert!(
+                    dist <= 71.0, // Allow small tolerance
+                    "Point ({}, {}) outside clip circle (dist={})",
+                    p.x,
+                    p.y,
+                    dist
+                );
+            }
+        }
     }
 
     #[test]
@@ -430,10 +487,21 @@ mod tests {
 
         let strokes = clipped.flatten(&ctx);
 
-        // Should have clipped polygon(s)
+        // Should have clipped strokes (the square outline clipped to circle)
         assert!(!strokes.is_empty());
-        // Result should be closed
-        assert!(strokes.iter().all(|s| s.closed));
+        // For pen plotting, we clip as lines, so result may be segments
+        // All points should be within or near the clip circle
+        for stroke in &strokes {
+            for p in &stroke.points {
+                let dist = ((p.x - 50.0).powi(2) + (p.y - 50.0).powi(2)).sqrt();
+                assert!(
+                    dist <= 21.0, // Allow small tolerance
+                    "Point ({}, {}) outside clip circle",
+                    p.x,
+                    p.y
+                );
+            }
+        }
     }
 
     #[test]

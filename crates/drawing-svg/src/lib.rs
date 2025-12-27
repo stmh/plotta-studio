@@ -3,10 +3,18 @@
 //! Note: Import is lossy - only path/line data is preserved.
 //! Complex SVG features (gradients, filters, text, etc.) are ignored.
 
+mod import;
+
 use drawing_core::{Color, Drawing, RenderContext, Stroke};
 use std::io::Write;
 use std::path::Path;
 use thiserror::Error;
+
+// Re-export import functionality
+pub use import::{
+    import_svg, import_svg_string, import_svg_string_with_options, import_svg_with_options,
+    FillBehavior, ImportOptions, ImportResult, ImportWarning,
+};
 
 #[derive(Error, Debug)]
 pub enum SvgError {

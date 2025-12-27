@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <!-- Circular clip path -->
+    <clipPath id="circleClip">
+      <circle cx="100" cy="100" r="70"/>
+    </clipPath>
+    <!-- Star-shaped clip path -->
+    <clipPath id="starClip">
+      <polygon points="100,10 120,80 190,80 135,120 155,190 100,150 45,190 65,120 10,80 80,80"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background frame -->
+  <rect x="10" y="10" width="180" height="180" fill="none" stroke="black" stroke-width="2"/>
+
+  <!-- Diagonal lines clipped by circle -->
+  <g clip-path="url(#circleClip)">
+    <line x1="0" y1="0" x2="200" y2="200" stroke="blue" stroke-width="1.5"/>
+    <line x1="0" y1="40" x2="200" y2="240" stroke="blue" stroke-width="1.5"/>
+    <line x1="0" y1="80" x2="200" y2="280" stroke="blue" stroke-width="1.5"/>
+    <line x1="0" y1="120" x2="200" y2="320" stroke="blue" stroke-width="1.5"/>
+    <line x1="0" y1="160" x2="200" y2="360" stroke="blue" stroke-width="1.5"/>
+    <line x1="0" y1="-40" x2="200" y2="160" stroke="blue" stroke-width="1.5"/>
+    <line x1="0" y1="-80" x2="200" y2="120" stroke="blue" stroke-width="1.5"/>
+    <line x1="40" y1="0" x2="240" y2="200" stroke="blue" stroke-width="1.5"/>
+    <line x1="80" y1="0" x2="280" y2="200" stroke="blue" stroke-width="1.5"/>
+    <line x1="-40" y1="0" x2="160" y2="200" stroke="blue" stroke-width="1.5"/>
+    <line x1="-80" y1="0" x2="120" y2="200" stroke="blue" stroke-width="1.5"/>
+  </g>
+
+  <!-- Concentric circles clipped by star -->
+  <g clip-path="url(#starClip)">
+    <circle cx="100" cy="100" r="20" fill="none" stroke="red" stroke-width="1"/>
+    <circle cx="100" cy="100" r="35" fill="none" stroke="red" stroke-width="1"/>
+    <circle cx="100" cy="100" r="50" fill="none" stroke="red" stroke-width="1"/>
+    <circle cx="100" cy="100" r="65" fill="none" stroke="red" stroke-width="1"/>
+    <circle cx="100" cy="100" r="80" fill="none" stroke="red" stroke-width="1"/>
+    <circle cx="100" cy="100" r="95" fill="none" stroke="red" stroke-width="1"/>
+  </g>
+
+  <!-- Nested group with transforms -->
+  <g transform="translate(100, 100)">
+    <g transform="rotate(45)">
+      <rect x="-30" y="-30" width="60" height="60" fill="none" stroke="green" stroke-width="1.5"/>
+    </g>
+    <g transform="rotate(22.5)">
+      <rect x="-25" y="-25" width="50" height="50" fill="none" stroke="green" stroke-width="1"/>
+    </g>
+    <g transform="rotate(67.5)">
+      <rect x="-20" y="-20" width="40" height="40" fill="none" stroke="green" stroke-width="1"/>
+    </g>
+  </g>
+
+  <!-- Circle outline for reference -->
+  <circle cx="100" cy="100" r="70" fill="none" stroke="black" stroke-width="0.5" stroke-dasharray="4,2"/>
+</svg>

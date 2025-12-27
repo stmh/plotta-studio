@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <!-- Petals -->
+  <ellipse cx="100" cy="60" rx="20" ry="40" stroke="black" fill="none" stroke-width="1.5"/>
+  <ellipse cx="140" cy="100" rx="40" ry="20" stroke="black" fill="none" stroke-width="1.5"/>
+  <ellipse cx="100" cy="140" rx="20" ry="40" stroke="black" fill="none" stroke-width="1.5"/>
+  <ellipse cx="60" cy="100" rx="40" ry="20" stroke="black" fill="none" stroke-width="1.5"/>
+  <!-- Diagonal petals -->
+  <g transform="rotate(45, 100, 100)">
+    <ellipse cx="100" cy="60" rx="15" ry="35" stroke="black" fill="none" stroke-width="1"/>
+    <ellipse cx="140" cy="100" rx="35" ry="15" stroke="black" fill="none" stroke-width="1"/>
+    <ellipse cx="100" cy="140" rx="15" ry="35" stroke="black" fill="none" stroke-width="1"/>
+    <ellipse cx="60" cy="100" rx="35" ry="15" stroke="black" fill="none" stroke-width="1"/>
+  </g>
+  <!-- Center -->
+  <circle cx="100" cy="100" r="15" stroke="black" fill="none" stroke-width="2"/>
+  <circle cx="100" cy="100" r="8" stroke="black" fill="none" stroke-width="1.5"/>
+</svg>

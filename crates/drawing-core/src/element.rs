@@ -86,6 +86,11 @@ impl Element {
         Self::new(ClipGroup::new(clip_shape))
     }
 
+    /// Create an element from an existing ClipGroup
+    pub fn clip_group(clip_group: ClipGroup) -> Self {
+        Self::new(clip_group)
+    }
+
     /// Create a text element with a font reference
     pub fn text(text: impl Into<String>, font: FontRef) -> Self {
         Self::new(Text::new(text, font))
@@ -103,6 +108,18 @@ impl Element {
     }
 
     // === Transform builders ===
+
+    /// Set the transform directly
+    pub fn with_transform(mut self, transform: Affine) -> Self {
+        self.transform = transform;
+        self
+    }
+
+    /// Set the style directly
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 
     pub fn translate(mut self, x: f64, y: f64) -> Self {
         self.transform = self.transform.then_translate(Vec2::new(x, y));
@@ -205,12 +222,24 @@ impl Element {
     ) -> Vec<Stroke> {
         let transform = parent_transform * self.transform;
 
+        // Scale stroke width based on transform's scale factor
+        // Extract approximate uniform scale from the transform matrix
+        let coeffs = transform.as_coeffs();
+        let scale_x = (coeffs[0] * coeffs[0] + coeffs[1] * coeffs[1]).sqrt();
+        let scale_y = (coeffs[2] * coeffs[2] + coeffs[3] * coeffs[3]).sqrt();
+        let scale_factor = (scale_x + scale_y) / 2.0; // Average scale
+
+        let scaled_style = Style {
+            stroke_width: self.style.stroke_width * scale_factor,
+            stroke_color: self.style.stroke_color,
+        };
+
         match &self.shape {
             Shape::Line(line) => {
                 vec![Stroke::line(
                     transform * line.p0,
                     transform * line.p1,
-                    self.style,
+                    scaled_style,
                 )]
             }
 
@@ -218,7 +247,7 @@ impl Element {
                 let points = poly.points.iter().map(|p| transform * *p).collect();
                 vec![Stroke {
                     points,
-                    style: self.style,
+                    style: scaled_style,
                     closed: poly.closed,
                 }]
             }
@@ -227,7 +256,7 @@ impl Element {
                 let points = flatten_circle(circle, &transform);
                 vec![Stroke {
                     points,
-                    style: self.style,
+                    style: scaled_style,
                     closed: true,
                 }]
             }
@@ -236,7 +265,7 @@ impl Element {
                 let points = flatten_ellipse(ellipse, &transform);
                 vec![Stroke {
                     points,
-                    style: self.style,
+                    style: scaled_style,
                     closed: true,
                 }]
             }
@@ -251,7 +280,7 @@ impl Element {
                 let points = corners.iter().map(|p| transform * *p).collect();
                 vec![Stroke {
                     points,
-                    style: self.style,
+                    style: scaled_style,
                     closed: true,
                 }]
             }
@@ -260,7 +289,7 @@ impl Element {
                 let points = flatten_arc(arc, &transform);
                 vec![Stroke {
                     points,
-                    style: self.style,
+                    style: scaled_style,
                     closed: false,
                 }]
             }
@@ -269,12 +298,12 @@ impl Element {
                 let points = flatten_regular_polygon(poly, &transform);
                 vec![Stroke {
                     points,
-                    style: self.style,
+                    style: scaled_style,
                     closed: true,
                 }]
             }
 
-            Shape::Path(path) => flatten_path(path, &transform, self.style),
+            Shape::Path(path) => flatten_path(path, &transform, scaled_style),
 
             Shape::Group(group) => group
                 .children
