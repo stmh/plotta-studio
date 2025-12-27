@@ -13,7 +13,6 @@
 #[cfg(feature = "hardware")]
 use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 use drawing_svg::import_svg_string;
-use drawing_text::Hershey;
 use drawing_utils::{draw_frame_with_title, FrameOptions};
 use sketch_runner::*;
 
@@ -21,7 +20,6 @@ const HAMBURG_SVG: &str = include_str!("../assets/hamburg.svg");
 
 struct HamburgSketch {
     show_svg: bool,
-    fonts_loaded: bool,
     #[cfg(feature = "hardware")]
     plot_handle: Option<PlotHandle>,
 }
@@ -30,7 +28,6 @@ impl HamburgSketch {
     fn new() -> Self {
         Self {
             show_svg: true, // Start with SVG enabled - press T to toggle
-            fonts_loaded: false,
             #[cfg(feature = "hardware")]
             plot_handle: None,
         }
@@ -39,13 +36,15 @@ impl HamburgSketch {
     fn build_drawing(&self, ctx: &SketchContext) -> Drawing {
         let mut drawing = Drawing::a4_portrait().with_background(Color::WHITE);
 
-        // Add frame with title
-        if let Some(font) = ctx.fonts.registry().get("Hershey Simplex") {
-            let frame_options = FrameOptions::new(font.clone())
-                .margin(10.0)
-                .margin_bottom(15.0)
+        // Add frame with title and signature using default font
+        if let Some(frame_options) = FrameOptions::with_default_font(ctx.fonts) {
+            let frame_options = frame_options
+                .margin(5.0)
+                .margin_bottom(10.0)
                 .font_size(4.0)
-                .stroke_width(0.35);
+                .stroke_width(0.35)
+                .with_signature()
+                .signature_height(4.0);
 
             drawing.add(draw_frame_with_title(
                 &drawing,
@@ -53,18 +52,7 @@ impl HamburgSketch {
                 &frame_options,
             ));
         } else {
-            log::error!("Font 'Simplex' not found! Adding frame without title.");
-            // Add just a simple frame rectangle as fallback
-            let margin = 10.0;
-            drawing.add(
-                Element::rect(
-                    margin,
-                    margin,
-                    drawing.width - margin * 2.0,
-                    drawing.height - margin - 15.0,
-                )
-                .stroke_width(0.35),
-            );
+            log::error!("Default font not loaded! Adding frame without title.");
         }
 
         log::debug!(
@@ -164,13 +152,6 @@ impl HamburgSketch {
 
 impl Sketch for HamburgSketch {
     fn setup(&mut self, ctx: &SketchContext) -> Drawing {
-        // Load fonts on first setup
-        if !self.fonts_loaded {
-            if let Err(e) = ctx.fonts.load_hershey(Hershey::Simplex) {
-                log::error!("Failed to load font: {}", e);
-            }
-            self.fonts_loaded = true;
-        }
         self.build_drawing(ctx)
     }
 

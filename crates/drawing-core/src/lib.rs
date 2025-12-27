@@ -41,7 +41,7 @@ pub use path::{Path, PathSegment};
 pub use primitives::{Arc, Circle, Ellipse, Polyline, RegularPolygon};
 pub use shape::Shape;
 pub use stroke::Stroke;
-pub use style::Style;
+pub use style::{ResolvedStyle, Style};
 pub use text::Text;
 
 // Re-export font types for convenience

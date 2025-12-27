@@ -85,7 +85,7 @@ pub fn pen_down_distance(strokes: &[&Stroke]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use drawing_core::Style;
+    use drawing_core::ResolvedStyle;
 
     const EPSILON: f64 = 1e-10;
 
@@ -109,7 +109,7 @@ mod tests {
         let strokes = vec![Stroke::line(
             Point::new(50.0, 50.0),
             Point::new(100.0, 100.0),
-            Style::default(),
+            ResolvedStyle::default(),
         )];
         let optimized = optimize_strokes(&strokes);
         assert_eq!(optimized.len(), 1);
@@ -122,17 +122,17 @@ mod tests {
             Stroke::line(
                 Point::new(100.0, 100.0),
                 Point::new(150.0, 150.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(0.0, 0.0),
                 Point::new(50.0, 50.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(50.0, 50.0),
                 Point::new(100.0, 100.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
         ];
 
@@ -152,12 +152,12 @@ mod tests {
             Stroke::line(
                 Point::new(0.0, 0.0),
                 Point::new(10.0, 10.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(10.0, 10.0),
                 Point::new(20.0, 20.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
         ];
 
@@ -175,17 +175,17 @@ mod tests {
             Stroke::line(
                 Point::new(100.0, 0.0),
                 Point::new(110.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(50.0, 0.0),
                 Point::new(60.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(0.0, 0.0),
                 Point::new(10.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
         ];
 
@@ -201,22 +201,22 @@ mod tests {
             Stroke::line(
                 Point::new(0.0, 0.0),
                 Point::new(10.0, 10.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(20.0, 20.0),
                 Point::new(30.0, 30.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(40.0, 40.0),
                 Point::new(50.0, 50.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(60.0, 60.0),
                 Point::new(70.0, 70.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
         ];
 
@@ -236,7 +236,11 @@ mod tests {
 
     #[test]
     fn test_total_travel_distance_single_stroke() {
-        let stroke = Stroke::line(Point::new(0.0, 0.0), Point::new(3.0, 4.0), Style::default());
+        let stroke = Stroke::line(
+            Point::new(0.0, 0.0),
+            Point::new(3.0, 4.0),
+            ResolvedStyle::default(),
+        );
         let strokes = vec![&stroke];
         // Pen-up from origin (0) + pen-down distance (5) = 5
         assert!(approx_eq(total_travel_distance(&strokes), 5.0));
@@ -247,7 +251,7 @@ mod tests {
         let stroke = Stroke::line(
             Point::new(10.0, 0.0), // 10 units from origin
             Point::new(13.0, 4.0), // 5 unit stroke (3-4-5)
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke];
         // Pen-up travel (10) + pen-down travel (5) = 15
@@ -259,12 +263,12 @@ mod tests {
         let stroke1 = Stroke::line(
             Point::new(0.0, 0.0),
             Point::new(10.0, 0.0),
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let stroke2 = Stroke::line(
             Point::new(10.0, 0.0), // No pen-up travel from stroke1 end
             Point::new(20.0, 0.0),
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke1, &stroke2];
         // Pen-up from origin (0) + stroke1 (10) + pen-up (0) + stroke2 (10) = 20
@@ -276,12 +280,12 @@ mod tests {
         let stroke1 = Stroke::line(
             Point::new(0.0, 0.0),
             Point::new(10.0, 0.0),
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let stroke2 = Stroke::line(
             Point::new(20.0, 0.0), // 10 units gap
             Point::new(30.0, 0.0),
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke1, &stroke2];
         // Pen-up from origin (0) + stroke1 (10) + pen-up (10) + stroke2 (10) = 30
@@ -296,7 +300,7 @@ mod tests {
                 Point::new(3.0, 4.0), // 5 units
                 Point::new(3.0, 0.0), // 4 units
             ],
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke];
         // Pen-up from origin (0) + 5 + 4 = 9
@@ -318,7 +322,7 @@ mod tests {
         let stroke = Stroke::line(
             Point::new(100.0, 100.0), // Far from origin
             Point::new(103.0, 104.0), // 5 unit stroke
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke];
         // Only pen-down distance, ignores position
@@ -330,12 +334,12 @@ mod tests {
         let stroke1 = Stroke::line(
             Point::new(0.0, 0.0),
             Point::new(10.0, 0.0),
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let stroke2 = Stroke::line(
             Point::new(100.0, 100.0), // Position doesn't matter
             Point::new(100.0, 120.0), // 20 units
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke1, &stroke2];
         assert!(approx_eq(pen_down_distance(&strokes), 30.0));
@@ -350,7 +354,7 @@ mod tests {
                 Point::new(10.0, 10.0), // 10 units
                 Point::new(0.0, 10.0),  // 10 units
             ],
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke];
         assert!(approx_eq(pen_down_distance(&strokes), 30.0));
@@ -359,11 +363,15 @@ mod tests {
     #[test]
     fn test_pen_down_distance_ignores_pen_up_travel() {
         // Two strokes far apart
-        let stroke1 = Stroke::line(Point::new(0.0, 0.0), Point::new(5.0, 0.0), Style::default());
+        let stroke1 = Stroke::line(
+            Point::new(0.0, 0.0),
+            Point::new(5.0, 0.0),
+            ResolvedStyle::default(),
+        );
         let stroke2 = Stroke::line(
             Point::new(1000.0, 1000.0), // Very far away
             Point::new(1005.0, 1000.0), // 5 units
-            Style::default(),
+            ResolvedStyle::default(),
         );
         let strokes = vec![&stroke1, &stroke2];
         // Should only count pen-down: 5 + 5 = 10
@@ -380,17 +388,17 @@ mod tests {
             Stroke::line(
                 Point::new(100.0, 0.0),
                 Point::new(110.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(0.0, 0.0),
                 Point::new(10.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(50.0, 0.0),
                 Point::new(60.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
         ];
 
@@ -410,12 +418,12 @@ mod tests {
             Stroke::line(
                 Point::new(100.0, 0.0),
                 Point::new(110.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
             Stroke::line(
                 Point::new(0.0, 0.0),
                 Point::new(10.0, 0.0),
-                Style::default(),
+                ResolvedStyle::default(),
             ),
         ];
 

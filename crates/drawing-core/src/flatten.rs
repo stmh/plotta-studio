@@ -7,7 +7,7 @@ use kurbo::{Affine, PathEl, Point};
 use crate::path::Path;
 use crate::primitives::{Arc, Circle, Ellipse, RegularPolygon};
 use crate::stroke::Stroke;
-use crate::Style;
+use crate::style::ResolvedStyle;
 
 pub fn flatten_circle(circle: &Circle, transform: &Affine) -> Vec<Point> {
     (0..=circle.segments)
@@ -66,7 +66,7 @@ pub fn flatten_regular_polygon(poly: &RegularPolygon, transform: &Affine) -> Vec
         .collect()
 }
 
-pub fn flatten_path(path: &Path, transform: &Affine, style: Style) -> Vec<Stroke> {
+pub fn flatten_path(path: &Path, transform: &Affine, style: ResolvedStyle) -> Vec<Stroke> {
     use kurbo::ParamCurve;
 
     let bezpath = path.to_bezpath();

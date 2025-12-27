@@ -592,11 +592,11 @@ mod tests {
 
     #[test]
     fn test_glyph_to_strokes() {
-        use drawing_core::Style;
+        use drawing_core::ResolvedStyle;
 
         let font = SvgFont::parse(SAMPLE_SVG_FONT).unwrap();
         let glyph = font.glyph('A').unwrap();
-        let strokes = glyph.to_strokes(Style::default(), 0.1);
+        let strokes = glyph.to_strokes(ResolvedStyle::default(), 0.1);
 
         assert!(!strokes.is_empty());
         for stroke in &strokes {

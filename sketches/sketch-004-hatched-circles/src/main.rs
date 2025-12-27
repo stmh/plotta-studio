@@ -14,15 +14,11 @@
 //! - Left/Right: Adjust circle radius
 //! - Escape: Quit
 
-const RELIEF_SINGLE_LINE_SVG: &str =
-    include_str!("../../../fonts/svg/ReliefSingleLine-Regular.svg");
-
 use drawing_utils::{draw_frame_with_title, generate_hatch_lines, FrameOptions, HatchOptions};
 use sketch_runner::*;
 use std::f64::consts::PI;
 
 struct HatchedCirclesSketch {
-    relief_font: Option<FontRef>,
     hatch_spacing: f64,
     circle_radius: f64,
 }
@@ -30,7 +26,6 @@ struct HatchedCirclesSketch {
 impl Default for HatchedCirclesSketch {
     fn default() -> Self {
         Self {
-            relief_font: None,
             hatch_spacing: 2.0,
             circle_radius: 50.0,
         }
@@ -39,12 +34,6 @@ impl Default for HatchedCirclesSketch {
 
 impl Sketch for HatchedCirclesSketch {
     fn setup(&mut self, ctx: &SketchContext) -> Drawing {
-        self.relief_font = Some(
-            ctx.fonts
-                .load_from_str(RELIEF_SINGLE_LINE_SVG, FontFormat::SvgFont)
-                .expect("Could not load ReliefSingleLine-Regular.svg"),
-        );
-
         let mut drawing = Drawing::a4_landscape();
         self.generate(&mut drawing, ctx);
         drawing
@@ -151,11 +140,15 @@ impl HatchedCirclesSketch {
             );
         }
 
-        // Add frame with title using a Hershey font
+        // Add frame with title and signature using default font
+        let frame_options = FrameOptions::with_default_font(ctx.fonts)
+            .expect("Default font not loaded")
+            .with_signature()
+            .signature_height(4.0);
         drawing.add(draw_frame_with_title(
             drawing,
             "Hatched Circles",
-            &FrameOptions::new(self.relief_font.clone().expect("Font not loaded")),
+            &frame_options,
         ));
 
         log::info!(
