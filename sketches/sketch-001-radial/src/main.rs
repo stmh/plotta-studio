@@ -37,9 +37,9 @@ impl Default for RadialSketch {
 }
 
 impl Sketch for RadialSketch {
-    fn setup(&mut self, ctx: &RenderContext) -> Drawing {
+    fn setup(&mut self, ctx: &SketchContext) -> Drawing {
         let mut drawing = Drawing::a4_landscape();
-        self.generate(&mut drawing, ctx);
+        self.generate(&mut drawing, ctx.render);
         drawing
     }
 
@@ -85,16 +85,16 @@ impl Sketch for RadialSketch {
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &RenderContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
         match key {
             Key::Character(c) if c.as_str() == "g" => {
                 // Regenerate with new seed
                 self.seed = self.seed.wrapping_add(1);
-                self.generate(drawing, ctx);
+                self.generate(drawing, ctx.render);
             }
             Key::Character(c) if c.as_str() == "e" => {
                 // Export SVG
-                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx) {
+                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx.render) {
                     log::error!("Failed to export SVG: {e}");
                 } else {
                     log::info!("Exported to drawing.svg");
@@ -103,12 +103,11 @@ impl Sketch for RadialSketch {
             #[cfg(feature = "hardware")]
             Key::Character(c) if c.as_str() == "p" => {
                 // Plot to AxiDraw
-                // Note: plot_in_background takes ownership of the context, so we create a new one
                 if self.plot_handle.is_some() {
                     log::warn!("Plotting already in progress");
                 } else {
                     log::info!("Starting plot...");
-                    let plot_ctx = RenderContext::new().with_hershey_simplex();
+                    let plot_ctx = RenderContext::new(ctx.fonts.registry().clone());
                     match plot_in_background(drawing.clone(), PlotConfig::default(), plot_ctx, None)
                     {
                         Ok(handle) => {
@@ -127,22 +126,22 @@ impl Sketch for RadialSketch {
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.num_circles += 1;
-                self.generate(drawing, ctx);
+                self.generate(drawing, ctx.render);
             }
             Key::Named(NamedKey::ArrowDown) => {
                 if self.num_circles > 1 {
                     self.num_circles -= 1;
-                    self.generate(drawing, ctx);
+                    self.generate(drawing, ctx.render);
                 }
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.num_rays += 4;
-                self.generate(drawing, ctx);
+                self.generate(drawing, ctx.render);
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 if self.num_rays > 4 {
                     self.num_rays -= 4;
-                    self.generate(drawing, ctx);
+                    self.generate(drawing, ctx.render);
                 }
             }
             _ => {}

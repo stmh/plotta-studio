@@ -13,7 +13,7 @@
 //! - Space: Fit to window
 //! - Escape: Quit
 
-use drawing_text::{FontFormat, FontManager, TextAlign, TextLayout, TextOptions, TextRenderer};
+use drawing_text::{FontFormat, TextAlign, TextLayout, TextOptions, TextRenderer};
 use sketch_runner::*;
 
 /// Embedded Relief SingleLine SVG font
@@ -35,65 +35,64 @@ const SAMPLE_TEXTS: &[&str] = &[
 ];
 
 struct TextSketch {
-    manager: FontManager,
     font_names: Vec<String>,
     font_index: usize,
     font_size: f64,
     letter_spacing: f64,
     sample_index: usize,
     show_debug: bool,
+    fonts_loaded: bool,
 }
 
 impl Default for TextSketch {
     fn default() -> Self {
-        // Create font manager (with its own registry)
-        let manager = FontManager::default();
-
-        // Load all built-in Hershey fonts
-        if let Err(e) = manager.load_all_hershey() {
-            log::warn!("Failed to load Hershey fonts: {}", e);
-        }
-
-        // Load SVG font from embedded content
-        if let Err(e) = manager.load_from_str(RELIEF_SINGLE_LINE_SVG, FontFormat::SvgFont) {
-            log::warn!("Failed to load SVG font: {}", e);
-        }
-
-        // Load VSF fonts from embedded content
-        if let Err(e) = manager.load_from_str(ASTEROIDS_VSF, FontFormat::Vsf) {
-            log::warn!("Failed to load Asteroids VSF font: {}", e);
-        }
-        if let Err(e) = manager.load_from_str(APPLE410_VSF, FontFormat::Vsf) {
-            log::warn!("Failed to load Apple410 VSF font: {}", e);
-        }
-        if let Err(e) = manager.load_from_str(MINF_VSF, FontFormat::Vsf) {
-            log::warn!("Failed to load Minf VSF font: {}", e);
-        }
-
-        // Get sorted list of all available fonts
-        let mut font_names = manager.registry().list();
-        font_names.sort();
-
         Self {
-            manager,
-            font_names,
+            font_names: Vec::new(),
             font_index: 0,
             font_size: 12.0, // 12mm tall text
             letter_spacing: 0.0,
             sample_index: 0,
             show_debug: false,
+            fonts_loaded: false,
         }
     }
 }
 
 impl Sketch for TextSketch {
-    fn setup(&mut self, ctx: &RenderContext) -> Drawing {
+    fn setup(&mut self, ctx: &SketchContext) -> Drawing {
+        // Load additional fonts (SVG and VSF) into the font manager
+        if !self.fonts_loaded {
+            // Load SVG font
+            if let Err(e) = ctx
+                .fonts
+                .load_from_str(RELIEF_SINGLE_LINE_SVG, FontFormat::SvgFont)
+            {
+                log::warn!("Failed to load SVG font: {}", e);
+            }
+
+            // Load VSF fonts
+            if let Err(e) = ctx.fonts.load_from_str(ASTEROIDS_VSF, FontFormat::Vsf) {
+                log::warn!("Failed to load Asteroids VSF font: {}", e);
+            }
+            if let Err(e) = ctx.fonts.load_from_str(APPLE410_VSF, FontFormat::Vsf) {
+                log::warn!("Failed to load Apple410 VSF font: {}", e);
+            }
+            if let Err(e) = ctx.fonts.load_from_str(MINF_VSF, FontFormat::Vsf) {
+                log::warn!("Failed to load Minf VSF font: {}", e);
+            }
+
+            // Get sorted list of all available fonts
+            self.font_names = ctx.fonts.registry().list();
+            self.font_names.sort();
+            self.fonts_loaded = true;
+        }
+
         let mut drawing = Drawing::a4_landscape();
         self.generate(&mut drawing, ctx);
         drawing
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &RenderContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
         match key {
             Key::Character(c) if c.as_str() == "f" => {
                 self.font_index = (self.font_index + 1) % self.font_names.len();
@@ -113,7 +112,7 @@ impl Sketch for TextSketch {
                 self.generate(drawing, ctx);
             }
             Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "text_drawing.svg", ctx) {
+                if let Err(e) = drawing_svg::export_svg(drawing, "text_drawing.svg", ctx.render) {
                     log::error!("Failed to export SVG: {e}");
                 } else {
                     log::info!("Exported to text_drawing.svg");
@@ -145,14 +144,14 @@ impl TextSketch {
         &self.font_names[self.font_index]
     }
 
-    fn load_font(&self) -> Option<FontRef> {
-        self.manager.registry().get(self.current_font_name())
+    fn load_font(&self, ctx: &SketchContext) -> Option<FontRef> {
+        ctx.fonts.registry().get(self.current_font_name())
     }
 
-    fn generate(&self, drawing: &mut Drawing, ctx: &RenderContext) {
+    fn generate(&self, drawing: &mut Drawing, ctx: &SketchContext) {
         drawing.clear();
 
-        let font = match self.load_font() {
+        let font = match self.load_font(ctx) {
             Some(f) => f,
             None => {
                 log::error!("Failed to load font: {}", self.current_font_name());
@@ -261,7 +260,7 @@ impl TextSketch {
 
         log::info!(
             "Generated text with {} strokes (font: {}, size: {:.0}mm{})",
-            drawing.stroke_count(ctx),
+            drawing.stroke_count(ctx.render),
             self.current_font_name(),
             self.font_size,
             if self.show_debug { ", debug ON" } else { "" }
