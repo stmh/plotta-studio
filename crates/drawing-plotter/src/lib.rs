@@ -49,6 +49,7 @@
 mod config;
 mod error;
 mod optimize;
+mod stats;
 
 #[cfg(feature = "hardware")]
 mod axidraw;
@@ -58,12 +59,17 @@ mod event;
 // Re-export public API
 pub use config::PlotConfig;
 pub use error::PlotterError;
-pub use optimize::{optimize_strokes, pen_down_distance, total_travel_distance};
+pub use optimize::{
+    optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
+    pen_down_distance_optimized, total_travel_distance, total_travel_distance_optimized,
+    travel_distance_optimized, OptimizedStroke,
+};
+pub use stats::{estimate_plot_time, DrawingStats};
 
 #[cfg(feature = "hardware")]
 pub use axidraw::{plot_in_background, AxiDraw, PortInfo, AXIDRAW_PID, AXIDRAW_VID};
 #[cfg(feature = "hardware")]
-pub use event::{PlotEvent, PlotHandle};
+pub use event::{PauseControl, PlotEvent, PlotHandle};
 
 // Re-export constants even without hardware feature for reference
 #[cfg(not(feature = "hardware"))]

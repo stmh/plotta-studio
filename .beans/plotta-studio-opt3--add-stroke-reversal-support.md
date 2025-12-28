@@ -1,106 +1,38 @@
 ---
 # plotta-studio-opt3
 title: Add stroke reversal support
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-23T19:00:00Z
+updated_at: 2025-12-28T17:25:17Z
 parent: plotta-studio-opt1
 ---
 
 Allow strokes to be drawn in reverse direction when it reduces travel distance.
 
-## Concept
-
-Many strokes can be drawn in either direction without affecting the result:
-- Lines
-- Polylines (unless directional markers)
-- Paths without special start/end requirements
-
 ## Implementation
 
-```rust
-/// A stroke reference that may be reversed
-#[derive(Clone, Copy)]
-pub struct StrokeRef {
-    pub index: usize,
-    pub reversed: bool,
-}
+Implemented `OptimizedStroke` and `optimize_strokes_with_reversal()` in `crates/drawing-plotter/src/optimize.rs`.
 
-impl StrokeRef {
-    pub fn start<'a>(&self, strokes: &'a [Stroke]) -> Point {
-        let stroke = &strokes[self.index];
-        if self.reversed {
-            *stroke.points.last().unwrap_or(&Point::ZERO)
-        } else {
-            stroke.points.first().copied().unwrap_or(Point::ZERO)
-        }
-    }
+Key features:
+- `OptimizedStroke<'a>` holds a stroke reference and a `reversed` flag
+- `start()` and `end()` return effective positions considering reversal
+- `points()` iterator yields points in correct order
+- `optimize_strokes_with_reversal(strokes, allow_reversal)` finds optimal order
+- When `allow_reversal=true`, considers both start and end points of each stroke
+- Enabled by default in all plotting functions
 
-    pub fn end<'a>(&self, strokes: &'a [Stroke]) -> Point {
-        let stroke = &strokes[self.index];
-        if self.reversed {
-            stroke.points.first().copied().unwrap_or(Point::ZERO)
-        } else {
-            *stroke.points.last().unwrap_or(&Point::ZERO)
-        }
-    }
+## Results
 
-    pub fn points<'a>(&self, strokes: &'a [Stroke]) -> impl Iterator<Item = Point> + 'a {
-        let stroke = &strokes[self.index];
-        let pts: Vec<_> = if self.reversed {
-            stroke.points.iter().rev().copied().collect()
-        } else {
-            stroke.points.iter().copied().collect()
-        };
-        pts.into_iter()
-    }
-}
+For sample-drawing.json:
+- Travel distance reduced from 773.4 mm to 401.5 mm (48% reduction)
+- 6 out of 18 strokes reversed
+- Estimated time improved from ~2m 12s to ~2m 6s
 
-/// Optimize with reversal support
-pub fn optimize_with_reversal(strokes: &[Stroke]) -> Vec<StrokeRef> {
-    let mut refs: Vec<StrokeRef> = (0..strokes.len())
-        .map(|i| StrokeRef { index: i, reversed: false })
-        .collect();
-
-    let mut current_pos = Point::ZERO;
-
-    for i in 0..refs.len() {
-        // Find best next stroke (considering reversal)
-        let mut best_idx = i;
-        let mut best_dist = f64::MAX;
-        let mut best_reversed = false;
-
-        for j in i..refs.len() {
-            let stroke = &strokes[refs[j].index];
-
-            // Try normal direction
-            let dist_normal = current_pos.distance(stroke.points[0]);
-            if dist_normal < best_dist {
-                best_dist = dist_normal;
-                best_idx = j;
-                best_reversed = false;
-            }
-
-            // Try reversed
-            if let Some(last) = stroke.points.last() {
-                let dist_rev = current_pos.distance(*last);
-                if dist_rev < best_dist {
-                    best_dist = dist_rev;
-                    best_idx = j;
-                    best_reversed = true;
-                }
-            }
-        }
-
-        refs.swap(i, best_idx);
-        refs[i].reversed = best_reversed;
-        current_pos = refs[i].end(strokes);
-    }
-
-    refs
-}
-```
-
-## Files to Modify
-- `crates/drawing-plotter/src/lib.rs`
+## Files Modified
+- `crates/drawing-plotter/src/optimize.rs` - Added `OptimizedStroke`, `optimize_strokes_with_reversal()`, distance functions
+- `crates/drawing-plotter/src/axidraw.rs` - Updated to use optimized strokes with reversal
+- `crates/drawing-plotter/src/stats.rs` - Updated to calculate stats with reversal
+- `crates/drawing-plotter/src/lib.rs` - Exported new types and functions
+- `crates/plotta-cli/src/main.rs` - Shows reversed stroke count in preview

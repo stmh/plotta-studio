@@ -5,8 +5,8 @@
 
 use crate::config::PlotConfig;
 use crate::error::PlotterError;
-use crate::event::{PlotEvent, PlotHandle};
-use crate::optimize::optimize_strokes;
+use crate::event::{PauseControl, PlotEvent, PlotHandle};
+use crate::optimize::{optimize_strokes_with_reversal, OptimizedStroke};
 use drawing_core::{Drawing, Point, RenderContext, Stroke};
 use serialport::SerialPortType;
 use std::io::{BufRead, BufReader, Write};
@@ -127,9 +127,22 @@ impl AxiDraw {
             pen_is_down: false,
         };
 
-        // Verify connection with version query
+        // Small delay to let port settle after open
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Flush input buffer (like pyserial's flushInput)
+        axidraw
+            .port
+            .get_mut()
+            .clear(serialport::ClearBuffer::Input)
+            .ok();
+
+        // Verify connection with version query (also consumes any pending output)
         let version = axidraw.query_version()?;
         log::info!("Connected to AxiDraw: {}", version.trim());
+
+        // Sync state with hardware (position and pen state)
+        axidraw.sync_state()?;
 
         Ok(axidraw)
     }
@@ -145,12 +158,77 @@ impl AxiDraw {
         self.send_command("V")
     }
 
+    /// Query current step position from hardware
+    ///
+    /// Returns the current position in mm by querying the EBB's step counters.
+    /// The EBB uses CoreXY kinematics where:
+    /// - axis1 = X + Y (in steps)
+    /// - axis2 = X - Y (in steps)
+    ///
+    /// This method reverses the transform to get X,Y in mm.
+    ///
+    /// Response format (legacy mode): `axis1,axis2<NL><CR>OK<CR><NL>`
+    pub fn query_step_position(&mut self) -> Result<Point, PlotterError> {
+        let response = self.send_command("QS")?;
+
+        // QS returns data on first line, then OK on second line
+        // Read and discard the OK line
+        let mut ok_line = String::new();
+        let _ = self.port.read_line(&mut ok_line);
+
+        let trimmed = response.trim();
+
+        let parts: Vec<&str> = trimmed.split(',').collect();
+        if parts.len() < 2 {
+            return Err(PlotterError::InvalidResponse(format!(
+                "Expected 'axis1,axis2', got: {:?}",
+                response
+            )));
+        }
+
+        let axis1: i32 = parts[0].trim().parse().map_err(|_| {
+            PlotterError::InvalidResponse(format!("Invalid axis1 value: {}", parts[0]))
+        })?;
+        let axis2: i32 = parts[1].trim().parse().map_err(|_| {
+            PlotterError::InvalidResponse(format!("Invalid axis2 value: {}", parts[1]))
+        })?;
+
+        // Reverse CoreXY transform: X = (axis1 + axis2) / 2, Y = (axis1 - axis2) / 2
+        let steps_x = (axis1 + axis2) / 2;
+        let steps_y = (axis1 - axis2) / 2;
+
+        // Convert steps to mm
+        let x = steps_x as f64 / Self::STEPS_PER_MM;
+        let y = steps_y as f64 / Self::STEPS_PER_MM;
+
+        Ok(Point::new(x, y))
+    }
+
+    /// Sync internal state with hardware
+    ///
+    /// Queries the plotter for current position and pen state, updating
+    /// the cached values. Call this after connect or if state may be out of sync.
+    pub fn sync_state(&mut self) -> Result<(), PlotterError> {
+        self.current_pos = self.query_step_position()?;
+        self.pen_is_down = self.query_pen()?;
+        log::debug!(
+            "Synced state: pos=({:.2}, {:.2}), pen_down={}",
+            self.current_pos.x,
+            self.current_pos.y,
+            self.pen_is_down
+        );
+        Ok(())
+    }
+
     // ========================================================================
     // Command Protocol
     // ========================================================================
 
-    /// Send a command and read the response
-    fn send_command(&mut self, cmd: &str) -> Result<String, PlotterError> {
+    /// Send a raw command and read the response
+    ///
+    /// This is a low-level method for sending EBB commands directly.
+    /// Most users should use the higher-level methods like `pen_up()`, `move_to()`, etc.
+    pub fn send_command(&mut self, cmd: &str) -> Result<String, PlotterError> {
         let cmd_bytes = format!("{}\r", cmd);
 
         self.port
@@ -194,33 +272,67 @@ impl AxiDraw {
     // ========================================================================
 
     /// Move pen up
-    pub fn pen_up(&mut self) -> Result<(), PlotterError> {
-        if !self.pen_is_down {
+    ///
+    /// If the pen is already known to be up, this is a no-op unless `force` is true.
+    /// Use `force: true` for explicit user commands where you want to ensure the
+    /// pen moves regardless of cached state.
+    ///
+    /// Note: EBB protocol uses SP,1 for pen UP (moves to Servo_Min position)
+    pub fn pen_up_with_force(&mut self, force: bool) -> Result<(), PlotterError> {
+        if !force && !self.pen_is_down {
             return Ok(());
         }
-        let cmd = format!("SP,0,{}", self.config.pen_up_delay);
+        // SP,1 = pen UP (Servo_Min position)
+        let cmd = format!("SP,1,{}", self.config.pen_up_delay);
         self.send_command_ok(&cmd)?;
         std::thread::sleep(Duration::from_millis(self.config.pen_up_delay as u64));
         self.pen_is_down = false;
         Ok(())
     }
 
+    /// Move pen up (skips if already up based on cached state)
+    pub fn pen_up(&mut self) -> Result<(), PlotterError> {
+        self.pen_up_with_force(false)
+    }
+
     /// Move pen down
-    pub fn pen_down(&mut self) -> Result<(), PlotterError> {
-        if self.pen_is_down {
+    ///
+    /// If the pen is already known to be down, this is a no-op unless `force` is true.
+    /// Use `force: true` for explicit user commands where you want to ensure the
+    /// pen moves regardless of cached state.
+    ///
+    /// Note: EBB protocol uses SP,0 for pen DOWN (moves to Servo_Max position)
+    pub fn pen_down_with_force(&mut self, force: bool) -> Result<(), PlotterError> {
+        if !force && self.pen_is_down {
             return Ok(());
         }
-        let cmd = format!("SP,1,{}", self.config.pen_down_delay);
+        // SP,0 = pen DOWN (Servo_Max position)
+        let cmd = format!("SP,0,{}", self.config.pen_down_delay);
         self.send_command_ok(&cmd)?;
         std::thread::sleep(Duration::from_millis(self.config.pen_down_delay as u64));
         self.pen_is_down = true;
         Ok(())
     }
 
+    /// Move pen down (skips if already down based on cached state)
+    pub fn pen_down(&mut self) -> Result<(), PlotterError> {
+        self.pen_down_with_force(false)
+    }
+
     /// Query current pen state (true = down)
+    ///
+    /// Response format (legacy mode): `1<NL><CR>OK<CR><NL>` (1=up) or `0<NL><CR>OK<CR><NL>` (0=down)
     pub fn query_pen(&mut self) -> Result<bool, PlotterError> {
         let response = self.send_command("QP")?;
-        Ok(response.trim() == "1")
+
+        // QP returns data on first line, then OK on second line
+        // Read and discard the OK line
+        let mut ok_line = String::new();
+        let _ = self.port.read_line(&mut ok_line);
+
+        // QP returns "1" for pen UP, "0" for pen DOWN
+        // We return true if pen is DOWN
+        Ok(response.trim() == "0")
     }
 
     // ========================================================================
@@ -238,8 +350,11 @@ impl AxiDraw {
     }
 
     /// Home the plotter (move to origin)
+    ///
+    /// Raises the pen and moves to (0, 0). Since we sync position from
+    /// hardware on connect, we have an accurate current position.
     pub fn home(&mut self) -> Result<(), PlotterError> {
-        self.pen_up()?;
+        self.pen_up_with_force(true)?;
         self.move_to(Point::ZERO)?;
         Ok(())
     }
@@ -296,37 +411,41 @@ impl AxiDraw {
         // Flatten drawing to strokes
         let strokes = drawing.flatten(ctx);
 
-        // Optimize stroke order
-        let optimized = optimize_strokes(&strokes);
+        // Optimize stroke order with reversal support
+        let optimized = optimize_strokes_with_reversal(&strokes, true);
 
         // Plot each stroke
-        self.plot_strokes(&optimized)
+        self.plot_optimized_strokes(&optimized)
     }
 
-    /// Plot a sequence of strokes
-    pub fn plot_strokes(&mut self, strokes: &[&Stroke]) -> Result<(), PlotterError> {
+    /// Plot a sequence of optimized strokes (with reversal support)
+    pub fn plot_optimized_strokes(
+        &mut self,
+        strokes: &[OptimizedStroke<'_>],
+    ) -> Result<(), PlotterError> {
         self.pen_up()?;
         self.enable_motors()?;
 
-        for stroke in strokes {
-            if stroke.points.is_empty() {
+        for opt_stroke in strokes {
+            if opt_stroke.stroke.points.is_empty() {
                 continue;
             }
 
-            // Move to stroke start (pen up)
-            self.move_to(stroke.points[0])?;
+            // Move to stroke start (pen up) - uses effective start considering reversal
+            self.move_to(opt_stroke.start())?;
 
             // Put pen down
             self.pen_down()?;
 
-            // Draw stroke
-            for point in &stroke.points[1..] {
+            // Draw stroke points in correct order
+            let points: Vec<_> = opt_stroke.points().collect();
+            for point in points.iter().skip(1) {
                 self.move_to(*point)?;
             }
 
-            // Close if needed
-            if stroke.closed && stroke.points.len() > 2 {
-                self.move_to(stroke.points[0])?;
+            // Close if needed (only for non-reversed strokes, as reversed would already end at original start)
+            if opt_stroke.stroke.closed && !opt_stroke.reversed && points.len() > 2 {
+                self.move_to(points[0])?;
             }
 
             // Lift pen
@@ -338,6 +457,16 @@ impl AxiDraw {
         self.disable_motors()?;
 
         Ok(())
+    }
+
+    /// Plot a sequence of strokes (legacy API, no reversal)
+    pub fn plot_strokes(&mut self, strokes: &[&Stroke]) -> Result<(), PlotterError> {
+        // Convert to OptimizedStroke without reversal
+        let optimized: Vec<_> = strokes
+            .iter()
+            .map(|s| OptimizedStroke::new(s, false))
+            .collect();
+        self.plot_optimized_strokes(&optimized)
     }
 
     /// Get current position
@@ -354,11 +483,24 @@ impl AxiDraw {
     // Threaded Plotting with Events
     // ========================================================================
 
-    /// Plot strokes with event callbacks
-    pub fn plot_strokes_with_events<F>(
+    /// Plot optimized strokes with event callbacks
+    pub fn plot_optimized_strokes_with_events<F>(
         &mut self,
-        strokes: &[&Stroke],
+        strokes: &[OptimizedStroke<'_>],
         mut on_event: F,
+    ) -> Result<(), PlotterError>
+    where
+        F: FnMut(PlotEvent),
+    {
+        self.plot_optimized_strokes_with_pause(strokes, &mut on_event, None)
+    }
+
+    /// Plot optimized strokes with event callbacks and optional pause control
+    pub fn plot_optimized_strokes_with_pause<F>(
+        &mut self,
+        strokes: &[OptimizedStroke<'_>],
+        on_event: &mut F,
+        pause_control: Option<&PauseControl>,
     ) -> Result<(), PlotterError>
     where
         F: FnMut(PlotEvent),
@@ -371,25 +513,36 @@ impl AxiDraw {
         self.pen_up()?;
         self.enable_motors()?;
 
-        for (index, stroke) in strokes.iter().enumerate() {
-            if stroke.points.is_empty() {
+        for (index, opt_stroke) in strokes.iter().enumerate() {
+            // Check for pause between strokes (pen is up at this point)
+            if let Some(ctrl) = pause_control {
+                if ctrl.is_paused() {
+                    on_event(PlotEvent::Paused);
+                    ctrl.wait_if_paused();
+                    on_event(PlotEvent::Resumed);
+                }
+            }
+
+            if opt_stroke.stroke.points.is_empty() {
                 continue;
             }
 
             on_event(PlotEvent::StrokeStart { index, total });
 
-            // Move to stroke start (pen up)
+            // Move to stroke start (pen up) - uses effective start considering reversal
+            let start = opt_stroke.start();
             on_event(PlotEvent::MoveTo {
-                position: stroke.points[0],
+                position: start,
                 pen_down: false,
             });
-            self.move_to(stroke.points[0])?;
+            self.move_to(start)?;
 
             // Put pen down
             self.pen_down()?;
 
-            // Draw stroke
-            for point in &stroke.points[1..] {
+            // Draw stroke points in correct order
+            let points: Vec<_> = opt_stroke.points().collect();
+            for point in points.iter().skip(1) {
                 on_event(PlotEvent::MoveTo {
                     position: *point,
                     pen_down: true,
@@ -398,12 +551,12 @@ impl AxiDraw {
             }
 
             // Close if needed
-            if stroke.closed && stroke.points.len() > 2 {
+            if opt_stroke.stroke.closed && !opt_stroke.reversed && points.len() > 2 {
                 on_event(PlotEvent::MoveTo {
-                    position: stroke.points[0],
+                    position: points[0],
                     pen_down: true,
                 });
-                self.move_to(stroke.points[0])?;
+                self.move_to(points[0])?;
             }
 
             // Lift pen
@@ -424,6 +577,23 @@ impl AxiDraw {
         Ok(())
     }
 
+    /// Plot strokes with event callbacks (legacy API, no reversal)
+    pub fn plot_strokes_with_events<F>(
+        &mut self,
+        strokes: &[&Stroke],
+        on_event: F,
+    ) -> Result<(), PlotterError>
+    where
+        F: FnMut(PlotEvent),
+    {
+        // Convert to OptimizedStroke without reversal
+        let optimized: Vec<_> = strokes
+            .iter()
+            .map(|s| OptimizedStroke::new(s, false))
+            .collect();
+        self.plot_optimized_strokes_with_events(&optimized, on_event)
+    }
+
     /// Plot a drawing with event callbacks
     pub fn plot_with_events<F>(
         &mut self,
@@ -437,21 +607,22 @@ impl AxiDraw {
     {
         self.config = config.clone();
         let strokes = drawing.flatten(ctx);
-        let optimized = optimize_strokes(&strokes);
-        self.plot_strokes_with_events(&optimized, on_event)
+        let optimized = optimize_strokes_with_reversal(&strokes, true);
+        self.plot_optimized_strokes_with_events(&optimized, on_event)
     }
 }
 
 impl Drop for AxiDraw {
     fn drop(&mut self) {
-        // Best effort: disable motors on drop
-        let _ = self.disable_motors();
+        // Note: We intentionally do NOT disable motors on drop anymore,
+        // as this was causing issues with step counter resets on reconnect.
+        // Users should explicitly call disable_motors() if needed.
     }
 }
 
 /// Spawn a background thread to plot a drawing
 ///
-/// Returns a `PlotHandle` that can be used to monitor progress and wait for completion.
+/// Returns a `PlotHandle` that can be used to monitor progress, pause/resume, and wait for completion.
 ///
 /// # Example
 /// ```ignore
@@ -474,6 +645,11 @@ impl Drop for AxiDraw {
 ///     std::thread::sleep(std::time::Duration::from_millis(100));
 /// }
 ///
+/// // Pause/resume support
+/// handle.pause();   // Pauses after current stroke
+/// handle.resume();  // Resumes plotting
+/// handle.toggle_pause(); // Toggle pause state
+///
 /// handle.join()?;
 /// ```
 pub fn plot_in_background(
@@ -483,6 +659,8 @@ pub fn plot_in_background(
     port: Option<String>,
 ) -> Result<PlotHandle, PlotterError> {
     let (sender, receiver) = mpsc::channel();
+    let pause_control = PauseControl::new();
+    let pause_control_clone = pause_control.clone();
 
     let handle = thread::spawn(move || {
         let result = (|| {
@@ -492,11 +670,15 @@ pub fn plot_in_background(
             };
 
             let strokes = drawing.flatten(&ctx);
-            let optimized = optimize_strokes(&strokes);
+            let optimized = optimize_strokes_with_reversal(&strokes, true);
 
-            plotter.plot_strokes_with_events(&optimized, |event| {
-                let _ = sender.send(event);
-            })
+            plotter.plot_optimized_strokes_with_pause(
+                &optimized,
+                &mut |event| {
+                    let _ = sender.send(event);
+                },
+                Some(&pause_control_clone),
+            )
         })();
 
         if let Err(ref e) = result {
@@ -506,7 +688,7 @@ pub fn plot_in_background(
         result
     });
 
-    Ok(PlotHandle::new(receiver, handle))
+    Ok(PlotHandle::new(receiver, handle, pause_control))
 }
 
 #[cfg(test)]
@@ -550,5 +732,345 @@ mod tests {
     fn test_steps_per_mm() {
         // 16 microsteps * 200 steps/rev / 40mm per rev = 80
         assert!((AxiDraw::STEPS_PER_MM - 80.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_corexy_transform() {
+        // Test the CoreXY kinematics math
+        // Forward: axis1 = X + Y, axis2 = X - Y
+        // Reverse: X = (axis1 + axis2) / 2, Y = (axis1 - axis2) / 2
+
+        // Test case: X=10mm, Y=5mm at 80 steps/mm
+        let x_mm = 10.0;
+        let y_mm = 5.0;
+        let steps_x = (x_mm * AxiDraw::STEPS_PER_MM) as i32; // 800
+        let steps_y = (y_mm * AxiDraw::STEPS_PER_MM) as i32; // 400
+
+        // Forward transform (what move_to does)
+        let axis1 = steps_x + steps_y; // 1200
+        let axis2 = steps_x - steps_y; // 400
+
+        // Reverse transform (what query_step_position does)
+        let recovered_steps_x = (axis1 + axis2) / 2; // 800
+        let recovered_steps_y = (axis1 - axis2) / 2; // 400
+
+        assert_eq!(recovered_steps_x, steps_x);
+        assert_eq!(recovered_steps_y, steps_y);
+
+        // Convert back to mm
+        let recovered_x = recovered_steps_x as f64 / AxiDraw::STEPS_PER_MM;
+        let recovered_y = recovered_steps_y as f64 / AxiDraw::STEPS_PER_MM;
+
+        assert!((recovered_x - x_mm).abs() < 0.001);
+        assert!((recovered_y - y_mm).abs() < 0.001);
+    }
+}
+
+/// Hardware integration tests - run manually with real AxiDraw connected
+///
+/// Run with: cargo test -p drawing-plotter --test '*' -- --ignored --nocapture
+#[cfg(test)]
+mod hardware_tests {
+    use super::*;
+
+    /// Test connecting to AxiDraw and querying state
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_connect_and_query_state() {
+        let plotter = AxiDraw::auto_connect().expect("Failed to connect to AxiDraw");
+
+        let pos = plotter.position();
+        let pen_down = plotter.is_pen_down();
+
+        println!("Connected successfully!");
+        println!("  Position: ({:.2}, {:.2}) mm", pos.x, pos.y);
+        println!("  Pen: {}", if pen_down { "DOWN" } else { "UP" });
+    }
+
+    /// Test multiple connects to check if step position resets
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_reconnect_preserves_position() {
+        println!("=== First connection ===");
+        {
+            let plotter = AxiDraw::auto_connect().expect("Failed to connect");
+            let pos = plotter.position();
+            println!("Position: ({:.2}, {:.2}) mm", pos.x, pos.y);
+        }
+
+        println!("\n=== Second connection ===");
+        {
+            let plotter = AxiDraw::auto_connect().expect("Failed to connect");
+            let pos = plotter.position();
+            println!("Position: ({:.2}, {:.2}) mm", pos.x, pos.y);
+        }
+
+        println!("\n=== Third connection ===");
+        {
+            let plotter = AxiDraw::auto_connect().expect("Failed to connect");
+            let pos = plotter.position();
+            println!("Position: ({:.2}, {:.2}) mm", pos.x, pos.y);
+        }
+
+        println!("\nAll positions should match if reconnect preserves state.");
+    }
+
+    /// Test pen up command
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_pen_up() {
+        let mut plotter = AxiDraw::auto_connect().expect("Failed to connect");
+
+        println!(
+            "Initial pen state: {}",
+            if plotter.is_pen_down() { "down" } else { "up" }
+        );
+
+        println!("Sending pen_up command...");
+        plotter.pen_up_with_force(true).expect("pen_up failed");
+
+        // Query actual state from hardware
+        let pen_down = plotter.query_pen().expect("query_pen failed");
+        println!(
+            "Pen state after pen_up: {}",
+            if pen_down { "down" } else { "up" }
+        );
+
+        assert!(!pen_down, "Pen should be UP after pen_up command");
+    }
+
+    /// Test pen down command
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_pen_down() {
+        let mut plotter = AxiDraw::auto_connect().expect("Failed to connect");
+
+        println!(
+            "Initial pen state: {}",
+            if plotter.is_pen_down() { "down" } else { "up" }
+        );
+
+        println!("Sending pen_down command...");
+        plotter.pen_down_with_force(true).expect("pen_down failed");
+
+        // Query actual state from hardware
+        let pen_down = plotter.query_pen().expect("query_pen failed");
+        println!(
+            "Pen state after pen_down: {}",
+            if pen_down { "down" } else { "up" }
+        );
+
+        assert!(pen_down, "Pen should be DOWN after pen_down command");
+
+        // Clean up: raise pen
+        println!("Cleaning up: raising pen...");
+        plotter
+            .pen_up_with_force(true)
+            .expect("cleanup pen_up failed");
+    }
+
+    /// Test pen toggle (up -> down -> up)
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_pen_toggle() {
+        let mut plotter = AxiDraw::auto_connect().expect("Failed to connect");
+
+        // Ensure pen is up first
+        println!("Step 1: Raising pen...");
+        plotter.pen_up_with_force(true).expect("pen_up failed");
+        let state1 = plotter.query_pen().expect("query failed");
+        println!("  Pen state: {}", if state1 { "DOWN" } else { "UP" });
+        assert!(!state1, "Pen should be UP");
+
+        // Lower pen
+        println!("Step 2: Lowering pen...");
+        plotter.pen_down_with_force(true).expect("pen_down failed");
+        let state2 = plotter.query_pen().expect("query failed");
+        println!("  Pen state: {}", if state2 { "DOWN" } else { "UP" });
+        assert!(state2, "Pen should be DOWN");
+
+        // Raise pen again
+        println!("Step 3: Raising pen again...");
+        plotter.pen_up_with_force(true).expect("pen_up failed");
+        let state3 = plotter.query_pen().expect("query failed");
+        println!("  Pen state: {}", if state3 { "DOWN" } else { "UP" });
+        assert!(!state3, "Pen should be UP");
+
+        println!("Pen toggle test PASSED!");
+    }
+
+    /// Test move command
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_move() {
+        let mut plotter = AxiDraw::auto_connect().expect("Failed to connect");
+
+        let start_pos = plotter
+            .query_step_position()
+            .expect("query position failed");
+        println!(
+            "Start position: ({:.2}, {:.2}) mm",
+            start_pos.x, start_pos.y
+        );
+
+        // Move to a known position
+        let target = Point::new(20.0, 10.0);
+        println!("Moving to ({:.2}, {:.2}) mm...", target.x, target.y);
+        plotter.move_to(target).expect("move_to failed");
+
+        let end_pos = plotter
+            .query_step_position()
+            .expect("query position failed");
+        println!("End position: ({:.2}, {:.2}) mm", end_pos.x, end_pos.y);
+
+        // Check position is close to target (allow 0.5mm tolerance)
+        let dx = (end_pos.x - target.x).abs();
+        let dy = (end_pos.y - target.y).abs();
+        println!("Position error: dx={:.3}, dy={:.3} mm", dx, dy);
+
+        assert!(dx < 0.5, "X position error too large: {} mm", dx);
+        assert!(dy < 0.5, "Y position error too large: {} mm", dy);
+
+        println!("Move test passed!");
+    }
+
+    /// Test home command
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_home() {
+        let mut plotter = AxiDraw::auto_connect().expect("Failed to connect");
+
+        // Print synced position from connect
+        let initial_pos = plotter.position();
+        println!(
+            "Initial synced position: ({:.2}, {:.2}) mm",
+            initial_pos.x, initial_pos.y
+        );
+
+        // Query hardware to verify
+        let hw_pos = plotter.query_step_position().expect("query failed");
+        println!(
+            "Hardware step position: ({:.2}, {:.2}) mm",
+            hw_pos.x, hw_pos.y
+        );
+
+        // First move away from origin
+        println!("\nMoving TO absolute (30, 20) mm...");
+        println!(
+            "  Current pos: ({:.2}, {:.2})",
+            plotter.position().x,
+            plotter.position().y
+        );
+        println!("  Target: (30.0, 20.0)");
+        println!(
+            "  Expected delta: ({:.2}, {:.2})",
+            30.0 - plotter.position().x,
+            20.0 - plotter.position().y
+        );
+
+        plotter.pen_up().expect("pen_up failed");
+        plotter
+            .move_to(Point::new(30.0, 20.0))
+            .expect("move_to failed");
+
+        let pos_before = plotter.query_step_position().expect("query failed");
+        println!(
+            "Position after move (hw): ({:.2}, {:.2}) mm",
+            pos_before.x, pos_before.y
+        );
+        println!(
+            "Position after move (cached): ({:.2}, {:.2}) mm",
+            plotter.position().x,
+            plotter.position().y
+        );
+
+        // Home
+        println!("Sending home command...");
+        plotter.home().expect("home failed");
+
+        let pos_after = plotter.query_step_position().expect("query failed");
+        println!(
+            "Position after home: ({:.2}, {:.2}) mm",
+            pos_after.x, pos_after.y
+        );
+
+        // Check we're at origin (allow 0.5mm tolerance)
+        assert!(
+            pos_after.x.abs() < 0.5,
+            "X should be near 0, got {:.2}",
+            pos_after.x
+        );
+        assert!(
+            pos_after.y.abs() < 0.5,
+            "Y should be near 0, got {:.2}",
+            pos_after.y
+        );
+
+        println!("Home test passed!");
+    }
+
+    /// Test full sequence: move, pen down, draw, pen up, home
+    #[test]
+    #[ignore = "requires AxiDraw hardware"]
+    fn test_draw_sequence() {
+        let mut plotter = AxiDraw::auto_connect().expect("Failed to connect");
+
+        println!("=== Draw Sequence Test ===");
+
+        // 1. Ensure pen is up and go home
+        println!("1. Going home...");
+        plotter.home().expect("home failed");
+
+        // 2. Move to start position
+        println!("2. Moving to (10, 10) mm...");
+        plotter
+            .move_to(Point::new(10.0, 10.0))
+            .expect("move failed");
+
+        // 3. Pen down
+        println!("3. Pen down...");
+        plotter.pen_down().expect("pen_down failed");
+        assert!(
+            plotter.query_pen().expect("query failed"),
+            "Pen should be down"
+        );
+
+        // 4. Draw a small square
+        println!("4. Drawing 10mm square...");
+        plotter
+            .move_to(Point::new(20.0, 10.0))
+            .expect("move failed");
+        plotter
+            .move_to(Point::new(20.0, 20.0))
+            .expect("move failed");
+        plotter
+            .move_to(Point::new(10.0, 20.0))
+            .expect("move failed");
+        plotter
+            .move_to(Point::new(10.0, 10.0))
+            .expect("move failed");
+
+        // 5. Pen up
+        println!("5. Pen up...");
+        plotter.pen_up().expect("pen_up failed");
+        assert!(
+            !plotter.query_pen().expect("query failed"),
+            "Pen should be up"
+        );
+
+        // 6. Home
+        println!("6. Going home...");
+        plotter.home().expect("home failed");
+
+        let final_pos = plotter.query_step_position().expect("query failed");
+        println!(
+            "Final position: ({:.2}, {:.2}) mm",
+            final_pos.x, final_pos.y
+        );
+
+        assert!(final_pos.x.abs() < 0.5, "Should be at home X");
+        assert!(final_pos.y.abs() < 0.5, "Should be at home Y");
+
+        println!("=== Draw Sequence Test PASSED ===");
     }
 }

@@ -11,9 +11,9 @@ pub struct PlotConfig {
     pub pen_down_pos: u8,
     /// Pen up position (servo units)
     pub pen_up_pos: u8,
-    /// Delay after pen down (ms)
+    /// Delay after pen down (ms) - time to wait for pen to settle
     pub pen_down_delay: u32,
-    /// Delay after pen up (ms)
+    /// Delay after pen up (ms) - time to wait for pen to lift
     pub pen_up_delay: u32,
 }
 
