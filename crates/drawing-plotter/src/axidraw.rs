@@ -153,6 +153,11 @@ impl AxiDraw {
         Self::connect(&port)
     }
 
+    /// Set the plot configuration
+    pub fn set_config(&mut self, config: PlotConfig) {
+        self.config = config;
+    }
+
     /// Query firmware version
     pub fn query_version(&mut self) -> Result<String, PlotterError> {
         self.send_command("V")
@@ -282,15 +287,27 @@ impl AxiDraw {
     /// Use `force: true` for explicit user commands where you want to ensure the
     /// pen moves regardless of cached state.
     ///
+    /// The servo timing is calculated dynamically based on the pen position delta,
+    /// matching the Python AxiDraw driver behavior. An optional additional delay
+    /// can be configured via `pen_up_delay` in PlotConfig.
+    ///
     /// Note: EBB protocol uses SP,1 for pen UP (moves to Servo_Min position)
     pub fn pen_up_with_force(&mut self, force: bool) -> Result<(), PlotterError> {
         if !force && !self.pen_is_down {
             return Ok(());
         }
-        // SP,1 = pen UP (Servo_Min position)
-        let cmd = format!("SP,1,{}", self.config.pen_up_delay);
+
+        // Calculate servo move time based on pen position delta
+        let servo_time = self.config.pen_up_move_time();
+        let total_wait = self.config.pen_up_total_time();
+
+        // SP,1,duration = pen UP with servo move duration
+        // The duration parameter controls the servo speed (time to complete the move)
+        let cmd = format!("SP,1,{}", servo_time);
         self.send_command_ok(&cmd)?;
-        std::thread::sleep(Duration::from_millis(self.config.pen_up_delay as u64));
+
+        // Wait for servo to complete move plus any additional delay
+        std::thread::sleep(Duration::from_millis(total_wait as u64));
         self.pen_is_down = false;
         Ok(())
     }
@@ -306,15 +323,27 @@ impl AxiDraw {
     /// Use `force: true` for explicit user commands where you want to ensure the
     /// pen moves regardless of cached state.
     ///
+    /// The servo timing is calculated dynamically based on the pen position delta,
+    /// matching the Python AxiDraw driver behavior. An optional additional delay
+    /// can be configured via `pen_down_delay` in PlotConfig.
+    ///
     /// Note: EBB protocol uses SP,0 for pen DOWN (moves to Servo_Max position)
     pub fn pen_down_with_force(&mut self, force: bool) -> Result<(), PlotterError> {
         if !force && self.pen_is_down {
             return Ok(());
         }
-        // SP,0 = pen DOWN (Servo_Max position)
-        let cmd = format!("SP,0,{}", self.config.pen_down_delay);
+
+        // Calculate servo move time based on pen position delta
+        let servo_time = self.config.pen_down_move_time();
+        let total_wait = self.config.pen_down_total_time();
+
+        // SP,0,duration = pen DOWN with servo move duration
+        // The duration parameter controls the servo speed (time to complete the move)
+        let cmd = format!("SP,0,{}", servo_time);
         self.send_command_ok(&cmd)?;
-        std::thread::sleep(Duration::from_millis(self.config.pen_down_delay as u64));
+
+        // Wait for servo to complete move plus any additional delay
+        std::thread::sleep(Duration::from_millis(total_wait as u64));
         self.pen_is_down = true;
         Ok(())
     }
@@ -660,7 +689,7 @@ impl Drop for AxiDraw {
 /// ```
 pub fn plot_in_background(
     drawing: Drawing,
-    _config: PlotConfig,
+    config: PlotConfig,
     ctx: RenderContext,
     port: Option<String>,
 ) -> Result<PlotHandle, PlotterError> {
@@ -674,6 +703,9 @@ pub fn plot_in_background(
                 Some(p) => AxiDraw::connect(&p)?,
                 None => AxiDraw::auto_connect()?,
             };
+
+            // Apply the config to the plotter
+            plotter.set_config(config);
 
             let strokes = drawing.flatten(&ctx);
             let optimized = optimize_strokes_with_reversal(&strokes, true);

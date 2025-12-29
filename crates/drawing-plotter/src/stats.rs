@@ -87,11 +87,11 @@ pub fn estimate_plot_time_optimized(
     let travel_time_ms = (travel / config.pen_up_speed) * 1000.0;
 
     // Time for pen transitions (each stroke: pen down + pen up)
-    let pen_transitions = strokes.len() * 2; // Up and down for each stroke
-    let transition_time_ms =
-        (config.pen_down_delay + config.pen_up_delay) as f64 * pen_transitions as f64;
+    // Uses total time which includes servo move time + optional delay
+    let pen_transition_time_ms =
+        (config.pen_down_total_time() + config.pen_up_total_time()) as f64 * strokes.len() as f64;
 
-    let total_ms = pen_down_time_ms + travel_time_ms + transition_time_ms;
+    let total_ms = pen_down_time_ms + travel_time_ms + pen_transition_time_ms;
 
     Duration::from_millis(total_ms as u64)
 }
@@ -173,12 +173,14 @@ mod tests {
         let config = PlotConfig::default();
         let time = estimate_plot_time(&strokes, &config);
 
-        // Should include drawing time + pen delays
+        // Should include drawing time + servo timing (rate-adjusted)
         // Drawing: 25mm / 25mm/s = 1000ms
-        // Transitions: 2 * (150 + 150) = 600ms
-        // Total: ~1600ms
-        assert!(time.as_millis() >= 1500);
-        assert!(time.as_millis() <= 1700);
+        // Servo timing with both rates at 50:
+        //   pen_down (rate=50): 251ms
+        //   pen_up (rate=50): 251ms
+        // Total: ~1502ms
+        assert!(time.as_millis() >= 1460);
+        assert!(time.as_millis() <= 1540);
     }
 
     #[test]

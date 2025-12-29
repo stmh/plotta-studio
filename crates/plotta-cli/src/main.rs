@@ -65,20 +65,36 @@ enum Commands {
         file: PathBuf,
 
         /// Drawing speed in mm/s (pen down movement)
-        #[arg(long, default_value = "25.0")]
-        draw_speed: f64,
+        #[arg(long)]
+        draw_speed: Option<f64>,
 
         /// Travel speed in mm/s (pen up movement)
-        #[arg(long, default_value = "75.0")]
-        travel_speed: f64,
+        #[arg(long)]
+        travel_speed: Option<f64>,
 
-        /// Delay after lowering pen (ms)
-        #[arg(long, default_value = "150")]
-        pen_down_delay: u32,
+        /// Additional delay after lowering pen (ms)
+        #[arg(long)]
+        pen_down_delay: Option<u32>,
 
-        /// Delay after raising pen (ms)
-        #[arg(long, default_value = "150")]
-        pen_up_delay: u32,
+        /// Additional delay after raising pen (ms)
+        #[arg(long)]
+        pen_up_delay: Option<u32>,
+
+        /// Pen down position (0-100, default 30)
+        #[arg(long)]
+        pen_down_pos: Option<u8>,
+
+        /// Pen up position (0-100, default 60)
+        #[arg(long)]
+        pen_up_pos: Option<u8>,
+
+        /// Pen raise rate (1-100, default 75, lower=slower)
+        #[arg(long)]
+        pen_rate_raise: Option<u8>,
+
+        /// Pen lower rate (1-100, default 50, lower=slower)
+        #[arg(long)]
+        pen_rate_lower: Option<u8>,
     },
 
     /// Show drawing stats without plotting
@@ -87,21 +103,62 @@ enum Commands {
         file: PathBuf,
 
         /// Drawing speed in mm/s (for time estimate)
-        #[arg(long, default_value = "25.0")]
-        draw_speed: f64,
+        #[arg(long)]
+        draw_speed: Option<f64>,
 
         /// Travel speed in mm/s (for time estimate)
-        #[arg(long, default_value = "75.0")]
-        travel_speed: f64,
+        #[arg(long)]
+        travel_speed: Option<f64>,
 
-        /// Delay after lowering pen (ms, for time estimate)
-        #[arg(long, default_value = "150")]
-        pen_down_delay: u32,
+        /// Additional delay after lowering pen (ms, for time estimate)
+        #[arg(long)]
+        pen_down_delay: Option<u32>,
 
-        /// Delay after raising pen (ms, for time estimate)
-        #[arg(long, default_value = "150")]
-        pen_up_delay: u32,
+        /// Additional delay after raising pen (ms, for time estimate)
+        #[arg(long)]
+        pen_up_delay: Option<u32>,
+
+        /// Pen down position (0-100, default 30)
+        #[arg(long)]
+        pen_down_pos: Option<u8>,
+
+        /// Pen up position (0-100, default 60)
+        #[arg(long)]
+        pen_up_pos: Option<u8>,
+
+        /// Pen raise rate (1-100, default 75, lower=slower)
+        #[arg(long)]
+        pen_rate_raise: Option<u8>,
+
+        /// Pen lower rate (1-100, default 50, lower=slower)
+        #[arg(long)]
+        pen_rate_lower: Option<u8>,
     },
+}
+
+/// Build a PlotConfig from optional CLI overrides, using defaults from PlotConfig::default()
+#[allow(clippy::too_many_arguments)]
+fn build_config(
+    draw_speed: Option<f64>,
+    travel_speed: Option<f64>,
+    pen_down_delay: Option<u32>,
+    pen_up_delay: Option<u32>,
+    pen_down_pos: Option<u8>,
+    pen_up_pos: Option<u8>,
+    pen_rate_raise: Option<u8>,
+    pen_rate_lower: Option<u8>,
+) -> PlotConfig {
+    let defaults = PlotConfig::default();
+    PlotConfig {
+        pen_down_speed: draw_speed.unwrap_or(defaults.pen_down_speed),
+        pen_up_speed: travel_speed.unwrap_or(defaults.pen_up_speed),
+        pen_down_delay: pen_down_delay.unwrap_or(defaults.pen_down_delay),
+        pen_up_delay: pen_up_delay.unwrap_or(defaults.pen_up_delay),
+        pen_down_pos: pen_down_pos.unwrap_or(defaults.pen_down_pos),
+        pen_up_pos: pen_up_pos.unwrap_or(defaults.pen_up_pos),
+        pen_rate_raise: pen_rate_raise.unwrap_or(defaults.pen_rate_raise),
+        pen_rate_lower: pen_rate_lower.unwrap_or(defaults.pen_rate_lower),
+    }
 }
 
 fn main() -> Result<()> {
@@ -124,27 +181,46 @@ fn main() -> Result<()> {
             travel_speed,
             pen_down_delay,
             pen_up_delay,
-        } => cmd_plot(
-            cli.port.as_deref(),
-            &file,
-            draw_speed,
-            travel_speed,
-            pen_down_delay,
-            pen_up_delay,
-        ),
+            pen_down_pos,
+            pen_up_pos,
+            pen_rate_raise,
+            pen_rate_lower,
+        } => {
+            let config = build_config(
+                draw_speed,
+                travel_speed,
+                pen_down_delay,
+                pen_up_delay,
+                pen_down_pos,
+                pen_up_pos,
+                pen_rate_raise,
+                pen_rate_lower,
+            );
+            cmd_plot(cli.port.as_deref(), &file, config)
+        }
         Commands::Preview {
             file,
             draw_speed,
             travel_speed,
             pen_down_delay,
             pen_up_delay,
-        } => cmd_preview(
-            &file,
-            draw_speed,
-            travel_speed,
-            pen_down_delay,
-            pen_up_delay,
-        ),
+            pen_down_pos,
+            pen_up_pos,
+            pen_rate_raise,
+            pen_rate_lower,
+        } => {
+            let config = build_config(
+                draw_speed,
+                travel_speed,
+                pen_down_delay,
+                pen_up_delay,
+                pen_down_pos,
+                pen_up_pos,
+                pen_rate_raise,
+                pen_rate_lower,
+            );
+            cmd_preview(&file, config)
+        }
     }
 }
 
@@ -251,9 +327,38 @@ fn cmd_status(port: Option<&str>) -> Result<()> {
     let pen_down = plotter.is_pen_down();
     let pos = plotter.position();
 
+    // Get the default config to show timing info
+    let config = PlotConfig::default();
+
     println!("Connected to AxiDraw");
     println!("  Position: ({:.2}, {:.2}) mm", pos.x, pos.y);
     println!("  Pen: {}", if pen_down { "down" } else { "up" });
+    println!();
+    println!("Pen configuration (defaults):");
+    println!(
+        "  Positions: down={}, up={} (delta={}%)",
+        config.pen_down_pos,
+        config.pen_up_pos,
+        (config.pen_up_pos as i16 - config.pen_down_pos as i16).abs()
+    );
+    println!(
+        "  Rates: raise={}, lower={} (1-100, 100=fastest)",
+        config.pen_rate_raise, config.pen_rate_lower
+    );
+    println!(
+        "  Calculated timing: up={}ms, down={}ms",
+        config.pen_up_move_time(),
+        config.pen_down_move_time()
+    );
+    println!(
+        "  Additional delays: up={}ms, down={}ms",
+        config.pen_up_delay, config.pen_down_delay
+    );
+    println!(
+        "  Total wait time: up={}ms, down={}ms",
+        config.pen_up_total_time(),
+        config.pen_down_total_time()
+    );
 
     Ok(())
 }
@@ -292,22 +397,8 @@ fn cmd_move(port: Option<&str>, x: f64, y: f64) -> Result<()> {
 }
 
 /// Preview a drawing without plotting
-fn cmd_preview(
-    file: &PathBuf,
-    draw_speed: f64,
-    travel_speed: f64,
-    pen_down_delay: u32,
-    pen_up_delay: u32,
-) -> Result<()> {
+fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
     let drawing = load_drawing_with_validation(file)?;
-
-    let config = PlotConfig {
-        pen_down_speed: draw_speed,
-        pen_up_speed: travel_speed,
-        pen_down_delay,
-        pen_up_delay,
-        ..PlotConfig::default()
-    };
 
     let ctx = create_render_context()?;
     let strokes = drawing.flatten(&ctx);
@@ -324,11 +415,14 @@ fn cmd_preview(
     println!("  Travel distance: {:.1} mm", stats.travel_distance);
     println!(
         "  Speed: draw={} mm/s, travel={} mm/s",
-        draw_speed, travel_speed
+        config.pen_down_speed, config.pen_up_speed
     );
     println!(
-        "  Pen delays: down={}ms, up={}ms",
-        pen_down_delay, pen_up_delay
+        "  Servo timing: down={}ms, up={}ms (+ {}ms/{}ms extra delay)",
+        config.pen_down_move_time(),
+        config.pen_up_move_time(),
+        config.pen_down_delay,
+        config.pen_up_delay
     );
     println!("  Estimated time: {}", stats.format_time());
 
@@ -350,23 +444,8 @@ fn check_for_space_key() -> bool {
 }
 
 /// Plot a drawing with progress bar
-fn cmd_plot(
-    port: Option<&str>,
-    file: &PathBuf,
-    draw_speed: f64,
-    travel_speed: f64,
-    pen_down_delay: u32,
-    pen_up_delay: u32,
-) -> Result<()> {
+fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()> {
     let drawing = load_drawing_with_validation(file)?;
-
-    let config = PlotConfig {
-        pen_down_speed: draw_speed,
-        pen_up_speed: travel_speed,
-        pen_down_delay,
-        pen_up_delay,
-        ..PlotConfig::default()
-    };
 
     let ctx = create_render_context()?;
     let strokes = drawing.flatten(&ctx);
@@ -381,11 +460,14 @@ fn cmd_plot(
     );
     println!(
         "  Speed: draw={} mm/s, travel={} mm/s",
-        draw_speed, travel_speed
+        config.pen_down_speed, config.pen_up_speed
     );
     println!(
-        "  Pen delays: down={}ms, up={}ms",
-        pen_down_delay, pen_up_delay
+        "  Servo timing: down={}ms, up={}ms (+ {}ms/{}ms extra delay)",
+        config.pen_down_move_time(),
+        config.pen_up_move_time(),
+        config.pen_down_delay,
+        config.pen_up_delay
     );
     println!("  Press SPACE to pause/resume");
     println!();
