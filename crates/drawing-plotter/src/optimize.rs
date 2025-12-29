@@ -106,10 +106,22 @@ pub fn optimize_strokes_with_reversal(
         return vec![];
     }
 
+    let total_strokes = strokes.len();
+    log::debug!(
+        "Optimizing {} strokes (reversal={})",
+        total_strokes,
+        allow_reversal
+    );
+
     // Track remaining strokes with their indices
     let mut remaining: Vec<(usize, &Stroke)> = strokes.iter().enumerate().collect();
     let mut ordered = Vec::with_capacity(strokes.len());
     let mut current_pos = Point::ZERO;
+    let mut reversed_count = 0;
+
+    // Log progress every 10% for large stroke sets
+    let log_interval = (total_strokes / 10).max(1000);
+    let mut last_log = 0;
 
     while !remaining.is_empty() {
         let mut best_idx = 0;
@@ -146,8 +158,30 @@ pub fn optimize_strokes_with_reversal(
         let (_, stroke) = remaining.remove(best_idx);
         let optimized = OptimizedStroke::new(stroke, best_reversed);
         current_pos = optimized.end();
+        if best_reversed {
+            reversed_count += 1;
+        }
         ordered.push(optimized);
+
+        // Log progress for large stroke sets
+        let processed = ordered.len();
+        if processed - last_log >= log_interval {
+            log::debug!(
+                "Optimization progress: {}/{} strokes ({:.0}%)",
+                processed,
+                total_strokes,
+                (processed as f64 / total_strokes as f64) * 100.0
+            );
+            last_log = processed;
+        }
     }
+
+    log::debug!(
+        "Optimization complete: {} strokes, {} reversed ({:.1}%)",
+        ordered.len(),
+        reversed_count,
+        (reversed_count as f64 / ordered.len() as f64) * 100.0
+    );
 
     ordered
 }

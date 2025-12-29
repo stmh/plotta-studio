@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2025-12-29T18:06:40Z
-updated_at: 2025-12-29T18:12:36Z
+updated_at: 2025-12-29T21:05:05Z
 ---
 
 Implement proper motion planning to eliminate harsh motor noise when plotting curves.
@@ -51,18 +51,19 @@ Implement a motion planner that uses the LM command's acceleration parameter to 
 - [x] For each segment, compute accel/cruise/decel distances and times
 - [x] Handle short segments that can't reach cruise velocity (triangular profile)
 - [x] Calculate LM Rate and Accel parameters from velocity profile
-- [ ] Generate LM command sequences for multi-phase moves
+- [x] Generate LM command sequences for multi-phase moves
 
 ### Phase 4: Integration with AxiDraw
-- [ ] Add `move_to_with_motion()` method that uses motion planner
-- [ ] Update `plot_optimized_strokes()` to use motion planning for pen-down moves
-- [ ] Keep existing constant-velocity for pen-up (travel) moves initially
-- [ ] Add configuration flag to enable/disable motion planning
+- [x] Add `move_to_with_motion()` method that uses motion planner
+- [x] Update `plot_optimized_strokes()` to use motion planning for pen-down moves
+- [x] Keep existing constant-velocity for pen-up (travel) moves initially
+- [x] Add configuration flag to enable/disable motion planning
 
 ### Phase 5: Testing and Tuning
 - [x] Add unit tests for velocity calculations
 - [x] Add unit tests for corner velocity formula
 - [x] Add unit tests for trapezoidal profile generation
+- [x] Add unit tests for LmCommand and PlannedMove
 - [ ] Test on hardware with curves and measure noise reduction
 - [ ] Tune max acceleration parameter for optimal results
 
@@ -96,3 +97,23 @@ deviation = junction_deviation * sin_half_angle / (1 - sin_half_angle)
 - ISR interval: 40μs (25kHz)
 - Rate = 2^31 / 25000 * freq_hz = 85899.3459 * freq_hz
 - Accel = Rate_change_per_40μs
+
+## Additional Features Added
+
+### Servo Position and Rate Configuration
+The EBB needs explicit servo configuration via SC commands:
+- `SC,4,<value>` sets Servo_Min (pen UP position)
+- `SC,5,<value>` sets Servo_Max (pen DOWN position)
+- `SC,11,<value>` sets servo rate when raising (pen up)
+- `SC,12,<value>` sets servo rate when lowering (pen down)
+- EBB servo units: ~7500 (1ms pulse) to ~28000 (2ms pulse)
+- Our 0-100 scale maps linearly to this range
+
+**Bug Fix:** The pen wasn't fully raising before short travel moves because we weren't configuring the servo movement rate. The SP command's Duration parameter tells the EBB how long to wait before the next command, but the actual servo movement speed is controlled by SC,11/SC,12. Added `calculate_ebb_rate()` function to compute the correct EBB rate values that match our timing calculations.
+
+### Plot Cancellation Support
+Added user-initiated plot cancellation to the CLI:
+- Press 'q' or 'Q' to cancel during plotting
+- Ctrl+C also cancels (in raw terminal mode)
+- On cancel: pen raises, returns home, motors disabled
+- `PlotEvent::Cancelled` emitted when cancellation completes

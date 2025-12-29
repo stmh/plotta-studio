@@ -6,6 +6,7 @@
 use crate::config::PlotConfig;
 use crate::error::PlotterError;
 use crate::event::{PauseControl, PlotEvent, PlotHandle};
+use crate::motion::{LmCommand, MotionPlanner, MotionProfile, PlannedMove};
 use crate::optimize::{optimize_strokes_with_reversal, OptimizedStroke};
 use drawing_core::{Drawing, Point, RenderContext, Stroke};
 use serialport::SerialPortType;
@@ -38,6 +39,31 @@ pub struct AxiDraw {
     config: PlotConfig,
     current_pos: Point,
     pen_is_down: bool,
+}
+
+/// Servo position constants for EBB
+///
+/// The EBB uses pulse width values for servo positions.
+/// Standard servo range is 1ms-2ms pulse width at 50Hz.
+/// EBB units are in ~0.83μs increments (1/12MHz * 10).
+mod servo_constants {
+    /// Minimum servo pulse width (1ms = ~7500 EBB units at standard timing)
+    /// This corresponds to pen position 0 (fully up)
+    pub const SERVO_MIN: u16 = 7500;
+
+    /// Maximum servo pulse width (2ms = ~28000 EBB units at standard timing)  
+    /// This corresponds to pen position 100 (fully down)
+    pub const SERVO_MAX: u16 = 28000;
+
+    /// Convert pen position (0-100) to EBB servo units
+    ///
+    /// Linear interpolation between SERVO_MIN and SERVO_MAX
+    pub fn position_to_ebb_units(position: u8) -> u16 {
+        let position = position.clamp(0, 100) as u32;
+        let range = (SERVO_MAX - SERVO_MIN) as u32;
+        let offset = (range * position) / 100;
+        SERVO_MIN + offset as u16
+    }
 }
 
 impl AxiDraw {
@@ -154,8 +180,69 @@ impl AxiDraw {
     }
 
     /// Set the plot configuration
-    pub fn set_config(&mut self, config: PlotConfig) {
+    ///
+    /// This also configures the servo positions on the EBB to match
+    /// the pen_up_pos and pen_down_pos settings.
+    pub fn set_config(&mut self, config: PlotConfig) -> Result<(), PlotterError> {
         self.config = config;
+        self.configure_servo_positions()
+    }
+
+    /// Configure servo positions and rates on the EBB
+    ///
+    /// Uses SC commands to set:
+    /// - SC,4,<value> - Servo_Min (pen UP position)
+    /// - SC,5,<value> - Servo_Max (pen DOWN position)
+    /// - SC,11,<value> - Servo rate when raising (pen up)
+    /// - SC,12,<value> - Servo rate when lowering (pen down)
+    ///
+    /// This must be called after changing pen positions or rates
+    /// for the new settings to take effect.
+    pub fn configure_servo_positions(&mut self) -> Result<(), PlotterError> {
+        use crate::config::servo;
+
+        let servo_min = servo_constants::position_to_ebb_units(self.config.pen_up_pos);
+        let servo_max = servo_constants::position_to_ebb_units(self.config.pen_down_pos);
+
+        // Calculate EBB rate values to match our timing formula
+        let rate_up = servo::calculate_ebb_rate(
+            self.config.pen_down_pos,
+            self.config.pen_up_pos,
+            self.config.pen_rate_raise,
+        );
+        let rate_down = servo::calculate_ebb_rate(
+            self.config.pen_up_pos,
+            self.config.pen_down_pos,
+            self.config.pen_rate_lower,
+        );
+
+        log::debug!(
+            "Configuring servo: pen_up={} -> SC,4,{}, pen_down={} -> SC,5,{}, rate_up={}, rate_down={}",
+            self.config.pen_up_pos,
+            servo_min,
+            self.config.pen_down_pos,
+            servo_max,
+            rate_up,
+            rate_down
+        );
+
+        // Set Servo_Min (pen UP position)
+        let cmd = format!("SC,4,{}", servo_min);
+        self.send_command_ok(&cmd)?;
+
+        // Set Servo_Max (pen DOWN position)
+        let cmd = format!("SC,5,{}", servo_max);
+        self.send_command_ok(&cmd)?;
+
+        // Set Servo rate for raising (pen up)
+        let cmd = format!("SC,11,{}", rate_up);
+        self.send_command_ok(&cmd)?;
+
+        // Set Servo rate for lowering (pen down)
+        let cmd = format!("SC,12,{}", rate_down);
+        self.send_command_ok(&cmd)?;
+
+        Ok(())
     }
 
     /// Query firmware version
@@ -473,6 +560,113 @@ impl AxiDraw {
         Ok(())
     }
 
+    /// Execute an LM command
+    fn execute_lm_command(&mut self, cmd: &LmCommand) -> Result<(), PlotterError> {
+        // Skip empty commands
+        if cmd.is_empty() {
+            log::debug!("Skipping empty LM command");
+            return Ok(());
+        }
+
+        // Validate command before sending
+        if !cmd.is_valid() {
+            log::warn!(
+                "Invalid LM command detected (steps without rate): steps1={}, rate1={}, steps2={}, rate2={}",
+                cmd.steps1, cmd.rate1, cmd.steps2, cmd.rate2
+            );
+            // Fall back to SM command for this move, or skip if truly invalid
+            // For now, skip the command to avoid EBB error
+            return Ok(());
+        }
+
+        let cmd_str = cmd.to_command_string();
+        log::debug!("LM command: {} (duration: {}ms)", cmd_str, cmd.duration_ms);
+        self.send_command_ok(&cmd_str)?;
+        std::thread::sleep(Duration::from_millis(cmd.duration_ms as u64));
+        Ok(())
+    }
+
+    /// Execute a planned move (sequence of LM commands)
+    fn execute_planned_move(&mut self, planned: &PlannedMove) -> Result<(), PlotterError> {
+        for cmd in &planned.commands {
+            self.execute_lm_command(cmd)?;
+        }
+        self.current_pos = planned.end;
+        Ok(())
+    }
+
+    /// Move to a position with motion planning (uses acceleration profiles)
+    ///
+    /// This creates a simple single-segment move with trapezoidal velocity profile.
+    /// For multi-segment moves (like drawing a stroke), use `draw_stroke_with_planning`.
+    pub fn move_to_with_planning(&mut self, target: Point) -> Result<(), PlotterError> {
+        let delta = target - self.current_pos;
+        let distance = delta.length();
+
+        if distance < 0.01 {
+            return Ok(());
+        }
+
+        let motion_config = self.config.motion_config();
+        let speed = if self.pen_is_down {
+            self.config.pen_down_speed
+        } else {
+            self.config.pen_up_speed
+        };
+
+        // For single-segment moves, we start and end at zero velocity
+        let profile = MotionProfile::calculate(
+            0.0,                            // entry velocity
+            0.0,                            // exit velocity
+            speed,                          // max velocity
+            distance,                       // distance
+            motion_config.max_acceleration, // max acceleration
+        );
+
+        let planned = PlannedMove::with_profile(
+            self.current_pos,
+            target,
+            &profile,
+            motion_config.steps_per_mm,
+        );
+
+        self.execute_planned_move(&planned)
+    }
+
+    /// Draw a stroke with motion planning
+    ///
+    /// Uses the motion planner to compute optimal velocities through corners,
+    /// creating smooth motion with proper acceleration/deceleration.
+    pub fn draw_stroke_with_planning(&mut self, points: &[Point]) -> Result<(), PlotterError> {
+        if points.len() < 2 {
+            return Ok(());
+        }
+
+        let motion_config = self.config.motion_config();
+        let planner = MotionPlanner::new(motion_config.clone());
+
+        // Plan velocities for the entire stroke
+        let segments = planner.plan(points);
+        if segments.is_empty() {
+            return Ok(());
+        }
+
+        // Generate and execute motion profiles for each segment
+        let profiles = planner.generate_profiles(&segments);
+
+        for (segment, profile) in segments.iter().zip(profiles.iter()) {
+            let planned = PlannedMove::with_profile(
+                segment.start,
+                segment.end,
+                profile,
+                motion_config.steps_per_mm,
+            );
+            self.execute_planned_move(&planned)?;
+        }
+
+        Ok(())
+    }
+
     // ========================================================================
     // High-level Plotting
     // ========================================================================
@@ -484,7 +678,7 @@ impl AxiDraw {
         config: &PlotConfig,
         ctx: &RenderContext,
     ) -> Result<(), PlotterError> {
-        self.config = config.clone();
+        self.set_config(config.clone())?;
 
         // Flatten drawing to strokes
         let strokes = drawing.flatten(ctx);
@@ -504,12 +698,14 @@ impl AxiDraw {
         self.pen_up()?;
         self.enable_motors()?;
 
+        let use_motion_planning = self.config.motion_planning_enabled;
+
         for opt_stroke in strokes {
             if opt_stroke.stroke.points.is_empty() {
                 continue;
             }
 
-            // Move to stroke start (pen up) - uses effective start considering reversal
+            // Move to stroke start (pen up) - always use constant velocity for travel
             self.move_to(opt_stroke.start())?;
 
             // Put pen down
@@ -517,8 +713,15 @@ impl AxiDraw {
 
             // Draw stroke points in correct order
             let points: Vec<_> = opt_stroke.points().collect();
-            for point in points.iter().skip(1) {
-                self.move_to(*point)?;
+
+            if use_motion_planning && points.len() >= 2 {
+                // Use motion planning for the entire stroke
+                self.draw_stroke_with_planning(&points)?;
+            } else {
+                // Use constant velocity for each segment
+                for point in points.iter().skip(1) {
+                    self.move_to(*point)?;
+                }
             }
 
             // Close if needed - for closed strokes, return to the first point we drew
@@ -585,19 +788,46 @@ impl AxiDraw {
         F: FnMut(PlotEvent),
     {
         let total = strokes.len();
+        log::info!("Starting to plot {} strokes", total);
+
         on_event(PlotEvent::Started {
             total_strokes: total,
         });
 
+        log::debug!("Raising pen and enabling motors...");
         self.pen_up()?;
         self.enable_motors()?;
 
+        // Calculate total points for logging
+        let total_points: usize = strokes.iter().map(|s| s.stroke.points.len()).sum();
+        log::debug!("Total points to plot: {}", total_points);
+
+        let plot_start = std::time::Instant::now();
+
         for (index, opt_stroke) in strokes.iter().enumerate() {
-            // Check for pause between strokes (pen is up at this point)
+            // Check for cancellation
             if let Some(ctrl) = pause_control {
+                if ctrl.is_cancelled() {
+                    // Cancel requested - raise pen, go home, and exit
+                    self.pen_up()?;
+                    self.move_to(Point::ZERO)?;
+                    self.disable_motors()?;
+                    on_event(PlotEvent::Cancelled);
+                    return Ok(());
+                }
+
+                // Check for pause between strokes (pen is up at this point)
                 if ctrl.is_paused() {
                     on_event(PlotEvent::Paused);
                     ctrl.wait_if_paused();
+                    // Check if we were cancelled while paused
+                    if ctrl.is_cancelled() {
+                        self.pen_up()?;
+                        self.move_to(Point::ZERO)?;
+                        self.disable_motors()?;
+                        on_event(PlotEvent::Cancelled);
+                        return Ok(());
+                    }
                     on_event(PlotEvent::Resumed);
                 }
             }
@@ -605,6 +835,31 @@ impl AxiDraw {
             if opt_stroke.stroke.points.is_empty() {
                 continue;
             }
+
+            // Log progress every 100 strokes or 10% of total
+            let log_interval = (total / 10).max(100);
+            if index > 0 && index % log_interval == 0 {
+                let elapsed = plot_start.elapsed();
+                let rate = index as f64 / elapsed.as_secs_f64();
+                let remaining_strokes = total - index;
+                let eta_secs = remaining_strokes as f64 / rate;
+                log::info!(
+                    "Progress: {}/{} strokes ({:.0}%) - {:.1} strokes/s - ETA: {:.0}s",
+                    index,
+                    total,
+                    (index as f64 / total as f64) * 100.0,
+                    rate,
+                    eta_secs
+                );
+            }
+
+            log::trace!(
+                "Stroke {}/{}: {} points, reversed={}",
+                index + 1,
+                total,
+                opt_stroke.stroke.points.len(),
+                opt_stroke.reversed
+            );
 
             on_event(PlotEvent::StrokeStart { index, total });
 
@@ -621,12 +876,26 @@ impl AxiDraw {
 
             // Draw stroke points in correct order
             let points: Vec<_> = opt_stroke.points().collect();
-            for point in points.iter().skip(1) {
-                on_event(PlotEvent::MoveTo {
-                    position: *point,
-                    pen_down: true,
-                });
-                self.move_to(*point)?;
+
+            if self.config.motion_planning_enabled && points.len() >= 2 {
+                // Use motion planning for the entire stroke
+                // Emit events for each point (for progress tracking)
+                for point in points.iter().skip(1) {
+                    on_event(PlotEvent::MoveTo {
+                        position: *point,
+                        pen_down: true,
+                    });
+                }
+                self.draw_stroke_with_planning(&points)?;
+            } else {
+                // Use constant velocity for each segment
+                for point in points.iter().skip(1) {
+                    on_event(PlotEvent::MoveTo {
+                        position: *point,
+                        pen_down: true,
+                    });
+                    self.move_to(*point)?;
+                }
             }
 
             // Close if needed - for closed strokes, return to the first point we drew
@@ -635,7 +904,14 @@ impl AxiDraw {
                     position: points[0],
                     pen_down: true,
                 });
-                self.move_to(points[0])?;
+                if self.config.motion_planning_enabled {
+                    // For closed strokes with motion planning, we need to include
+                    // the closing segment in the motion plan
+                    // For now, just do a simple move
+                    self.move_to(points[0])?;
+                } else {
+                    self.move_to(points[0])?;
+                }
             }
 
             // Lift pen
@@ -645,12 +921,21 @@ impl AxiDraw {
         }
 
         // Return home
+        log::debug!("Returning to home position...");
         on_event(PlotEvent::MoveTo {
             position: Point::ZERO,
             pen_down: false,
         });
         self.move_to(Point::ZERO)?;
         self.disable_motors()?;
+
+        let elapsed = plot_start.elapsed();
+        log::info!(
+            "Plotting completed: {} strokes in {:.1}s ({:.1} strokes/s)",
+            total,
+            elapsed.as_secs_f64(),
+            total as f64 / elapsed.as_secs_f64()
+        );
 
         on_event(PlotEvent::Completed);
         Ok(())
@@ -684,7 +969,7 @@ impl AxiDraw {
     where
         F: FnMut(PlotEvent),
     {
-        self.config = config.clone();
+        self.set_config(config.clone())?;
         let strokes = drawing.flatten(ctx);
         let optimized = optimize_strokes_with_reversal(&strokes, true);
         self.plot_optimized_strokes_with_events(&optimized, on_event)
@@ -741,19 +1026,45 @@ pub fn plot_in_background(
     let pause_control = PauseControl::new();
     let pause_control_clone = pause_control.clone();
 
+    log::info!("Starting background plot thread...");
+
     let handle = thread::spawn(move || {
         let result = (|| {
+            log::debug!("Background thread: connecting to plotter...");
             let mut plotter = match port {
-                Some(p) => AxiDraw::connect(&p)?,
-                None => AxiDraw::auto_connect()?,
+                Some(ref p) => {
+                    log::info!("Connecting to port: {}", p);
+                    AxiDraw::connect(p)?
+                }
+                None => {
+                    log::info!("Auto-detecting plotter...");
+                    AxiDraw::auto_connect()?
+                }
             };
 
-            // Apply the config to the plotter
-            plotter.set_config(config);
+            // Apply the config to the plotter (also configures servo positions)
+            log::debug!("Applying plot configuration...");
+            plotter.set_config(config)?;
 
+            log::debug!("Flattening drawing to strokes...");
+            let flatten_start = std::time::Instant::now();
             let strokes = drawing.flatten(&ctx);
-            let optimized = optimize_strokes_with_reversal(&strokes, true);
+            log::info!(
+                "Flattened drawing to {} strokes in {:.2}s",
+                strokes.len(),
+                flatten_start.elapsed().as_secs_f64()
+            );
 
+            log::debug!("Optimizing stroke order...");
+            let optimize_start = std::time::Instant::now();
+            let optimized = optimize_strokes_with_reversal(&strokes, true);
+            log::info!(
+                "Optimized {} strokes in {:.2}s",
+                optimized.len(),
+                optimize_start.elapsed().as_secs_f64()
+            );
+
+            log::info!("Starting to plot {} strokes...", optimized.len());
             plotter.plot_optimized_strokes_with_pause(
                 &optimized,
                 &mut |event| {
@@ -764,6 +1075,7 @@ pub fn plot_in_background(
         })();
 
         if let Err(ref e) = result {
+            log::error!("Plot error: {}", e);
             let _ = sender.send(PlotEvent::Error(e.to_string()));
         }
 

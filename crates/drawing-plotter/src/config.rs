@@ -13,6 +13,16 @@ pub mod servo {
     /// From axidraw_conf.py: servo_move_slope = 2.69
     pub const MOVE_SLOPE_MS_PER_PERCENT: f64 = 2.69;
 
+    /// EBB servo channel period in ms (8 channels * 3ms each)
+    /// The servo rate is applied once per period.
+    const SERVO_PERIOD_MS: f64 = 24.0;
+
+    /// Minimum servo pulse width (1ms = ~7500 EBB units)
+    const SERVO_MIN: f64 = 7500.0;
+
+    /// Maximum servo pulse width (2ms = ~28000 EBB units)
+    const SERVO_MAX: f64 = 28000.0;
+
     /// Calculate servo move time based on pen position delta and rate
     ///
     /// Formula from Python driver: time = (slope * distance + min) * (100 / rate)
@@ -31,6 +41,36 @@ pub mod servo {
         // Scale time inversely by rate (lower rate = longer time)
         let time_ms = base_time_ms * (100.0 / rate);
         time_ms.round() as u32
+    }
+
+    /// Calculate the EBB servo rate value (for SC,11/SC,12) from pen positions and rate
+    ///
+    /// The EBB servo rate is how much the pulse width changes per servo period (24ms).
+    /// We calculate this to match the timing from our `calculate_move_time` formula.
+    ///
+    /// Formula: rate_ebb = distance_ebb_units * SERVO_PERIOD_MS / time_ms
+    pub fn calculate_ebb_rate(from_pos: u8, to_pos: u8, rate: u8) -> u16 {
+        let distance_percent = (from_pos as i16 - to_pos as i16).unsigned_abs() as f64;
+        if distance_percent < 0.001 {
+            return 0;
+        }
+
+        // Calculate distance in EBB units
+        let from_ebb = SERVO_MIN + (SERVO_MAX - SERVO_MIN) * (from_pos as f64) / 100.0;
+        let to_ebb = SERVO_MIN + (SERVO_MAX - SERVO_MIN) * (to_pos as f64) / 100.0;
+        let distance_ebb = (from_ebb - to_ebb).abs();
+
+        // Calculate expected move time from our formula
+        let time_ms = calculate_move_time(from_pos, to_pos, rate) as f64;
+        if time_ms < 1.0 {
+            return 0;
+        }
+
+        // Calculate rate: change per period = distance / (time / period)
+        let rate_ebb = distance_ebb * SERVO_PERIOD_MS / time_ms;
+
+        // Clamp to valid range (1-65535)
+        rate_ebb.round().clamp(1.0, 65535.0) as u16
     }
 }
 
@@ -85,10 +125,10 @@ impl Default for PlotConfig {
             // No additional delay by default (servo timing is calculated dynamically)
             pen_down_delay: 0,
             pen_up_delay: 0,
-            // Motion planning defaults (disabled by default for backward compatibility)
+            // Motion planning defaults
             max_acceleration: 500.0,
             junction_deviation: DEFAULT_JUNCTION_DEVIATION,
-            motion_planning_enabled: false,
+            motion_planning_enabled: true,
         }
     }
 }
@@ -219,5 +259,32 @@ mod tests {
         // Total time includes the additional delay
         assert_eq!(config.pen_up_total_time(), 351); // 251 + 100
         assert_eq!(config.pen_down_total_time(), 301); // 251 + 50
+    }
+
+    #[test]
+    fn test_calculate_ebb_rate() {
+        // Test that EBB rate is consistent with timing calculation
+        // For 30% travel (from 30 to 60) at 100% rate: time = 126ms
+        // Distance in EBB units: (28000-7500) * 30 / 100 = 6150
+        // Rate = 6150 * 24 / 126 = 1171.4
+        let rate = servo::calculate_ebb_rate(30, 60, 100);
+        assert!(
+            (1170..=1172).contains(&rate),
+            "Expected ~1171, got {}",
+            rate
+        );
+
+        // At 50% rate: time = 251ms
+        // Rate = 6150 * 24 / 251 = 588
+        let rate_50 = servo::calculate_ebb_rate(30, 60, 50);
+        assert!(
+            (587..=589).contains(&rate_50),
+            "Expected ~588, got {}",
+            rate_50
+        );
+
+        // Zero distance should return 0
+        let rate_zero = servo::calculate_ebb_rate(50, 50, 50);
+        assert_eq!(rate_zero, 0);
     }
 }

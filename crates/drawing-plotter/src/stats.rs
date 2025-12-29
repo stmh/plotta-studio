@@ -1,10 +1,11 @@
 //! Drawing statistics for preview and time estimation
 
 use crate::config::PlotConfig;
+use crate::motion::{MotionConfig, MotionPlanner, MotionProfile};
 use crate::optimize::{
     optimize_strokes_with_reversal, pen_down_distance_optimized, travel_distance_optimized,
 };
-use drawing_core::Stroke;
+use drawing_core::{Point, Stroke};
 use std::time::Duration;
 
 /// Statistics about a drawing for preview and time estimation
@@ -69,6 +70,7 @@ use crate::optimize::OptimizedStroke;
 /// - Pen-up travel speed
 /// - Pen up/down delays
 /// - Stroke count (for pen transitions)
+/// - Motion planning (acceleration/deceleration) when enabled
 pub fn estimate_plot_time_optimized(
     strokes: &[OptimizedStroke<'_>],
     config: &PlotConfig,
@@ -77,14 +79,19 @@ pub fn estimate_plot_time_optimized(
         return Duration::ZERO;
     }
 
-    let pen_down = pen_down_distance_optimized(strokes);
-    let travel = travel_distance_optimized(strokes);
+    let (pen_down_time_ms, travel_time_ms) = if config.motion_planning_enabled {
+        // Use motion planning for more accurate time estimation
+        estimate_time_with_motion_planning(strokes, config)
+    } else {
+        // Simple constant velocity calculation
+        let pen_down = pen_down_distance_optimized(strokes);
+        let travel = travel_distance_optimized(strokes);
 
-    // Time for drawing (pen down)
-    let pen_down_time_ms = (pen_down / config.pen_down_speed) * 1000.0;
+        let pen_down_time = (pen_down / config.pen_down_speed) * 1000.0;
+        let travel_time = (travel / config.pen_up_speed) * 1000.0;
 
-    // Time for travel (pen up)
-    let travel_time_ms = (travel / config.pen_up_speed) * 1000.0;
+        (pen_down_time, travel_time)
+    };
 
     // Time for pen transitions (each stroke: pen down + pen up)
     // Uses total time which includes servo move time + optional delay
@@ -94,6 +101,67 @@ pub fn estimate_plot_time_optimized(
     let total_ms = pen_down_time_ms + travel_time_ms + pen_transition_time_ms;
 
     Duration::from_millis(total_ms as u64)
+}
+
+/// Estimate time with motion planning (acceleration/deceleration)
+///
+/// This calculates the actual time considering:
+/// - Acceleration from rest at the start of each stroke
+/// - Deceleration at corners based on angle
+/// - Triangular profiles for short segments
+fn estimate_time_with_motion_planning(
+    strokes: &[OptimizedStroke<'_>],
+    config: &PlotConfig,
+) -> (f64, f64) {
+    let motion_config = MotionConfig {
+        max_velocity: config.pen_down_speed,
+        max_acceleration: config.max_acceleration,
+        junction_deviation: config.junction_deviation,
+        steps_per_mm: 80.0, // Standard AxiDraw steps/mm
+    };
+
+    let planner = MotionPlanner::new(motion_config);
+    let mut total_pen_down_time = 0.0;
+    let mut total_travel_time = 0.0;
+
+    let mut current_pos = Point::new(0.0, 0.0);
+
+    for stroke in strokes {
+        let points: Vec<Point> = stroke.points().collect();
+        if points.is_empty() {
+            continue;
+        }
+
+        let stroke_start = points[0];
+        let stroke_end = points[points.len() - 1];
+
+        // Calculate travel time to stroke start
+        let travel_distance = (stroke_start - current_pos).length();
+        if travel_distance > 0.01 {
+            // Travel moves: start and end at rest, can reach max travel speed
+            let travel_profile = MotionProfile::calculate(
+                0.0,                 // start at rest
+                0.0,                 // end at rest
+                config.pen_up_speed, // max travel speed
+                travel_distance,
+                config.max_acceleration,
+            );
+            total_travel_time += travel_profile.total_time() * 1000.0;
+        }
+
+        // Calculate drawing time for this stroke using motion planner
+        if points.len() >= 2 {
+            let segments = planner.plan(&points);
+            let profiles = planner.generate_profiles(&segments);
+            for profile in &profiles {
+                total_pen_down_time += profile.total_time() * 1000.0;
+            }
+        }
+
+        current_pos = stroke_end;
+    }
+
+    (total_pen_down_time, total_travel_time)
 }
 
 /// Estimate plot time for a set of strokes (legacy API)
@@ -163,14 +231,18 @@ mod tests {
     }
 
     #[test]
-    fn test_estimate_plot_time_includes_delays() {
+    fn test_estimate_plot_time_constant_velocity() {
         let stroke = Stroke::line(
             Point::new(0.0, 0.0),
             Point::new(25.0, 0.0), // 25mm at 25mm/s = 1s pen down
             ResolvedStyle::default(),
         );
         let strokes = vec![&stroke];
-        let config = PlotConfig::default();
+        // Disable motion planning for constant velocity test
+        let config = PlotConfig {
+            motion_planning_enabled: false,
+            ..PlotConfig::default()
+        };
         let time = estimate_plot_time(&strokes, &config);
 
         // Should include drawing time + servo timing (rate-adjusted)
@@ -181,6 +253,37 @@ mod tests {
         // Total: ~1502ms
         assert!(time.as_millis() >= 1460);
         assert!(time.as_millis() <= 1540);
+    }
+
+    #[test]
+    fn test_estimate_plot_time_with_motion_planning() {
+        let stroke = Stroke::line(
+            Point::new(0.0, 0.0),
+            Point::new(25.0, 0.0), // 25mm
+            ResolvedStyle::default(),
+        );
+        let strokes = vec![&stroke];
+        let config = PlotConfig {
+            motion_planning_enabled: true,
+            ..PlotConfig::default()
+        };
+        let time = estimate_plot_time(&strokes, &config);
+
+        // With motion planning, time will be longer due to accel/decel
+        // from rest to rest. The time will be > constant velocity estimate.
+        // Constant velocity: 25mm / 25mm/s = 1000ms
+        // With accel/decel starting/stopping at 0, we need more time
+        // Expected: ~1500-2500ms for motion + ~500ms for servo timing
+        assert!(
+            time.as_millis() >= 1500,
+            "Motion planned time should be >= 1500ms, got {}ms",
+            time.as_millis()
+        );
+        assert!(
+            time.as_millis() <= 3000,
+            "Motion planned time should be <= 3000ms, got {}ms",
+            time.as_millis()
+        );
     }
 
     #[test]

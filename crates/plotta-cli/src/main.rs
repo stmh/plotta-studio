@@ -2,12 +2,12 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Maximum allowed drawing file size (10 MB)
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024;
 /// Maximum allowed number of strokes in a drawing
-const MAX_STROKES: usize = 100_000;
+const MAX_STROKES: usize = 1_000_000;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -164,6 +164,10 @@ fn build_config(
         pen_up_pos: pen_up_pos.unwrap_or(defaults.pen_up_pos),
         pen_rate_raise: pen_rate_raise.unwrap_or(defaults.pen_rate_raise),
         pen_rate_lower: pen_rate_lower.unwrap_or(defaults.pen_rate_lower),
+        // Motion planning settings (use defaults for now, can add CLI flags later)
+        max_acceleration: defaults.max_acceleration,
+        junction_deviation: defaults.junction_deviation,
+        motion_planning_enabled: defaults.motion_planning_enabled,
     }
 }
 
@@ -237,16 +241,32 @@ fn load_drawing_with_validation(file: &PathBuf) -> Result<Drawing> {
     let metadata = fs::metadata(file)
         .with_context(|| format!("Failed to read file metadata: {}", file.display()))?;
 
-    if metadata.len() > MAX_FILE_SIZE {
+    let file_size = metadata.len();
+    log::info!(
+        "Loading drawing file: {} ({:.2} MB)",
+        file.display(),
+        file_size as f64 / 1024.0 / 1024.0
+    );
+
+    if file_size > MAX_FILE_SIZE {
         anyhow::bail!(
             "Drawing file too large: {} bytes (max {} MB)",
-            metadata.len(),
+            file_size,
             MAX_FILE_SIZE / 1024 / 1024
         );
     }
 
+    log::debug!("Parsing JSON drawing file...");
+    let start = Instant::now();
     let drawing = Drawing::load(file)
         .with_context(|| format!("Failed to load drawing from {}", file.display()))?;
+    log::info!(
+        "Drawing loaded in {:.2}s: {} elements, {:.0}x{:.0} mm",
+        start.elapsed().as_secs_f64(),
+        drawing.elements.len(),
+        drawing.width,
+        drawing.height
+    );
 
     Ok(drawing)
 }
@@ -431,8 +451,19 @@ fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
     let drawing = load_drawing_with_validation(file)?;
 
     let ctx = create_render_context()?;
+
+    log::debug!("Flattening drawing to strokes...");
+    let flatten_start = Instant::now();
     let strokes = drawing.flatten(&ctx);
+    log::info!(
+        "Flattened to {} strokes in {:.2}s",
+        strokes.len(),
+        flatten_start.elapsed().as_secs_f64()
+    );
+
     validate_stroke_count(strokes.len())?;
+
+    log::debug!("Calculating drawing statistics...");
     let stats = DrawingStats::calculate(&strokes, &config);
 
     println!("Drawing: {}", file.display());
@@ -454,23 +485,68 @@ fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
         config.pen_down_delay,
         config.pen_up_delay
     );
+    println!(
+        "  Motion planning: {}",
+        if config.motion_planning_enabled {
+            "enabled (smooth acceleration)"
+        } else {
+            "disabled (constant velocity)"
+        }
+    );
     println!("  Estimated time: {}", stats.format_time());
 
     Ok(())
 }
 
-/// Check for space key press (non-blocking)
-fn check_for_space_key() -> bool {
+/// Key input result
+enum KeyInput {
+    /// No key pressed
+    None,
+    /// Space key - toggle pause
+    Space,
+    /// Q key or Ctrl+C - cancel
+    Cancel,
+}
+
+/// Check for key press (non-blocking)
+fn check_for_key() -> KeyInput {
     // Poll for events with a short timeout
     if event::poll(Duration::from_millis(0)).unwrap_or(false) {
         if let Ok(Event::Key(key_event)) = event::read() {
             // Only respond to key press events (not release)
-            if key_event.kind == KeyEventKind::Press && key_event.code == KeyCode::Char(' ') {
-                return true;
+            if key_event.kind == KeyEventKind::Press {
+                match key_event.code {
+                    KeyCode::Char(' ') => return KeyInput::Space,
+                    KeyCode::Char('q') | KeyCode::Char('Q') => return KeyInput::Cancel,
+                    KeyCode::Char('c')
+                        if key_event
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        return KeyInput::Cancel
+                    }
+                    _ => {}
+                }
             }
         }
     }
-    false
+    KeyInput::None
+}
+
+/// Format duration as human-readable string
+fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    if secs < 60 {
+        format!("{}s", secs)
+    } else if secs < 3600 {
+        let mins = secs / 60;
+        let remaining_secs = secs % 60;
+        format!("{}m {:02}s", mins, remaining_secs)
+    } else {
+        let hours = secs / 3600;
+        let mins = (secs % 3600) / 60;
+        format!("{}h {:02}m", hours, mins)
+    }
 }
 
 /// Plot a drawing with progress bar
@@ -478,9 +554,27 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
     let drawing = load_drawing_with_validation(file)?;
 
     let ctx = create_render_context()?;
+
+    log::debug!("Flattening drawing to strokes...");
+    let flatten_start = Instant::now();
     let strokes = drawing.flatten(&ctx);
+    log::info!(
+        "Flattened to {} strokes in {:.2}s",
+        strokes.len(),
+        flatten_start.elapsed().as_secs_f64()
+    );
+
     validate_stroke_count(strokes.len())?;
+
+    log::debug!("Calculating drawing statistics...");
     let stats = DrawingStats::calculate(&strokes, &config);
+    log::debug!(
+        "Stats: pen_down={:.1}mm, travel={:.1}mm, {} strokes ({} reversed)",
+        stats.pen_down_distance,
+        stats.travel_distance,
+        stats.stroke_count,
+        stats.reversed_strokes
+    );
 
     println!("Plotting: {}", file.display());
     println!(
@@ -499,7 +593,15 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
         config.pen_down_delay,
         config.pen_up_delay
     );
-    println!("  Press SPACE to pause/resume");
+    println!(
+        "  Motion planning: {}",
+        if config.motion_planning_enabled {
+            "enabled (smooth acceleration)"
+        } else {
+            "disabled (constant velocity)"
+        }
+    );
+    println!("  Press SPACE to pause/resume, Q to cancel");
     println!();
 
     let handle = plot_in_background(drawing, config, ctx, port.map(String::from))?;
@@ -507,44 +609,99 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
     let progress = ProgressBar::new(stats.stroke_count as u64);
     progress.set_style(
         ProgressStyle::default_bar()
-            .template("{msg} [{bar:40}] {pos}/{len} strokes ({percent}%)")
+            .template("{msg} [{bar:40}] {pos}/{len} strokes | {prefix}")
             .unwrap()
             .progress_chars("##-"),
     );
     progress.set_message("Plotting");
+    progress.set_prefix(format!("~{} remaining", stats.format_time()));
 
     // Enable raw mode for keyboard input
     terminal::enable_raw_mode()?;
 
+    let start_time = Instant::now();
+    let estimated_total = stats.estimated_time;
+    let total_strokes = stats.stroke_count;
+
+    let mut was_cancelled = false;
     let result = (|| -> Result<()> {
         while handle.is_running() {
-            // Check for space key to toggle pause
-            if check_for_space_key() {
-                let is_paused = handle.toggle_pause();
-                if is_paused {
-                    progress.set_message("PAUSED (space to resume)");
-                } else {
-                    progress.set_message("Plotting");
+            // Check for key input
+            match check_for_key() {
+                KeyInput::Space => {
+                    let is_paused = handle.toggle_pause();
+                    if is_paused {
+                        progress.set_message("PAUSED");
+                    } else {
+                        progress.set_message("Plotting");
+                    }
                 }
+                KeyInput::Cancel => {
+                    progress.set_message("Cancelling...");
+                    handle.cancel();
+                }
+                KeyInput::None => {}
             }
 
             // Process plot events
             for event in handle.drain_events() {
                 match event {
-                    PlotEvent::Started { total_strokes } => {
-                        progress.set_length(total_strokes as u64);
+                    PlotEvent::Started { total_strokes: n } => {
+                        progress.set_length(n as u64);
                     }
                     PlotEvent::StrokeComplete { index, .. } => {
-                        progress.set_position((index + 1) as u64);
+                        let completed = index + 1;
+                        progress.set_position(completed as u64);
+
+                        // Calculate remaining time based on progress
+                        if completed > 0 && total_strokes > 0 {
+                            let elapsed = start_time.elapsed();
+                            let progress_ratio = completed as f64 / total_strokes as f64;
+
+                            // Use weighted average of elapsed-based and estimate-based remaining time
+                            let remaining = if progress_ratio > 0.05 {
+                                // After 5% progress, use actual elapsed time to estimate remaining
+                                let estimated_total_from_elapsed =
+                                    Duration::from_secs_f64(elapsed.as_secs_f64() / progress_ratio);
+                                let remaining_from_elapsed =
+                                    estimated_total_from_elapsed.saturating_sub(elapsed);
+
+                                // Blend with original estimate (more weight to elapsed as we progress)
+                                let weight = progress_ratio.min(0.8);
+                                let remaining_from_estimate =
+                                    estimated_total.saturating_sub(Duration::from_secs_f64(
+                                        estimated_total.as_secs_f64() * progress_ratio,
+                                    ));
+
+                                Duration::from_secs_f64(
+                                    remaining_from_elapsed.as_secs_f64() * weight
+                                        + remaining_from_estimate.as_secs_f64() * (1.0 - weight),
+                                )
+                            } else {
+                                // Early on, use original estimate
+                                estimated_total.saturating_sub(Duration::from_secs_f64(
+                                    estimated_total.as_secs_f64() * progress_ratio,
+                                ))
+                            };
+
+                            progress
+                                .set_prefix(format!("~{} remaining", format_duration(remaining)));
+                        }
                     }
                     PlotEvent::Paused => {
-                        progress.set_message("PAUSED (space to resume)");
+                        progress.set_message("PAUSED");
                     }
                     PlotEvent::Resumed => {
                         progress.set_message("Plotting");
                     }
                     PlotEvent::Completed => {
+                        let elapsed = start_time.elapsed();
+                        progress.set_prefix(format!("completed in {}", format_duration(elapsed)));
                         progress.finish_with_message("Done");
+                    }
+                    PlotEvent::Cancelled => {
+                        was_cancelled = true;
+                        progress.finish_with_message("Cancelled");
                     }
                     PlotEvent::Error(msg) => {
                         progress.abandon_with_message(format!("Error: {}", msg));
@@ -563,7 +720,19 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
 
     result?;
     handle.join()?;
-    println!("\nPlotting complete!");
+
+    let total_elapsed = start_time.elapsed();
+    if was_cancelled {
+        println!(
+            "\nPlotting cancelled after {}. Pen raised and returned home.",
+            format_duration(total_elapsed)
+        );
+    } else {
+        println!(
+            "\nPlotting complete! Total time: {}",
+            format_duration(total_elapsed)
+        );
+    }
 
     Ok(())
 }

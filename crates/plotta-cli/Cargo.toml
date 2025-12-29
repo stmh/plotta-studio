@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 drawing-core = { workspace = true }
 drawing-text = { path = "../drawing-text" }
+drawing-utils = { path = "../drawing-utils" }
 drawing-plotter = { workspace = true, features = ["hardware"] }
 clap = { workspace = true }
 indicatif = { workspace = true }

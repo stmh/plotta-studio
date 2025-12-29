@@ -1886,6 +1886,7 @@ dependencies = [
  "drawing-core",
  "drawing-plotter",
  "drawing-text",
+ "drawing-utils",
  "env_logger",
  "indicatif",
  "log",
