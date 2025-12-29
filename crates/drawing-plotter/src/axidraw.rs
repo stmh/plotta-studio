@@ -194,8 +194,13 @@ impl AxiDraw {
         })?;
 
         // Reverse CoreXY transform: X = (axis1 + axis2) / 2, Y = (axis1 - axis2) / 2
-        let steps_x = (axis1 + axis2) / 2;
-        let steps_y = (axis1 - axis2) / 2;
+        // Use checked arithmetic to prevent overflow
+        let steps_x = axis1.checked_add(axis2).ok_or_else(|| {
+            PlotterError::InvalidResponse("axis overflow in CoreXY transform".into())
+        })? / 2;
+        let steps_y = axis1.checked_sub(axis2).ok_or_else(|| {
+            PlotterError::InvalidResponse("axis overflow in CoreXY transform".into())
+        })? / 2;
 
         // Convert steps to mm
         let x = steps_x as f64 / Self::STEPS_PER_MM;
@@ -372,9 +377,9 @@ impl AxiDraw {
             return Ok(());
         }
 
-        // Calculate steps in X/Y coordinates
-        let steps_x = (delta.x * Self::STEPS_PER_MM) as i32;
-        let steps_y = (delta.y * Self::STEPS_PER_MM) as i32;
+        // Calculate steps in X/Y coordinates (round to prevent drift from truncation)
+        let steps_x = (delta.x * Self::STEPS_PER_MM).round() as i32;
+        let steps_y = (delta.y * Self::STEPS_PER_MM).round() as i32;
 
         // Calculate duration based on speed
         let speed = if self.pen_is_down {
@@ -443,8 +448,9 @@ impl AxiDraw {
                 self.move_to(*point)?;
             }
 
-            // Close if needed (only for non-reversed strokes, as reversed would already end at original start)
-            if opt_stroke.stroke.closed && !opt_stroke.reversed && points.len() > 2 {
+            // Close if needed - for closed strokes, return to the first point we drew
+            // (which is points[0] after collecting from the iterator)
+            if opt_stroke.stroke.closed && points.len() > 2 {
                 self.move_to(points[0])?;
             }
 
@@ -550,8 +556,8 @@ impl AxiDraw {
                 self.move_to(*point)?;
             }
 
-            // Close if needed
-            if opt_stroke.stroke.closed && !opt_stroke.reversed && points.len() > 2 {
+            // Close if needed - for closed strokes, return to the first point we drew
+            if opt_stroke.stroke.closed && points.len() > 2 {
                 on_event(PlotEvent::MoveTo {
                     position: points[0],
                     pen_down: true,

@@ -1,7 +1,13 @@
 //! Plotta CLI - Command-line interface for plotter control
 
+use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
+
+/// Maximum allowed drawing file size (10 MB)
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+/// Maximum allowed number of strokes in a drawing
+const MAX_STROKES: usize = 100_000;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -142,6 +148,34 @@ fn main() -> Result<()> {
     }
 }
 
+/// Validate and load a drawing file with size limits
+fn load_drawing_with_validation(file: &PathBuf) -> Result<Drawing> {
+    // Check file size before loading
+    let metadata = fs::metadata(file)
+        .with_context(|| format!("Failed to read file metadata: {}", file.display()))?;
+
+    if metadata.len() > MAX_FILE_SIZE {
+        anyhow::bail!(
+            "Drawing file too large: {} bytes (max {} MB)",
+            metadata.len(),
+            MAX_FILE_SIZE / 1024 / 1024
+        );
+    }
+
+    let drawing = Drawing::load(file)
+        .with_context(|| format!("Failed to load drawing from {}", file.display()))?;
+
+    Ok(drawing)
+}
+
+/// Validate stroke count after flattening
+fn validate_stroke_count(stroke_count: usize) -> Result<()> {
+    if stroke_count > MAX_STROKES {
+        anyhow::bail!("Too many strokes: {} (max {})", stroke_count, MAX_STROKES);
+    }
+    Ok(())
+}
+
 /// Create a RenderContext with all built-in fonts loaded
 fn create_render_context() -> Result<RenderContext> {
     let font_manager = FontManager::new();
@@ -154,10 +188,38 @@ fn create_render_context() -> Result<RenderContext> {
     Ok(RenderContext::new(font_manager.registry().clone()))
 }
 
+/// Validate serial port path format
+fn validate_port_path(port: &str) -> Result<()> {
+    // Basic validation: port should look like a device path
+    #[cfg(unix)]
+    {
+        if !port.starts_with("/dev/") {
+            anyhow::bail!(
+                "Invalid port path: '{}'. Expected path starting with /dev/ (e.g., /dev/ttyUSB0)",
+                port
+            );
+        }
+    }
+    #[cfg(windows)]
+    {
+        let upper = port.to_uppercase();
+        if !upper.starts_with("COM") {
+            anyhow::bail!(
+                "Invalid port path: '{}'. Expected COM port (e.g., COM3)",
+                port
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Connect to plotter, using specified port or auto-detecting
 fn connect_plotter(port: Option<&str>) -> Result<AxiDraw> {
     match port {
-        Some(p) => AxiDraw::connect(p).with_context(|| format!("Failed to connect to {}", p)),
+        Some(p) => {
+            validate_port_path(p)?;
+            AxiDraw::connect(p).with_context(|| format!("Failed to connect to {}", p))
+        }
         None => AxiDraw::auto_connect().context("Failed to auto-connect to AxiDraw"),
     }
 }
@@ -237,8 +299,7 @@ fn cmd_preview(
     pen_down_delay: u32,
     pen_up_delay: u32,
 ) -> Result<()> {
-    let drawing = Drawing::load(file)
-        .with_context(|| format!("Failed to load drawing from {}", file.display()))?;
+    let drawing = load_drawing_with_validation(file)?;
 
     let config = PlotConfig {
         pen_down_speed: draw_speed,
@@ -250,6 +311,7 @@ fn cmd_preview(
 
     let ctx = create_render_context()?;
     let strokes = drawing.flatten(&ctx);
+    validate_stroke_count(strokes.len())?;
     let stats = DrawingStats::calculate(&strokes, &config);
 
     println!("Drawing: {}", file.display());
@@ -296,8 +358,7 @@ fn cmd_plot(
     pen_down_delay: u32,
     pen_up_delay: u32,
 ) -> Result<()> {
-    let drawing = Drawing::load(file)
-        .with_context(|| format!("Failed to load drawing from {}", file.display()))?;
+    let drawing = load_drawing_with_validation(file)?;
 
     let config = PlotConfig {
         pen_down_speed: draw_speed,
@@ -309,6 +370,7 @@ fn cmd_plot(
 
     let ctx = create_render_context()?;
     let strokes = drawing.flatten(&ctx);
+    validate_stroke_count(strokes.len())?;
     let stats = DrawingStats::calculate(&strokes, &config);
 
     println!("Plotting: {}", file.display());

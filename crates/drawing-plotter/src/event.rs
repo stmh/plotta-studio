@@ -60,9 +60,11 @@ impl PauseControl {
     }
 
     /// Toggle pause state, returns new state (true = paused)
+    ///
+    /// Uses atomic fetch_xor for thread-safe toggle operation.
     pub fn toggle(&self) -> bool {
-        let was_paused = self.paused.load(Ordering::SeqCst);
-        self.paused.store(!was_paused, Ordering::SeqCst);
+        // fetch_xor atomically XORs with true (flips the bit) and returns previous value
+        let was_paused = self.paused.fetch_xor(true, Ordering::SeqCst);
         !was_paused
     }
 
