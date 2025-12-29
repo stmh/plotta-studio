@@ -59,6 +59,12 @@ enum Commands {
         y: f64,
     },
 
+    /// Send a raw EBB command (for debugging)
+    Raw {
+        /// The command to send (e.g., "V" for version, "QS" for step position)
+        command: String,
+    },
+
     /// Plot a drawing from JSON file
     Plot {
         /// Path to JSON drawing file
@@ -175,6 +181,7 @@ fn main() -> Result<()> {
         Commands::PenDown => cmd_pen_down(cli.port.as_deref()),
         Commands::Home => cmd_home(cli.port.as_deref()),
         Commands::Move { x, y } => cmd_move(cli.port.as_deref(), x, y),
+        Commands::Raw { command } => cmd_raw(cli.port.as_deref(), &command),
         Commands::Plot {
             file,
             draw_speed,
@@ -321,7 +328,13 @@ fn cmd_list() -> Result<()> {
 
 /// Check connection status
 fn cmd_status(port: Option<&str>) -> Result<()> {
-    let plotter = connect_plotter(port)?;
+    let mut plotter = connect_plotter(port)?;
+
+    // Query firmware version
+    let version = plotter
+        .query_version()
+        .map(|v| v.trim().to_string())
+        .unwrap_or_else(|_| "Unknown".to_string());
 
     // Position and pen state are synced from hardware on connect
     let pen_down = plotter.is_pen_down();
@@ -331,6 +344,7 @@ fn cmd_status(port: Option<&str>) -> Result<()> {
     let config = PlotConfig::default();
 
     println!("Connected to AxiDraw");
+    println!("  Firmware: {}", version);
     println!("  Position: ({:.2}, {:.2}) mm", pos.x, pos.y);
     println!("  Pen: {}", if pen_down { "down" } else { "up" });
     println!();
@@ -394,6 +408,22 @@ fn cmd_move(port: Option<&str>, x: f64, y: f64) -> Result<()> {
     plotter.move_to(drawing_core::Point::new(x, y))?;
     println!("Moved to ({:.1}, {:.1}) mm", x, y);
     Ok(())
+}
+
+/// Send a raw EBB command
+fn cmd_raw(port: Option<&str>, command: &str) -> Result<()> {
+    let mut plotter = connect_plotter(port)?;
+    println!("Sending: {}", command);
+    match plotter.raw_command(command) {
+        Ok(response) => {
+            println!("Response: {}", response.trim());
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error: {}", e);
+            Err(e.into())
+        }
+    }
 }
 
 /// Preview a drawing without plotting

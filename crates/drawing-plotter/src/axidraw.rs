@@ -163,6 +163,11 @@ impl AxiDraw {
         self.send_command("V")
     }
 
+    /// Send a raw command (for debugging/testing)
+    pub fn raw_command(&mut self, cmd: &str) -> Result<String, PlotterError> {
+        self.send_command(cmd)
+    }
+
     /// Query current step position from hardware
     ///
     /// Returns the current position in mm by querying the EBB's step counters.
@@ -397,7 +402,24 @@ impl AxiDraw {
     // Movement
     // ========================================================================
 
-    /// Move to a position
+    /// LM command Rate calculation constant
+    /// Rate = 2^31 / 25000 * frequency_hz = 85899.3459 * frequency_hz
+    /// (25000 Hz = 40μs ISR interval)
+    const RATE_FACTOR: f64 = 85899.3459;
+
+    /// Move to a position using the LM (Low-level Move) command
+    ///
+    /// LM provides smoother motion than XM by using precise 40μs timing intervals
+    /// and allowing acceleration control (though we use constant velocity for now).
+    ///
+    /// LM command format: LM,Rate1,Steps1,Accel1,Rate2,Steps2,Accel2[,Clear]
+    /// - Rate: step rate factor, must be positive (Rate = 85899.35 * steps_per_second)
+    /// - Steps: number of steps to move (sign indicates direction in firmware 2.x)
+    /// - Accel: acceleration (0 for constant velocity)
+    ///
+    /// Note: LM uses motor axes directly, so we need to apply CoreXY transform:
+    /// - axis1 = steps_x + steps_y
+    /// - axis2 = steps_x - steps_y
     pub fn move_to(&mut self, target: Point) -> Result<(), PlotterError> {
         let delta = target - self.current_pos;
         let distance = delta.length();
@@ -410,18 +432,40 @@ impl AxiDraw {
         let steps_x = (delta.x * Self::STEPS_PER_MM).round() as i32;
         let steps_y = (delta.y * Self::STEPS_PER_MM).round() as i32;
 
+        // Apply CoreXY transform for motor axes
+        // axis1 = X + Y, axis2 = X - Y
+        let steps_axis1 = steps_x + steps_y;
+        let steps_axis2 = steps_x - steps_y;
+
         // Calculate duration based on speed
         let speed = if self.pen_is_down {
             self.config.pen_down_speed
         } else {
             self.config.pen_up_speed
         };
-        let duration_ms = ((distance / speed) * 1000.0) as u32;
+        let duration_secs = distance / speed;
+        let duration_ms = (duration_secs * 1000.0) as u32;
         let duration_ms = duration_ms.max(1); // Minimum 1ms
 
-        // Use XM command for mixed-axis geometry (CoreXY/H-Bot/AxiDraw)
-        // XM handles the CoreXY transform internally: axis1 = X+Y, axis2 = X-Y
-        let cmd = format!("XM,{},{},{}", duration_ms, steps_x, steps_y);
+        // Calculate step frequencies for each axis (always positive)
+        let freq_axis1 = if duration_secs > 0.0 {
+            (steps_axis1.abs() as f64) / duration_secs
+        } else {
+            0.0
+        };
+        let freq_axis2 = if duration_secs > 0.0 {
+            (steps_axis2.abs() as f64) / duration_secs
+        } else {
+            0.0
+        };
+
+        // Calculate Rate values (always positive, direction is in Steps sign)
+        let rate1 = (Self::RATE_FACTOR * freq_axis1).round() as u32;
+        let rate2 = (Self::RATE_FACTOR * freq_axis2).round() as u32;
+
+        // Steps carry the sign for direction (firmware 2.x requirement)
+        let cmd = format!("LM,{},{},0,{},{},0", rate1, steps_axis1, rate2, steps_axis2);
+        log::debug!("LM command: {} (duration: {}ms)", cmd, duration_ms);
         self.send_command_ok(&cmd)?;
         std::thread::sleep(Duration::from_millis(duration_ms as u64));
 
