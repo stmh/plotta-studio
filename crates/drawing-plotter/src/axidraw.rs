@@ -257,13 +257,9 @@ impl AxiDraw {
             return Ok(());
         }
 
-        // Calculate steps
+        // Calculate steps in X/Y coordinates
         let steps_x = (delta.x * Self::STEPS_PER_MM) as i32;
         let steps_y = (delta.y * Self::STEPS_PER_MM) as i32;
-
-        // CoreXY transform: axis1 = X+Y, axis2 = X-Y
-        let axis1 = steps_x + steps_y;
-        let axis2 = steps_x - steps_y;
 
         // Calculate duration based on speed
         let speed = if self.pen_is_down {
@@ -274,7 +270,9 @@ impl AxiDraw {
         let duration_ms = ((distance / speed) * 1000.0) as u32;
         let duration_ms = duration_ms.max(1); // Minimum 1ms
 
-        let cmd = format!("SM,{},{},{}", duration_ms, axis1, axis2);
+        // Use XM command for mixed-axis geometry (CoreXY/H-Bot/AxiDraw)
+        // XM handles the CoreXY transform internally: axis1 = X+Y, axis2 = X-Y
+        let cmd = format!("XM,{},{},{}", duration_ms, steps_x, steps_y);
         self.send_command_ok(&cmd)?;
         std::thread::sleep(Duration::from_millis(duration_ms as u64));
 

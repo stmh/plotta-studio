@@ -11,7 +11,7 @@
 //!
 //! The AxiDraw uses the EBB (EiBotBoard) protocol over USB serial.
 //! Key commands:
-//! - `SM,duration,axis1,axis2` - Stepper move
+//! - `XM,duration,stepsX,stepsY` - Stepper move for mixed-axis geometry (CoreXY)
 //! - `SP,value,duration` - Servo position (pen up/down)
 //! - `EM,enable1,enable2` - Enable/disable motors
 //! - `QP` - Query pen state
