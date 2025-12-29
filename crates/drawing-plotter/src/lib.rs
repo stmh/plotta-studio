@@ -48,6 +48,7 @@
 
 mod config;
 mod error;
+mod motion;
 mod optimize;
 mod stats;
 
@@ -59,6 +60,10 @@ mod event;
 // Re-export public API
 pub use config::PlotConfig;
 pub use error::PlotterError;
+pub use motion::{
+    acceleration_to_accel_param, calculate_junction_velocity, velocity_to_rate, MotionConfig,
+    MotionPlanner, MotionProfile, MotionSegment,
+};
 pub use optimize::{
     optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
     pen_down_distance_optimized, total_travel_distance, total_travel_distance_optimized,

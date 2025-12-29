@@ -1,5 +1,7 @@
 //! Configuration for plotting
 
+use crate::motion::{MotionConfig, DEFAULT_JUNCTION_DEVIATION};
+
 /// Servo timing constants from Python AxiDraw driver
 /// These are used to calculate how long to wait for the servo to physically move.
 pub mod servo {
@@ -53,6 +55,19 @@ pub struct PlotConfig {
     pub pen_down_delay: u32,
     /// Optional additional delay after pen up (ms) - added after servo move completes
     pub pen_up_delay: u32,
+
+    // Motion planning configuration
+    /// Maximum acceleration for pen-down moves (mm/s^2)
+    /// Higher values allow faster direction changes but may cause harsher motor sounds.
+    pub max_acceleration: f64,
+    /// Junction deviation for corner velocity calculation (mm)
+    /// Controls the trade-off between speed and accuracy at corners.
+    /// Smaller values = slower corners, larger = faster but less accurate.
+    pub junction_deviation: f64,
+    /// Enable motion planning for pen-down moves
+    /// When enabled, uses trapezoidal velocity profiles with corner velocity planning.
+    /// When disabled, uses constant velocity (legacy behavior).
+    pub motion_planning_enabled: bool,
 }
 
 impl Default for PlotConfig {
@@ -70,6 +85,10 @@ impl Default for PlotConfig {
             // No additional delay by default (servo timing is calculated dynamically)
             pen_down_delay: 0,
             pen_up_delay: 0,
+            // Motion planning defaults (disabled by default for backward compatibility)
+            max_acceleration: 500.0,
+            junction_deviation: DEFAULT_JUNCTION_DEVIATION,
+            motion_planning_enabled: false,
         }
     }
 }
@@ -93,6 +112,32 @@ impl PlotConfig {
     /// Total time to wait after pen down (servo move + optional delay)
     pub fn pen_down_total_time(&self) -> u32 {
         self.pen_down_move_time() + self.pen_down_delay
+    }
+
+    /// Create a MotionConfig from this PlotConfig
+    ///
+    /// Uses pen_down_speed as max_velocity since motion planning
+    /// is primarily for pen-down (drawing) moves.
+    pub fn motion_config(&self) -> MotionConfig {
+        MotionConfig {
+            max_velocity: self.pen_down_speed,
+            max_acceleration: self.max_acceleration,
+            junction_deviation: self.junction_deviation,
+            steps_per_mm: 80.0, // AxiDraw constant
+        }
+    }
+
+    /// Enable motion planning with custom acceleration
+    pub fn with_motion_planning(mut self, max_acceleration: f64) -> Self {
+        self.motion_planning_enabled = true;
+        self.max_acceleration = max_acceleration;
+        self
+    }
+
+    /// Disable motion planning (use constant velocity)
+    pub fn without_motion_planning(mut self) -> Self {
+        self.motion_planning_enabled = false;
+        self
     }
 }
 

@@ -1,10 +1,11 @@
 ---
 # plotta-studio-q6v8
 title: Implement motion planning with acceleration for smooth plotting
-status: todo
+status: in-progress
 type: feature
+priority: normal
 created_at: 2025-12-29T18:06:40Z
-updated_at: 2025-12-29T18:06:40Z
+updated_at: 2025-12-29T18:12:36Z
 ---
 
 Implement proper motion planning to eliminate harsh motor noise when plotting curves.
@@ -31,3 +32,67 @@ Implement a motion planner that uses the LM command's acceleration parameter to 
 - Python plotink ebb_motion.py and ebb_calc.py
 - EBB LM command documentation
 - Grbl motion planning (similar problem domain)
+
+## Checklist
+
+### Phase 1: Core Motion Planner Module
+- [x] Create `motion.rs` module in `drawing-plotter` crate
+- [x] Define `MotionSegment` struct with start/end velocity, acceleration, steps, timing
+- [x] Define `MotionPlanner` struct that takes segments and computes velocities
+- [x] Add max velocity and max acceleration configuration to `PlotConfig`
+
+### Phase 2: Velocity Planning Algorithm
+- [x] Implement corner velocity calculation based on direction change angle
+- [x] Implement forward pass: compute max entry velocity per segment (limited by corner velocity)
+- [x] Implement backward pass: compute max exit velocity (deceleration limited)
+- [x] Combine passes to get junction velocities between segments
+
+### Phase 3: Trapezoidal Profile Generation
+- [x] For each segment, compute accel/cruise/decel distances and times
+- [x] Handle short segments that can't reach cruise velocity (triangular profile)
+- [x] Calculate LM Rate and Accel parameters from velocity profile
+- [ ] Generate LM command sequences for multi-phase moves
+
+### Phase 4: Integration with AxiDraw
+- [ ] Add `move_to_with_motion()` method that uses motion planner
+- [ ] Update `plot_optimized_strokes()` to use motion planning for pen-down moves
+- [ ] Keep existing constant-velocity for pen-up (travel) moves initially
+- [ ] Add configuration flag to enable/disable motion planning
+
+### Phase 5: Testing and Tuning
+- [x] Add unit tests for velocity calculations
+- [x] Add unit tests for corner velocity formula
+- [x] Add unit tests for trapezoidal profile generation
+- [ ] Test on hardware with curves and measure noise reduction
+- [ ] Tune max acceleration parameter for optimal results
+
+## Implementation Notes
+
+### LM Command Format
+```
+LM,Rate1,Steps1,Accel1,Rate2,Steps2,Accel2[,Clear]
+```
+- Rate: step rate added to accumulator every 40us (Rate = 85899.35 * frequency_hz)
+- Accel: change in Rate every 40us (can be positive or negative)
+- Steps carry direction sign (firmware 2.x)
+
+### Kinematic Equations
+- `v² = v₀² + 2as` - velocity from acceleration over distance
+- `v = v₀ + at` - velocity from acceleration over time
+- `s = v₀t + ½at²` - distance from initial velocity and acceleration
+- `t = (v - v₀) / a` - time to change velocity
+
+### Corner Velocity Formula (from Grbl)
+```
+junction_velocity = min(max_velocity, sqrt(2 * max_accel * deviation))
+```
+Where `deviation` depends on the angle between segments:
+```
+sin_half_angle = sin(angle / 2)
+deviation = junction_deviation * sin_half_angle / (1 - sin_half_angle)
+```
+
+### LM Timing
+- ISR interval: 40μs (25kHz)
+- Rate = 2^31 / 25000 * freq_hz = 85899.3459 * freq_hz
+- Accel = Rate_change_per_40μs
