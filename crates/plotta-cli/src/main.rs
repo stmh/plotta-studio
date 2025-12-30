@@ -14,7 +14,10 @@ use clap::{Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal;
 use drawing_core::{Drawing, RenderContext};
-use drawing_plotter::{plot_in_background, AxiDraw, DrawingStats, PlotConfig, PlotEvent};
+use drawing_plotter::{
+    plot_prepared_in_background, AxiDraw, PlotConfig, PlotEvent, PreparedDrawing,
+};
+use drawing_svg::{record_strokes_to_svg, RecordOptions};
 use drawing_text::FontManager;
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -140,6 +143,60 @@ enum Commands {
         #[arg(long)]
         pen_rate_lower: Option<u8>,
     },
+
+    /// Record plot to SVG file (simulate without hardware)
+    Record {
+        /// Path to JSON drawing file
+        file: PathBuf,
+
+        /// Output SVG file path
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Show pen-up travel paths as dashed lines
+        #[arg(long)]
+        show_travel: bool,
+
+        /// Show direction arrows at stroke starts
+        #[arg(long)]
+        show_direction: bool,
+
+        /// Stroke width in mm (default: 0.3)
+        #[arg(long, default_value = "0.3")]
+        stroke_width: f64,
+
+        /// Drawing speed in mm/s (for time estimate)
+        #[arg(long)]
+        draw_speed: Option<f64>,
+
+        /// Travel speed in mm/s (for time estimate)
+        #[arg(long)]
+        travel_speed: Option<f64>,
+
+        /// Additional delay after lowering pen (ms, for time estimate)
+        #[arg(long)]
+        pen_down_delay: Option<u32>,
+
+        /// Additional delay after raising pen (ms, for time estimate)
+        #[arg(long)]
+        pen_up_delay: Option<u32>,
+
+        /// Pen down position (0-100, default 30)
+        #[arg(long)]
+        pen_down_pos: Option<u8>,
+
+        /// Pen up position (0-100, default 60)
+        #[arg(long)]
+        pen_up_pos: Option<u8>,
+
+        /// Pen raise rate (1-100, default 75, lower=slower)
+        #[arg(long)]
+        pen_rate_raise: Option<u8>,
+
+        /// Pen lower rate (1-100, default 50, lower=slower)
+        #[arg(long)]
+        pen_rate_lower: Option<u8>,
+    },
 }
 
 /// Build a PlotConfig from optional CLI overrides, using defaults from PlotConfig::default()
@@ -231,6 +288,39 @@ fn main() -> Result<()> {
                 pen_rate_lower,
             );
             cmd_preview(&file, config)
+        }
+        Commands::Record {
+            file,
+            output,
+            show_travel,
+            show_direction,
+            stroke_width,
+            draw_speed,
+            travel_speed,
+            pen_down_delay,
+            pen_up_delay,
+            pen_down_pos,
+            pen_up_pos,
+            pen_rate_raise,
+            pen_rate_lower,
+        } => {
+            let config = build_config(
+                draw_speed,
+                travel_speed,
+                pen_down_delay,
+                pen_up_delay,
+                pen_down_pos,
+                pen_up_pos,
+                pen_rate_raise,
+                pen_rate_lower,
+            );
+            let record_options = RecordOptions {
+                show_travel,
+                show_direction,
+                stroke_width,
+                ..Default::default()
+            };
+            cmd_record(&file, &output, config, record_options)
         }
     }
 }
@@ -494,6 +584,61 @@ fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
         }
     );
     println!("  Estimated time: {}", stats.format_time());
+
+    Ok(())
+}
+
+/// Record a drawing to SVG file (simulate plotting without hardware)
+fn cmd_record(
+    file: &PathBuf,
+    output: &PathBuf,
+    config: PlotConfig,
+    record_options: RecordOptions,
+) -> Result<()> {
+    let drawing = load_drawing_with_validation(file)?;
+    let ctx = create_render_context()?;
+
+    // Prepare the drawing - flattens, optimizes, and calculates stats
+    log::info!("Preparing drawing...");
+    let prepare_start = Instant::now();
+    let prepared = PreparedDrawing::new(&drawing, &config, &ctx);
+    log::info!(
+        "Drawing prepared in {:.2}s",
+        prepare_start.elapsed().as_secs_f64()
+    );
+
+    validate_stroke_count(prepared.stroke_count())?;
+
+    // Generate SVG from optimized strokes
+    log::info!("Generating SVG...");
+    let svg = record_strokes_to_svg(
+        &prepared.optimized,
+        prepared.width,
+        prepared.height,
+        &record_options,
+    );
+
+    // Write to file
+    fs::write(output, &svg)
+        .with_context(|| format!("Failed to write SVG to {}", output.display()))?;
+
+    let stats = &prepared.stats;
+
+    println!("Recorded to: {}", output.display());
+    println!("  Size: {:.0} x {:.0} mm", prepared.width, prepared.height);
+    println!(
+        "  Strokes: {} ({} reversed for shorter travel)",
+        stats.stroke_count, stats.reversed_strokes
+    );
+    println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
+    println!("  Travel distance: {:.1} mm", stats.travel_distance);
+    println!("  Estimated plot time: {}", stats.format_time());
+    if record_options.show_travel {
+        println!("  Travel lines: shown (dashed)");
+    }
+    if record_options.show_direction {
+        println!("  Direction arrows: shown");
+    }
 
     Ok(())
 }

@@ -632,6 +632,7 @@ name = "drawing-svg"
 version = "0.1.0"
 dependencies = [
  "drawing-core",
+ "drawing-plotter",
  "thiserror 2.0.17",
  "usvg",
 ]
@@ -1885,6 +1886,7 @@ dependencies = [
  "crossterm",
  "drawing-core",
  "drawing-plotter",
+ "drawing-svg",
  "drawing-text",
  "drawing-utils",
  "env_logger",

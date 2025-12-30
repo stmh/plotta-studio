@@ -489,6 +489,11 @@ pub struct LmCommand {
     pub accel2: i32,
     /// Duration to wait after sending command (ms)
     pub duration_ms: u32,
+    /// Clear accumulator before move (0=none, 1=axis1, 2=axis2, 3=both)
+    ///
+    /// When starting from rate=0 with acceleration, the accumulator should
+    /// be cleared to avoid artifacts from previous moves.
+    pub clear: u8,
 }
 
 impl LmCommand {
@@ -510,7 +515,14 @@ impl LmCommand {
             steps2,
             accel2,
             duration_ms,
+            clear: 0,
         }
+    }
+
+    /// Create an LM command with accumulator clear
+    pub fn with_clear(mut self, clear: u8) -> Self {
+        self.clear = clear;
+        self
     }
 
     /// Check if this command is valid for the EBB
@@ -541,10 +553,23 @@ impl LmCommand {
 
     /// Format as EBB command string
     pub fn to_command_string(&self) -> String {
-        format!(
-            "LM,{},{},{},{},{},{}",
-            self.rate1, self.steps1, self.accel1, self.rate2, self.steps2, self.accel2
-        )
+        if self.clear > 0 {
+            format!(
+                "LM,{},{},{},{},{},{},{}",
+                self.rate1,
+                self.steps1,
+                self.accel1,
+                self.rate2,
+                self.steps2,
+                self.accel2,
+                self.clear
+            )
+        } else {
+            format!(
+                "LM,{},{},{},{},{},{}",
+                self.rate1, self.steps1, self.accel1, self.rate2, self.steps2, self.accel2
+            )
+        }
     }
 
     /// Create a constant-velocity LM command (no acceleration)
@@ -595,6 +620,7 @@ impl LmCommand {
             steps2: steps_axis2,
             accel2: 0,
             duration_ms: duration_ms.max(1),
+            clear: 0,
         }
     }
 }
@@ -787,6 +813,7 @@ impl PlannedMove {
                     steps2: steps_axis2,
                     accel2,
                     duration_ms: duration_ms.max(1),
+                    clear: 0, // Set later for first command in stroke
                 })
             };
 
@@ -821,6 +848,13 @@ impl PlannedMove {
         ) {
             total_duration_ms += cmd.duration_ms;
             commands.push(cmd);
+        }
+
+        // When starting from velocity 0, clear accumulators on the first command
+        // to avoid artifacts from previous moves. This is especially important
+        // when rate=0 and accel>0, which can cause timing issues without a clear.
+        if profile.entry_velocity < 1e-9 && !commands.is_empty() {
+            commands[0].clear = 3; // Clear both axis accumulators
         }
 
         Self {
@@ -1164,5 +1198,77 @@ mod tests {
 
         let not_empty = LmCommand::new(1000, 100, 0, 2000, 0, 0, 100);
         assert!(!not_empty.is_empty());
+    }
+
+    #[test]
+    fn test_planned_move_from_zero_velocity() {
+        // This tests the case where we start a stroke from velocity 0
+        // which happens at the beginning of every stroke
+        let start = Point::new(0.0, 0.0);
+        let end = Point::new(10.0, 0.0); // 10mm horizontal move
+
+        // Profile starting from 0, going to cruise 25mm/s, ending at 0
+        let profile = MotionProfile::calculate(0.0, 0.0, 25.0, 10.0, 500.0);
+
+        let planned = PlannedMove::with_profile(start, end, &profile, 80.0);
+
+        println!(
+            "Profile: entry={}, cruise={}, exit={}",
+            profile.entry_velocity, profile.cruise_velocity, profile.exit_velocity
+        );
+        println!(
+            "Profile distances: accel={}, cruise={}, decel={}",
+            profile.accel_distance, profile.cruise_distance, profile.decel_distance
+        );
+        println!("Generated {} commands:", planned.commands.len());
+
+        for (i, cmd) in planned.commands.iter().enumerate() {
+            println!("  Cmd {}: rate1={}, steps1={}, accel1={}, rate2={}, steps2={}, accel2={}, duration={}ms",
+                i, cmd.rate1, cmd.steps1, cmd.accel1, cmd.rate2, cmd.steps2, cmd.accel2, cmd.duration_ms);
+            println!("    Command string: {}", cmd.to_command_string());
+            println!("    is_valid: {}", cmd.is_valid());
+        }
+
+        // All generated commands should be valid
+        for (i, cmd) in planned.commands.iter().enumerate() {
+            assert!(cmd.is_valid(), "Command {} should be valid: {:?}", i, cmd);
+        }
+    }
+
+    #[test]
+    fn test_accel_phase_from_zero() {
+        // Test specifically the acceleration phase starting from 0
+        // This mimics what happens at the start of a stroke
+
+        let start = Point::new(0.0, 0.0);
+        let end = Point::new(5.0, 0.0); // Short 5mm move, likely triangular
+
+        // Entry velocity 0, exit velocity 0, max velocity 25, short distance
+        let profile = MotionProfile::calculate(0.0, 0.0, 25.0, 5.0, 500.0);
+
+        println!("Short move profile:");
+        println!("  entry_velocity: {}", profile.entry_velocity);
+        println!("  cruise_velocity: {}", profile.cruise_velocity);
+        println!("  exit_velocity: {}", profile.exit_velocity);
+        println!("  accel_distance: {}", profile.accel_distance);
+        println!("  cruise_distance: {}", profile.cruise_distance);
+        println!("  decel_distance: {}", profile.decel_distance);
+        println!("  is_triangular: {}", profile.is_triangular());
+
+        let planned = PlannedMove::with_profile(start, end, &profile, 80.0);
+
+        println!("Generated {} commands:", planned.commands.len());
+        for (i, cmd) in planned.commands.iter().enumerate() {
+            println!("  Cmd {}: {}", i, cmd.to_command_string());
+            println!(
+                "    rate1={}, accel1={}, steps1={}",
+                cmd.rate1, cmd.accel1, cmd.steps1
+            );
+
+            // Check if starting from rate=0 with accel
+            if i == 0 && cmd.rate1 == 0 && cmd.accel1 != 0 {
+                println!("    WARNING: Starting from rate=0 with accel!=0");
+            }
+        }
     }
 }
