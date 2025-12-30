@@ -143,8 +143,7 @@ impl HatchedCirclesSketch {
         // Add frame with title and signature using default font
         let frame_options = FrameOptions::with_default_font(ctx.fonts)
             .expect("Default font not loaded")
-            .with_signature()
-            .signature_height(4.0);
+            .with_signature();
         drawing.add(draw_frame_with_title(
             drawing,
             "Hatched Circles",

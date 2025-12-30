@@ -1,0 +1,509 @@
+{
+  "width": 297.0,
+  "height": 210.0,
+  "elements": [
+    {
+      "shape": {
+        "Rect": {
+          "x0": 10.0,
+          "y0": 10.0,
+          "x1": 287.0,
+          "y1": 200.0
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 1.0,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Circle": {
+          "center": {
+            "x": 148.5,
+            "y": 105.0
+          },
+          "radius": 30.0,
+          "segments": 64
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.5,
+        "stroke_color": {
+          "r": 100,
+          "g": 100,
+          "b": 100,
+          "a": 255
+        },
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Circle": {
+          "center": {
+            "x": 148.5,
+            "y": 105.0
+          },
+          "radius": 40.0,
+          "segments": 64
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.5,
+        "stroke_color": {
+          "r": 100,
+          "g": 100,
+          "b": 100,
+          "a": 255
+        },
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Circle": {
+          "center": {
+            "x": 148.5,
+            "y": 105.0
+          },
+          "radius": 50.0,
+          "segments": 64
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.5,
+        "stroke_color": {
+          "r": 100,
+          "g": 100,
+          "b": 100,
+          "a": 255
+        },
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Circle": {
+          "center": {
+            "x": 148.5,
+            "y": 105.0
+          },
+          "radius": 60.0,
+          "segments": 64
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.5,
+        "stroke_color": {
+          "r": 100,
+          "g": 100,
+          "b": 100,
+          "a": 255
+        },
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Circle": {
+          "center": {
+            "x": 148.5,
+            "y": 105.0
+          },
+          "radius": 70.0,
+          "segments": 64
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.5,
+        "stroke_color": {
+          "r": 100,
+          "g": 100,
+          "b": 100,
+          "a": 255
+        },
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 168.5,
+            "y": 105.0
+          },
+          "p1": {
+            "x": 218.5,
+            "y": 105.0
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 165.82050807568876,
+            "y": 115.0
+          },
+          "p1": {
+            "x": 209.12177826491072,
+            "y": 140.0
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 158.5,
+            "y": 122.32050807568876
+          },
+          "p1": {
+            "x": 183.5,
+            "y": 165.6217782649107
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 148.5,
+            "y": 125.0
+          },
+          "p1": {
+            "x": 148.5,
+            "y": 175.0
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 138.5,
+            "y": 122.32050807568878
+          },
+          "p1": {
+            "x": 113.50000000000001,
+            "y": 165.62177826491072
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 131.17949192431124,
+            "y": 115.0
+          },
+          "p1": {
+            "x": 87.87822173508928,
+            "y": 140.0
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 128.5,
+            "y": 105.0
+          },
+          "p1": {
+            "x": 78.5,
+            "y": 105.00000000000001
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 131.17949192431124,
+            "y": 95.0
+          },
+          "p1": {
+            "x": 87.8782217350893,
+            "y": 70.0
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 138.5,
+            "y": 87.67949192431124
+          },
+          "p1": {
+            "x": 113.49999999999997,
+            "y": 44.37822173508931
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 148.5,
+            "y": 85.0
+          },
+          "p1": {
+            "x": 148.5,
+            "y": 35.0
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 158.5,
+            "y": 87.67949192431124
+          },
+          "p1": {
+            "x": 183.5,
+            "y": 44.3782217350893
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    },
+    {
+      "shape": {
+        "Line": {
+          "p0": {
+            "x": 165.82050807568876,
+            "y": 94.99999999999999
+          },
+          "p1": {
+            "x": 209.1217782649107,
+            "y": 69.99999999999997
+          }
+        }
+      },
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "stroke_width": 0.3,
+        "stroke_color": null,
+        "scale_stroke": null
+      }
+    }
+  ],
+  "background": {
+    "r": 255,
+    "g": 255,
+    "b": 255,
+    "a": 255
+  }
+}

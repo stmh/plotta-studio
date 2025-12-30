@@ -1,11 +1,11 @@
 ---
 # plotta-studio-axi5
 title: Add safety and bounds checking
-status: in-progress
+status: todo
 type: task
 priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-27T13:42:14Z
+updated_at: 2025-12-28T16:05:44Z
 parent: plotta-studio-axi1
 ---
 
