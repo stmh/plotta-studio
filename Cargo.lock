@@ -2445,6 +2445,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sketch-007-wool-ball"
+version = "0.1.0"
+dependencies = [
+ "drawing-plotter",
+ "drawing-svg",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
 name = "sketch-007-1000-lines"
 version = "0.1.0"
 dependencies = [
