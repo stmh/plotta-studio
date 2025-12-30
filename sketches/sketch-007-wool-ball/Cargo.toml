@@ -1,0 +1,14 @@
+[package]
+name = "sketch-007-wool-ball"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+hardware = ["drawing-plotter/hardware"]
+
+[dependencies]
+sketch-runner = { workspace = true }
+drawing-utils = { workspace = true }
+drawing-svg = { workspace = true }
+drawing-plotter = { workspace = true, default-features = false }
