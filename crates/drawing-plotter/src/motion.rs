@@ -201,22 +201,33 @@ pub fn calculate_junction_velocity(
         return 0.0;
     }
 
-    // Calculate the junction deviation distance
-    // This is the perpendicular distance from the ideal corner to the arc we'd travel
-    // at the junction velocity
+    // Calculate the junction velocity using the GRBL cornering algorithm
+    // Reference: https://onehossshay.wordpress.com/2011/09/24/improving_grbl_cornering_algorithm/
+    //
+    // The Python AxiDraw driver uses:
+    //   cosine_factor = -dot(v1, v2) = -cos(angle) (since vectors point in direction of travel)
+    //   root_factor = sqrt((1 - cosine_factor) / 2) = sqrt((1 + cos(angle)) / 2) = cos(angle/2)
+    //   rfactor = delta * root_factor / (1 - root_factor)
+    //   vjunction = sqrt(accel * rfactor)
+    //
+    // Note: Our angle_to() returns the deflection angle (0 = straight, PI = reversal),
+    // so we use cos(angle/2) directly.
     let half_angle = angle / 2.0;
-    let sin_half = half_angle.sin();
+    let cos_half = half_angle.cos();
 
-    // Avoid division by zero for very small angles
-    if (1.0 - sin_half).abs() < 1e-9 {
+    // Avoid division by zero when cos_half approaches 1 (very small angles)
+    let denominator = 1.0 - cos_half;
+    if denominator < 0.0001 {
         return config.max_velocity;
     }
 
-    // Junction deviation formula from Grbl
-    let deviation = config.junction_deviation * sin_half / (1.0 - sin_half);
+    // Junction deviation formula from GRBL/Python driver
+    // rfactor = delta * cos(angle/2) / (1 - cos(angle/2))
+    let rfactor = config.junction_deviation * cos_half / denominator;
 
-    // Maximum junction velocity from kinematic equation: v^2 = 2 * a * s
-    let v_junction = (2.0 * config.max_acceleration * deviation).sqrt();
+    // Maximum junction velocity: v = sqrt(acceleration * rfactor)
+    // Note: Python uses sqrt(accel * rfactor), not sqrt(2 * accel * rfactor)
+    let v_junction = (config.max_acceleration * rfactor).sqrt();
 
     // Clamp to max velocity and the minimum of both segments' max velocities
     v_junction
