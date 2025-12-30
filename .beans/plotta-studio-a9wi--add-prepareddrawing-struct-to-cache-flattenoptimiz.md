@@ -1,11 +1,11 @@
 ---
 # plotta-studio-a9wi
 title: Add PreparedDrawing struct to cache flatten/optimize results
-status: todo
+status: completed
 type: feature
 priority: high
 created_at: 2025-12-30T18:02:41Z
-updated_at: 2025-12-30T18:02:41Z
+updated_at: 2025-12-30T18:18:07Z
 ---
 
 Create a 'variable bag' pattern to avoid duplicate computation when plotting.
@@ -102,13 +102,13 @@ fn cmd_plot(...) -> Result<()> {
 
 ## Checklist
 
-- [ ] Create `OwnedOptimizedStroke` struct in optimize.rs (owns points instead of borrowing)
-- [ ] Add `to_owned()` method to `OptimizedStroke`
-- [ ] Create `PreparedDrawing` struct (new module or in lib.rs)
-- [ ] Add `DrawingStats::from_optimized()` that calculates stats from pre-optimized strokes
-- [ ] Add `plot_prepared_in_background()` function in axidraw.rs
-- [ ] Update `AxiDraw::plot_owned_strokes()` to accept owned optimized strokes
-- [ ] Update CLI `cmd_plot` to use `PreparedDrawing`
-- [ ] Update CLI `cmd_preview` to use `PreparedDrawing` (optional, for consistency)
-- [ ] Add tests for new structs
-- [ ] Update documentation
+- [x] Create `OwnedOptimizedStroke` struct in optimize.rs (owns points instead of borrowing)
+- [x] Add `into_owned()` method to `OptimizedStroke` (renamed from `to_owned()` to avoid conflict with std ToOwned trait)
+- [x] Create `PreparedDrawing` struct (new module `prepared.rs`)
+- [x] Add stats calculation in `PreparedDrawing::new()` from pre-optimized strokes
+- [x] Add `plot_prepared_in_background()` function in axidraw.rs
+- [x] Update plotting functions to accept owned optimized strokes
+- [x] Update CLI `cmd_plot` to use `PreparedDrawing`
+- [x] Update CLI `cmd_preview` to use `PreparedDrawing`
+- [x] Add tests for new structs (`prepared::tests::test_prepared_drawing_empty`)
+- [x] Update documentation (added "Prepared Drawing" section to crate docs)

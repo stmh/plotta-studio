@@ -61,7 +61,7 @@ impl DrawingStats {
     }
 }
 
-use crate::optimize::OptimizedStroke;
+use crate::optimize::OwnedOptimizedStroke;
 
 /// Estimate plot time for optimized strokes
 ///
@@ -72,7 +72,7 @@ use crate::optimize::OptimizedStroke;
 /// - Stroke count (for pen transitions)
 /// - Motion planning (acceleration/deceleration) when enabled
 pub fn estimate_plot_time_optimized(
-    strokes: &[OptimizedStroke<'_>],
+    strokes: &[OwnedOptimizedStroke],
     config: &PlotConfig,
 ) -> Duration {
     if strokes.is_empty() {
@@ -110,7 +110,7 @@ pub fn estimate_plot_time_optimized(
 /// - Deceleration at corners based on angle
 /// - Triangular profiles for short segments
 fn estimate_time_with_motion_planning(
-    strokes: &[OptimizedStroke<'_>],
+    strokes: &[OwnedOptimizedStroke],
     config: &PlotConfig,
 ) -> (f64, f64) {
     let motion_config = MotionConfig {
@@ -127,7 +127,7 @@ fn estimate_time_with_motion_planning(
     let mut current_pos = Point::new(0.0, 0.0);
 
     for stroke in strokes {
-        let points: Vec<Point> = stroke.points().collect();
+        let points: Vec<Point> = stroke.points_iter().collect();
         if points.is_empty() {
             continue;
         }
@@ -164,12 +164,10 @@ fn estimate_time_with_motion_planning(
     (total_pen_down_time, total_travel_time)
 }
 
-/// Estimate plot time for a set of strokes (legacy API)
-pub fn estimate_plot_time(strokes: &[&Stroke], config: &PlotConfig) -> Duration {
-    let optimized: Vec<_> = strokes
-        .iter()
-        .map(|s| OptimizedStroke::new(s, false))
-        .collect();
+/// Estimate plot time for a set of strokes (legacy API, not optimized)
+pub fn estimate_plot_time(strokes: &[Stroke], config: &PlotConfig) -> Duration {
+    use crate::optimize::optimize_strokes_with_reversal;
+    let optimized = optimize_strokes_with_reversal(strokes, false);
     estimate_plot_time_optimized(&optimized, config)
 }
 
@@ -225,19 +223,18 @@ mod tests {
 
     #[test]
     fn test_estimate_plot_time_empty() {
-        let strokes: Vec<&Stroke> = vec![];
+        let strokes: Vec<Stroke> = vec![];
         let time = estimate_plot_time(&strokes, &PlotConfig::default());
         assert_eq!(time, Duration::ZERO);
     }
 
     #[test]
     fn test_estimate_plot_time_constant_velocity() {
-        let stroke = Stroke::line(
+        let strokes = vec![Stroke::line(
             Point::new(0.0, 0.0),
             Point::new(25.0, 0.0), // 25mm at 25mm/s = 1s pen down
             ResolvedStyle::default(),
-        );
-        let strokes = vec![&stroke];
+        )];
         // Disable motion planning for constant velocity test
         let config = PlotConfig {
             motion_planning_enabled: false,
@@ -257,12 +254,11 @@ mod tests {
 
     #[test]
     fn test_estimate_plot_time_with_motion_planning() {
-        let stroke = Stroke::line(
+        let strokes = vec![Stroke::line(
             Point::new(0.0, 0.0),
             Point::new(25.0, 0.0), // 25mm
             ResolvedStyle::default(),
-        );
-        let strokes = vec![&stroke];
+        )];
         let config = PlotConfig {
             motion_planning_enabled: true,
             ..PlotConfig::default()

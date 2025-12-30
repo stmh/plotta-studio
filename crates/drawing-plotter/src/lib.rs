@@ -45,11 +45,31 @@
 //!
 //! handle.join()?;
 //! ```
+//!
+//! ## Prepared Drawing (Recommended)
+//!
+//! For best performance, use `PreparedDrawing` to cache expensive operations
+//! (flatten, optimize, stats) so they only run once:
+//!
+//! ```ignore
+//! use drawing_plotter::{plot_prepared_in_background, PreparedDrawing, PlotConfig};
+//!
+//! // Prepare once - flattens, optimizes, and calculates stats
+//! let prepared = PreparedDrawing::new(&drawing, &config, &render_ctx);
+//!
+//! // Display stats from the prepared drawing
+//! println!("Strokes: {}, Time: {}", prepared.stats.stroke_count, prepared.stats.format_time());
+//!
+//! // Plot without re-computation
+//! let handle = plot_prepared_in_background(prepared, config, None)?;
+//! handle.join()?;
+//! ```
 
 mod config;
 mod error;
 mod motion;
 mod optimize;
+mod prepared;
 mod stats;
 
 #[cfg(feature = "hardware")]
@@ -67,12 +87,15 @@ pub use motion::{
 pub use optimize::{
     optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
     pen_down_distance_optimized, total_travel_distance, total_travel_distance_optimized,
-    travel_distance_optimized, OptimizedStroke,
+    travel_distance_optimized, OwnedOptimizedStroke,
 };
-pub use stats::{estimate_plot_time, DrawingStats};
+pub use prepared::PreparedDrawing;
+pub use stats::{estimate_plot_time, estimate_plot_time_optimized, DrawingStats};
 
 #[cfg(feature = "hardware")]
-pub use axidraw::{plot_in_background, AxiDraw, PortInfo, AXIDRAW_PID, AXIDRAW_VID};
+pub use axidraw::{
+    plot_in_background, plot_prepared_in_background, AxiDraw, PortInfo, AXIDRAW_PID, AXIDRAW_VID,
+};
 #[cfg(feature = "hardware")]
 pub use event::{PauseControl, PlotEvent, PlotHandle};
 

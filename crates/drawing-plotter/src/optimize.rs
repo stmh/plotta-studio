@@ -1,24 +1,25 @@
 //! Stroke path optimization for efficient plotting
 
-use drawing_core::{Point, Stroke};
+use drawing_core::{Point, ResolvedStyle, Stroke};
 
-/// A reference to a stroke that may be drawn in reverse direction
+/// A reference to a stroke that may be drawn in reverse direction (internal use only)
 #[derive(Debug, Clone, Copy)]
-pub struct OptimizedStroke<'a> {
+struct OptimizedStroke<'a> {
     /// The original stroke
-    pub stroke: &'a Stroke,
+    stroke: &'a Stroke,
     /// Whether to draw this stroke in reverse
-    pub reversed: bool,
+    reversed: bool,
 }
 
 impl<'a> OptimizedStroke<'a> {
     /// Create a new optimized stroke reference
-    pub fn new(stroke: &'a Stroke, reversed: bool) -> Self {
+    fn new(stroke: &'a Stroke, reversed: bool) -> Self {
         Self { stroke, reversed }
     }
 
     /// Get the effective start point (considering reversal)
-    pub fn start(&self) -> Point {
+    #[cfg(test)]
+    fn start(&self) -> Point {
         if self.reversed {
             self.stroke.points.last().copied().unwrap_or(Point::ZERO)
         } else {
@@ -27,7 +28,7 @@ impl<'a> OptimizedStroke<'a> {
     }
 
     /// Get the effective end point (considering reversal)
-    pub fn end(&self) -> Point {
+    fn end(&self) -> Point {
         if self.reversed {
             self.stroke.points.first().copied().unwrap_or(Point::ZERO)
         } else {
@@ -35,14 +36,77 @@ impl<'a> OptimizedStroke<'a> {
         }
     }
 
-    /// Iterate over points in the correct order
-    pub fn points(&self) -> impl Iterator<Item = Point> + '_ {
+    /// Iterate over points in the correct order (considering reversal)
+    #[cfg(test)]
+    fn points(&self) -> impl Iterator<Item = Point> + '_ {
         let len = self.stroke.points.len();
+        let reversed = self.reversed;
+        let points = &self.stroke.points;
+        (0..len).map(move |i| {
+            let idx = if reversed { len - 1 - i } else { i };
+            points[idx]
+        })
+    }
+
+    /// Convert to an owned version that can be sent across threads
+    fn into_owned(self) -> OwnedOptimizedStroke {
+        OwnedOptimizedStroke {
+            points: self.stroke.points.clone(),
+            style: self.stroke.style,
+            closed: self.stroke.closed,
+            reversed: self.reversed,
+        }
+    }
+}
+
+/// An owned optimized stroke that can be sent across threads.
+///
+/// Unlike `OptimizedStroke<'a>` which borrows the stroke data, this struct
+/// owns all the data and can be safely moved between threads.
+#[derive(Debug, Clone)]
+pub struct OwnedOptimizedStroke {
+    /// The stroke points
+    pub points: Vec<Point>,
+    /// The stroke style
+    pub style: ResolvedStyle,
+    /// Whether the stroke is closed
+    pub closed: bool,
+    /// Whether to draw this stroke in reverse
+    pub reversed: bool,
+}
+
+impl OwnedOptimizedStroke {
+    /// Get the effective start point (considering reversal)
+    pub fn start(&self) -> Point {
+        if self.reversed {
+            self.points.last().copied().unwrap_or(Point::ZERO)
+        } else {
+            self.points.first().copied().unwrap_or(Point::ZERO)
+        }
+    }
+
+    /// Get the effective end point (considering reversal)
+    pub fn end(&self) -> Point {
+        if self.reversed {
+            self.points.first().copied().unwrap_or(Point::ZERO)
+        } else {
+            self.points.last().copied().unwrap_or(Point::ZERO)
+        }
+    }
+
+    /// Iterate over points in the correct order
+    pub fn points_iter(&self) -> impl Iterator<Item = Point> + '_ {
+        let len = self.points.len();
         let reversed = self.reversed;
         (0..len).map(move |i| {
             let idx = if reversed { len - 1 - i } else { i };
-            self.stroke.points[idx]
+            self.points[idx]
         })
+    }
+
+    /// Check if this stroke is empty
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
     }
 }
 
@@ -85,23 +149,11 @@ pub fn optimize_strokes(strokes: &[Stroke]) -> Vec<&Stroke> {
     ordered
 }
 
-/// Optimize stroke order with reversal support
+/// Optimize stroke order with reversal support (returns borrowed references)
 ///
-/// Uses a greedy nearest-neighbor algorithm that considers both the start
-/// and end points of each stroke. When the end point is closer to the current
-/// position, the stroke will be marked for reverse drawing.
-///
-/// This typically reduces travel distance by 10-30% compared to start-point-only
-/// optimization.
-///
-/// # Arguments
-/// * `strokes` - The strokes to optimize
-/// * `allow_reversal` - If true, strokes can be drawn in reverse. If false,
-///   behaves like `optimize_strokes` but returns `OptimizedStroke` structs.
-pub fn optimize_strokes_with_reversal(
-    strokes: &[Stroke],
-    allow_reversal: bool,
-) -> Vec<OptimizedStroke<'_>> {
+/// This is an internal function that returns borrowed references. For most use cases,
+/// prefer `optimize_strokes_owned` which returns owned data that can be sent across threads.
+fn optimize_strokes_internal(strokes: &[Stroke], allow_reversal: bool) -> Vec<OptimizedStroke<'_>> {
     if strokes.is_empty() {
         return vec![];
     }
@@ -186,6 +238,29 @@ pub fn optimize_strokes_with_reversal(
     ordered
 }
 
+/// Optimize stroke order with reversal support
+///
+/// Uses a greedy nearest-neighbor algorithm that considers both the start
+/// and end points of each stroke. When the end point is closer to the current
+/// position, the stroke will be marked for reverse drawing.
+///
+/// This typically reduces travel distance by 10-30% compared to start-point-only
+/// optimization.
+///
+/// Returns owned data that can be safely sent across threads.
+///
+/// # Arguments
+/// * `strokes` - The strokes to optimize
+/// * `allow_reversal` - If true, strokes can be drawn in reverse. If false,
+///   strokes are only reordered but not reversed.
+pub fn optimize_strokes_with_reversal(
+    strokes: &[Stroke],
+    allow_reversal: bool,
+) -> Vec<OwnedOptimizedStroke> {
+    let optimized = optimize_strokes_internal(strokes, allow_reversal);
+    optimized.into_iter().map(|o| o.into_owned()).collect()
+}
+
 /// Calculate total travel distance for a set of strokes
 ///
 /// Includes both pen-up travel (moving between strokes) and
@@ -233,12 +308,12 @@ pub fn pen_down_distance(strokes: &[&Stroke]) -> f64 {
 /// Calculate total travel distance for optimized strokes (with reversal support)
 ///
 /// This correctly accounts for stroke direction when calculating pen-up travel.
-pub fn total_travel_distance_optimized(strokes: &[OptimizedStroke<'_>]) -> f64 {
+pub fn total_travel_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
     let mut total = 0.0;
     let mut pos = Point::ZERO;
 
     for opt_stroke in strokes {
-        if opt_stroke.stroke.points.is_empty() {
+        if opt_stroke.points.is_empty() {
             continue;
         }
 
@@ -246,7 +321,7 @@ pub fn total_travel_distance_optimized(strokes: &[OptimizedStroke<'_>]) -> f64 {
         total += pos.distance(opt_stroke.start());
 
         // Pen-down travel along stroke (same distance regardless of direction)
-        for pts in opt_stroke.stroke.points.windows(2) {
+        for pts in opt_stroke.points.windows(2) {
             total += pts[0].distance(pts[1]);
         }
 
@@ -259,12 +334,11 @@ pub fn total_travel_distance_optimized(strokes: &[OptimizedStroke<'_>]) -> f64 {
 /// Calculate pen-down distance for optimized strokes
 ///
 /// Same as pen_down_distance since stroke length is direction-independent.
-pub fn pen_down_distance_optimized(strokes: &[OptimizedStroke<'_>]) -> f64 {
+pub fn pen_down_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
     strokes
         .iter()
         .map(|s| {
-            s.stroke
-                .points
+            s.points
                 .windows(2)
                 .map(|w| w[0].distance(w[1]))
                 .sum::<f64>()
@@ -273,7 +347,7 @@ pub fn pen_down_distance_optimized(strokes: &[OptimizedStroke<'_>]) -> f64 {
 }
 
 /// Calculate pen-up travel distance for optimized strokes
-pub fn travel_distance_optimized(strokes: &[OptimizedStroke<'_>]) -> f64 {
+pub fn travel_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
     let total = total_travel_distance_optimized(strokes);
     let pen_down = pen_down_distance_optimized(strokes);
     total - pen_down

@@ -7,7 +7,7 @@ use crate::config::PlotConfig;
 use crate::error::PlotterError;
 use crate::event::{PauseControl, PlotEvent, PlotHandle};
 use crate::motion::{LmCommand, MotionPlanner, MotionProfile, PlannedMove};
-use crate::optimize::{optimize_strokes_with_reversal, OptimizedStroke};
+use crate::optimize::{optimize_strokes_with_reversal, OwnedOptimizedStroke};
 use drawing_core::{Drawing, Point, RenderContext, Stroke};
 use serialport::SerialPortType;
 use std::io::{BufRead, BufReader, Write};
@@ -693,7 +693,7 @@ impl AxiDraw {
     /// Plot a sequence of optimized strokes (with reversal support)
     pub fn plot_optimized_strokes(
         &mut self,
-        strokes: &[OptimizedStroke<'_>],
+        strokes: &[OwnedOptimizedStroke],
     ) -> Result<(), PlotterError> {
         self.pen_up()?;
         self.enable_motors()?;
@@ -701,7 +701,7 @@ impl AxiDraw {
         let use_motion_planning = self.config.motion_planning_enabled;
 
         for opt_stroke in strokes {
-            if opt_stroke.stroke.points.is_empty() {
+            if opt_stroke.is_empty() {
                 continue;
             }
 
@@ -712,7 +712,7 @@ impl AxiDraw {
             self.pen_down()?;
 
             // Draw stroke points in correct order
-            let points: Vec<_> = opt_stroke.points().collect();
+            let points: Vec<_> = opt_stroke.points_iter().collect();
 
             if use_motion_planning && points.len() >= 2 {
                 // Use motion planning for the entire stroke
@@ -726,7 +726,7 @@ impl AxiDraw {
 
             // Close if needed - for closed strokes, return to the first point we drew
             // (which is points[0] after collecting from the iterator)
-            if opt_stroke.stroke.closed && points.len() > 2 {
+            if opt_stroke.closed && points.len() > 2 {
                 self.move_to(points[0])?;
             }
 
@@ -742,12 +742,8 @@ impl AxiDraw {
     }
 
     /// Plot a sequence of strokes (legacy API, no reversal)
-    pub fn plot_strokes(&mut self, strokes: &[&Stroke]) -> Result<(), PlotterError> {
-        // Convert to OptimizedStroke without reversal
-        let optimized: Vec<_> = strokes
-            .iter()
-            .map(|s| OptimizedStroke::new(s, false))
-            .collect();
+    pub fn plot_strokes(&mut self, strokes: &[Stroke]) -> Result<(), PlotterError> {
+        let optimized = optimize_strokes_with_reversal(strokes, false);
         self.plot_optimized_strokes(&optimized)
     }
 
@@ -768,7 +764,7 @@ impl AxiDraw {
     /// Plot optimized strokes with event callbacks
     pub fn plot_optimized_strokes_with_events<F>(
         &mut self,
-        strokes: &[OptimizedStroke<'_>],
+        strokes: &[OwnedOptimizedStroke],
         mut on_event: F,
     ) -> Result<(), PlotterError>
     where
@@ -780,7 +776,7 @@ impl AxiDraw {
     /// Plot optimized strokes with event callbacks and optional pause control
     pub fn plot_optimized_strokes_with_pause<F>(
         &mut self,
-        strokes: &[OptimizedStroke<'_>],
+        strokes: &[OwnedOptimizedStroke],
         on_event: &mut F,
         pause_control: Option<&PauseControl>,
     ) -> Result<(), PlotterError>
@@ -799,7 +795,7 @@ impl AxiDraw {
         self.enable_motors()?;
 
         // Calculate total points for logging
-        let total_points: usize = strokes.iter().map(|s| s.stroke.points.len()).sum();
+        let total_points: usize = strokes.iter().map(|s| s.points.len()).sum();
         log::debug!("Total points to plot: {}", total_points);
 
         let plot_start = std::time::Instant::now();
@@ -832,7 +828,7 @@ impl AxiDraw {
                 }
             }
 
-            if opt_stroke.stroke.points.is_empty() {
+            if opt_stroke.is_empty() {
                 continue;
             }
 
@@ -857,7 +853,7 @@ impl AxiDraw {
                 "Stroke {}/{}: {} points, reversed={}",
                 index + 1,
                 total,
-                opt_stroke.stroke.points.len(),
+                opt_stroke.points.len(),
                 opt_stroke.reversed
             );
 
@@ -875,7 +871,7 @@ impl AxiDraw {
             self.pen_down()?;
 
             // Draw stroke points in correct order
-            let points: Vec<_> = opt_stroke.points().collect();
+            let points: Vec<_> = opt_stroke.points_iter().collect();
 
             if self.config.motion_planning_enabled && points.len() >= 2 {
                 // Use motion planning for the entire stroke
@@ -899,7 +895,7 @@ impl AxiDraw {
             }
 
             // Close if needed - for closed strokes, return to the first point we drew
-            if opt_stroke.stroke.closed && points.len() > 2 {
+            if opt_stroke.closed && points.len() > 2 {
                 on_event(PlotEvent::MoveTo {
                     position: points[0],
                     pen_down: true,
@@ -944,17 +940,13 @@ impl AxiDraw {
     /// Plot strokes with event callbacks (legacy API, no reversal)
     pub fn plot_strokes_with_events<F>(
         &mut self,
-        strokes: &[&Stroke],
+        strokes: &[Stroke],
         on_event: F,
     ) -> Result<(), PlotterError>
     where
         F: FnMut(PlotEvent),
     {
-        // Convert to OptimizedStroke without reversal
-        let optimized: Vec<_> = strokes
-            .iter()
-            .map(|s| OptimizedStroke::new(s, false))
-            .collect();
+        let optimized = optimize_strokes_with_reversal(strokes, false);
         self.plot_optimized_strokes_with_events(&optimized, on_event)
     }
 
@@ -1067,6 +1059,85 @@ pub fn plot_in_background(
             log::info!("Starting to plot {} strokes...", optimized.len());
             plotter.plot_optimized_strokes_with_pause(
                 &optimized,
+                &mut |event| {
+                    let _ = sender.send(event);
+                },
+                Some(&pause_control_clone),
+            )
+        })();
+
+        if let Err(ref e) = result {
+            log::error!("Plot error: {}", e);
+            let _ = sender.send(PlotEvent::Error(e.to_string()));
+        }
+
+        result
+    });
+
+    Ok(PlotHandle::new(receiver, handle, pause_control))
+}
+
+use crate::prepared::PreparedDrawing;
+
+/// Spawn a background thread to plot a prepared drawing
+///
+/// This is more efficient than `plot_in_background` when you already have a
+/// `PreparedDrawing`, as it avoids re-flattening and re-optimizing the strokes.
+///
+/// # Example
+/// ```ignore
+/// use drawing_plotter::{plot_prepared_in_background, PlotConfig, PlotEvent, PreparedDrawing};
+/// use drawing_core::RenderContext;
+///
+/// let ctx = RenderContext::new();
+/// let prepared = PreparedDrawing::new(&drawing, &PlotConfig::default(), &ctx);
+///
+/// // Use prepared.stats for preview
+/// println!("Estimated time: {}", prepared.stats.format_time());
+///
+/// // Then plot - no re-computation needed
+/// let handle = plot_prepared_in_background(prepared, PlotConfig::default(), None)?;
+/// handle.join()?;
+/// ```
+pub fn plot_prepared_in_background(
+    prepared: PreparedDrawing,
+    config: PlotConfig,
+    port: Option<String>,
+) -> Result<PlotHandle, PlotterError> {
+    let (sender, receiver) = mpsc::channel();
+    let pause_control = PauseControl::new();
+    let pause_control_clone = pause_control.clone();
+
+    log::info!(
+        "Starting background plot thread with {} pre-optimized strokes...",
+        prepared.optimized.len()
+    );
+
+    let handle = thread::spawn(move || {
+        let result = (|| {
+            log::debug!("Background thread: connecting to plotter...");
+            let mut plotter = match port {
+                Some(ref p) => {
+                    log::info!("Connecting to port: {}", p);
+                    AxiDraw::connect(p)?
+                }
+                None => {
+                    log::info!("Auto-detecting plotter...");
+                    AxiDraw::auto_connect()?
+                }
+            };
+
+            // Apply the config to the plotter (also configures servo positions)
+            log::debug!("Applying plot configuration...");
+            plotter.set_config(config)?;
+
+            // Use the pre-optimized strokes directly - no flatten or optimize needed!
+            log::info!(
+                "Starting to plot {} pre-optimized strokes...",
+                prepared.optimized.len()
+            );
+            plotter.plot_optimized_strokes_with_pause(
+                &prepared.optimized,
                 &mut |event| {
                     let _ = sender.send(event);
                 },
