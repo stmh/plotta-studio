@@ -123,9 +123,250 @@ pub fn write_svg<W: Write>(
     Ok(())
 }
 
-// TODO: SVG import
-// This would require parsing SVG paths and converting to our primitives.
-// Consider using `usvg` for robust parsing.
+// ============================================================================
+// SVG Recording - Record optimized strokes as they would be plotted
+// ============================================================================
+
+use drawing_plotter::OwnedOptimizedStroke;
+
+/// Options for recording optimized strokes to SVG
+#[derive(Debug, Clone)]
+pub struct RecordOptions {
+    /// Show pen-up travel paths as dashed lines
+    pub show_travel: bool,
+    /// Color for travel lines (default: light gray)
+    pub travel_color: Color,
+    /// Show direction arrows at stroke starts
+    pub show_direction: bool,
+    /// Size of direction arrows in mm (default: 2.0)
+    pub arrow_size: f64,
+    /// Unified stroke width for all strokes in mm
+    pub stroke_width: f64,
+}
+
+impl Default for RecordOptions {
+    fn default() -> Self {
+        Self {
+            show_travel: false,
+            travel_color: Color::rgb(200, 200, 200), // Light gray
+            show_direction: false,
+            arrow_size: 2.0,
+            stroke_width: 0.3,
+        }
+    }
+}
+
+impl RecordOptions {
+    /// Create options with travel lines enabled
+    pub fn with_travel(mut self) -> Self {
+        self.show_travel = true;
+        self
+    }
+
+    /// Create options with direction arrows enabled
+    pub fn with_direction(mut self) -> Self {
+        self.show_direction = true;
+        self
+    }
+
+    /// Set the stroke width
+    pub fn with_stroke_width(mut self, width: f64) -> Self {
+        self.stroke_width = width;
+        self
+    }
+}
+
+/// Record optimized strokes to SVG
+///
+/// This creates an SVG showing exactly what would be plotted, including:
+/// - Stroke order optimization (strokes are rendered in plot order)
+/// - Stroke reversal (strokes are drawn in the direction they would be plotted)
+/// - Optional travel lines showing pen-up movements
+/// - Optional direction arrows showing stroke direction
+///
+/// Unlike `drawing_to_svg_string`, this takes pre-optimized strokes rather than
+/// a Drawing, so it shows the actual plot output.
+pub fn record_strokes_to_svg(
+    strokes: &[OwnedOptimizedStroke],
+    width: f64,
+    height: f64,
+    options: &RecordOptions,
+) -> String {
+    let mut svg = String::new();
+
+    // SVG header
+    svg.push_str(&format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" 
+     width="{width}mm" 
+     height="{height}mm" 
+     viewBox="0 0 {width} {height}">
+"#,
+        width = width,
+        height = height
+    ));
+
+    // Add a group for travel lines (rendered first, so they're behind strokes)
+    if options.show_travel {
+        svg.push_str("  <g id=\"travel\" opacity=\"0.5\">\n");
+        let mut current_pos = drawing_core::Point::ZERO;
+
+        for stroke in strokes {
+            if stroke.is_empty() {
+                continue;
+            }
+
+            let start = stroke.start();
+
+            // Draw travel line from current position to stroke start
+            if current_pos.distance(start) > 0.01 {
+                svg.push_str(&travel_line_svg(current_pos, start, options.travel_color));
+            }
+
+            current_pos = stroke.end();
+        }
+        svg.push_str("  </g>\n");
+    }
+
+    // Add a group for strokes
+    svg.push_str("  <g id=\"strokes\">\n");
+
+    let mut current_pos = drawing_core::Point::ZERO;
+
+    for stroke in strokes {
+        if stroke.is_empty() {
+            continue;
+        }
+
+        // Draw direction arrow at stroke start
+        if options.show_direction {
+            let start = stroke.start();
+            let points: Vec<_> = stroke.points_iter().collect();
+            if points.len() >= 2 {
+                let direction = points[1] - points[0];
+                svg.push_str(&arrow_svg(
+                    start,
+                    direction,
+                    options.arrow_size,
+                    stroke.style.stroke_color,
+                ));
+            }
+        }
+
+        // Draw the stroke
+        svg.push_str(&optimized_stroke_to_svg(stroke, options.stroke_width));
+
+        current_pos = stroke.end();
+    }
+
+    // Suppress unused variable warning when show_direction is false
+    let _ = current_pos;
+
+    svg.push_str("  </g>\n");
+    svg.push_str("</svg>\n");
+    svg
+}
+
+/// Convert an optimized stroke to SVG path element
+fn optimized_stroke_to_svg(stroke: &OwnedOptimizedStroke, stroke_width: f64) -> String {
+    let points: Vec<_> = stroke.points_iter().collect();
+
+    if points.len() < 2 {
+        return String::new();
+    }
+
+    let mut d = String::new();
+
+    // Move to first point
+    d.push_str(&format!("M{:.3},{:.3}", points[0].x, points[0].y));
+
+    // Line to remaining points
+    for pt in &points[1..] {
+        d.push_str(&format!(" L{:.3},{:.3}", pt.x, pt.y));
+    }
+
+    if stroke.closed {
+        d.push_str(" Z");
+    }
+
+    format!(
+        r#"    <path d="{}" fill="none" stroke="{}" stroke-width="{:.3}" stroke-linecap="round" stroke-linejoin="round"/>
+"#,
+        d,
+        color_to_hex(stroke.style.stroke_color),
+        stroke_width
+    )
+}
+
+/// Generate SVG for a dashed travel line
+fn travel_line_svg(from: drawing_core::Point, to: drawing_core::Point, color: Color) -> String {
+    format!(
+        r#"    <line x1="{:.3}" y1="{:.3}" x2="{:.3}" y2="{:.3}" stroke="{}" stroke-width="0.1" stroke-dasharray="1,1"/>
+"#,
+        from.x,
+        from.y,
+        to.x,
+        to.y,
+        color_to_hex(color)
+    )
+}
+
+/// Generate SVG for a direction arrow at the start of a stroke
+fn arrow_svg(
+    position: drawing_core::Point,
+    direction: drawing_core::Vec2,
+    size: f64,
+    color: Color,
+) -> String {
+    let len = direction.hypot();
+    if len < 0.001 {
+        return String::new();
+    }
+
+    // Normalize direction
+    let dir_x = direction.x / len;
+    let dir_y = direction.y / len;
+
+    // Perpendicular direction
+    let perp_x = -dir_y;
+    let perp_y = dir_x;
+
+    // Arrow tip is at position, base is behind
+    let tip = position;
+    let base_center_x = position.x - dir_x * size;
+    let base_center_y = position.y - dir_y * size;
+
+    let half_width = size * 0.4;
+    let base_left_x = base_center_x + perp_x * half_width;
+    let base_left_y = base_center_y + perp_y * half_width;
+    let base_right_x = base_center_x - perp_x * half_width;
+    let base_right_y = base_center_y - perp_y * half_width;
+
+    format!(
+        r#"    <polygon points="{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}" fill="{}" opacity="0.7"/>
+"#,
+        tip.x,
+        tip.y,
+        base_left_x,
+        base_left_y,
+        base_right_x,
+        base_right_y,
+        color_to_hex(color)
+    )
+}
+
+/// Export recorded strokes to a file
+pub fn export_recorded_svg(
+    strokes: &[OwnedOptimizedStroke],
+    width: f64,
+    height: f64,
+    path: impl AsRef<std::path::Path>,
+    options: &RecordOptions,
+) -> Result<(), SvgError> {
+    let svg = record_strokes_to_svg(strokes, width, height, options);
+    std::fs::write(path, svg)?;
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -405,5 +646,141 @@ mod tests {
         let svg = String::from_utf8(buffer).unwrap();
         assert!(svg.contains("<svg"));
         assert!(svg.contains("<path"));
+    }
+
+    // ========================================================================
+    // Record strokes tests
+    // ========================================================================
+
+    fn create_test_stroke(points: Vec<Point>, reversed: bool) -> OwnedOptimizedStroke {
+        OwnedOptimizedStroke {
+            points,
+            style: ResolvedStyle::default(),
+            closed: false,
+            reversed,
+        }
+    }
+
+    #[test]
+    fn test_record_strokes_empty() {
+        let strokes: Vec<OwnedOptimizedStroke> = vec![];
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &RecordOptions::default());
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+        assert!(svg.contains("width=\"100mm\""));
+        assert!(svg.contains("height=\"100mm\""));
+    }
+
+    #[test]
+    fn test_record_strokes_single_stroke() {
+        let strokes = vec![create_test_stroke(
+            vec![Point::new(10.0, 10.0), Point::new(50.0, 50.0)],
+            false,
+        )];
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &RecordOptions::default());
+
+        assert!(svg.contains("<path"));
+        assert!(svg.contains("M10.000,10.000"));
+        assert!(svg.contains("L50.000,50.000"));
+    }
+
+    #[test]
+    fn test_record_strokes_reversed() {
+        let strokes = vec![create_test_stroke(
+            vec![Point::new(10.0, 10.0), Point::new(50.0, 50.0)],
+            true, // reversed
+        )];
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &RecordOptions::default());
+
+        // Reversed stroke should start at 50,50 and go to 10,10
+        assert!(svg.contains("M50.000,50.000"));
+        assert!(svg.contains("L10.000,10.000"));
+    }
+
+    #[test]
+    fn test_record_strokes_with_travel() {
+        let strokes = vec![
+            create_test_stroke(vec![Point::new(10.0, 10.0), Point::new(20.0, 20.0)], false),
+            create_test_stroke(vec![Point::new(80.0, 80.0), Point::new(90.0, 90.0)], false),
+        ];
+        let options = RecordOptions::default().with_travel();
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &options);
+
+        // Should contain travel group
+        assert!(svg.contains("<g id=\"travel\""));
+        // Should contain travel line (dashed)
+        assert!(svg.contains("<line"));
+        assert!(svg.contains("stroke-dasharray"));
+    }
+
+    #[test]
+    fn test_record_strokes_without_travel() {
+        let strokes = vec![
+            create_test_stroke(vec![Point::new(10.0, 10.0), Point::new(20.0, 20.0)], false),
+            create_test_stroke(vec![Point::new(80.0, 80.0), Point::new(90.0, 90.0)], false),
+        ];
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &RecordOptions::default());
+
+        // Should NOT contain travel group
+        assert!(!svg.contains("<g id=\"travel\""));
+        assert!(!svg.contains("<line"));
+    }
+
+    #[test]
+    fn test_record_strokes_with_direction() {
+        let strokes = vec![create_test_stroke(
+            vec![Point::new(10.0, 10.0), Point::new(50.0, 50.0)],
+            false,
+        )];
+        let options = RecordOptions::default().with_direction();
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &options);
+
+        // Should contain direction arrow (polygon)
+        assert!(svg.contains("<polygon"));
+    }
+
+    #[test]
+    fn test_record_strokes_stroke_width() {
+        let strokes = vec![create_test_stroke(
+            vec![Point::new(10.0, 10.0), Point::new(50.0, 50.0)],
+            false,
+        )];
+        let options = RecordOptions::default().with_stroke_width(0.5);
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &options);
+
+        assert!(svg.contains("stroke-width=\"0.500\""));
+    }
+
+    #[test]
+    fn test_record_strokes_preserves_color() {
+        let mut stroke =
+            create_test_stroke(vec![Point::new(10.0, 10.0), Point::new(50.0, 50.0)], false);
+        stroke.style = ResolvedStyle::new(1.0, Color::RED);
+
+        let strokes = vec![stroke];
+        let svg = record_strokes_to_svg(&strokes, 100.0, 100.0, &RecordOptions::default());
+
+        assert!(svg.contains("stroke=\"#ff0000\""));
+    }
+
+    #[test]
+    fn test_record_options_default() {
+        let options = RecordOptions::default();
+        assert!(!options.show_travel);
+        assert!(!options.show_direction);
+        assert!((options.stroke_width - 0.3).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_record_options_builder() {
+        let options = RecordOptions::default()
+            .with_travel()
+            .with_direction()
+            .with_stroke_width(0.5);
+
+        assert!(options.show_travel);
+        assert!(options.show_direction);
+        assert!((options.stroke_width - 0.5).abs() < 0.001);
     }
 }

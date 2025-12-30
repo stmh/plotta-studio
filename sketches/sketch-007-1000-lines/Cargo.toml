@@ -1,0 +1,15 @@
+[package]
+name = "sketch-007-1000-lines"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+# Enable AxiDraw plotting (requires libudev on Linux)
+hardware = ["drawing-plotter/hardware"]
+
+[dependencies]
+sketch-runner = { workspace = true }
+drawing-svg = { workspace = true }
+drawing-utils = { workspace = true }
+drawing-plotter = { workspace = true, default-features = false }

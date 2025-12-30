@@ -2,8 +2,11 @@
 
 use crate::PlotterError;
 use drawing_core::Point;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 /// Events emitted during plotting
 #[derive(Debug, Clone)]
@@ -16,10 +19,92 @@ pub enum PlotEvent {
     StrokeComplete { index: usize, total: usize },
     /// Moving to a position
     MoveTo { position: Point, pen_down: bool },
+    /// Plotting paused
+    Paused,
+    /// Plotting resumed
+    Resumed,
     /// Plotting completed successfully
     Completed,
+    /// Plotting was cancelled by user
+    Cancelled,
     /// Error occurred
     Error(String),
+}
+
+/// Shared state for pause and cancel control
+#[derive(Clone)]
+pub struct PauseControl {
+    /// Flag indicating if plotting should be paused
+    paused: Arc<AtomicBool>,
+    /// Flag indicating if plotting should be cancelled
+    cancelled: Arc<AtomicBool>,
+}
+
+impl PauseControl {
+    /// Create a new pause control
+    pub fn new() -> Self {
+        Self {
+            paused: Arc::new(AtomicBool::new(false)),
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Check if currently paused
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::SeqCst)
+    }
+
+    /// Check if cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    /// Request pause
+    pub fn pause(&self) {
+        self.paused.store(true, Ordering::SeqCst);
+    }
+
+    /// Request resume
+    pub fn resume(&self) {
+        self.paused.store(false, Ordering::SeqCst);
+    }
+
+    /// Request cancel - this will also resume if paused to allow clean exit
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        // Resume if paused so the thread can exit
+        self.paused.store(false, Ordering::SeqCst);
+    }
+
+    /// Toggle pause state, returns new state (true = paused)
+    ///
+    /// Uses atomic fetch_xor for thread-safe toggle operation.
+    pub fn toggle(&self) -> bool {
+        // fetch_xor atomically XORs with true (flips the bit) and returns previous value
+        let was_paused = self.paused.fetch_xor(true, Ordering::SeqCst);
+        !was_paused
+    }
+
+    /// Wait while paused, checking periodically
+    /// Returns true if was paused (and now resumed), false if wasn't paused
+    /// Also returns false immediately if cancelled
+    pub fn wait_if_paused(&self) -> bool {
+        if !self.is_paused() || self.is_cancelled() {
+            return false;
+        }
+
+        // Wait until resumed or cancelled
+        while self.is_paused() && !self.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        !self.is_cancelled()
+    }
+}
+
+impl Default for PauseControl {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Handle to a background plotting job
@@ -28,6 +113,8 @@ pub struct PlotHandle {
     pub receiver: mpsc::Receiver<PlotEvent>,
     /// Thread handle
     handle: JoinHandle<Result<(), PlotterError>>,
+    /// Pause control
+    pause_control: PauseControl,
 }
 
 impl PlotHandle {
@@ -35,8 +122,13 @@ impl PlotHandle {
     pub(crate) fn new(
         receiver: mpsc::Receiver<PlotEvent>,
         handle: JoinHandle<Result<(), PlotterError>>,
+        pause_control: PauseControl,
     ) -> Self {
-        Self { receiver, handle }
+        Self {
+            receiver,
+            handle,
+            pause_control,
+        }
     }
 
     /// Wait for the plotting to complete
@@ -49,6 +141,36 @@ impl PlotHandle {
     /// Check if plotting is still running
     pub fn is_running(&self) -> bool {
         !self.handle.is_finished()
+    }
+
+    /// Check if plotting is paused
+    pub fn is_paused(&self) -> bool {
+        self.pause_control.is_paused()
+    }
+
+    /// Pause plotting (will pause after current stroke completes)
+    pub fn pause(&self) {
+        self.pause_control.pause();
+    }
+
+    /// Resume plotting
+    pub fn resume(&self) {
+        self.pause_control.resume();
+    }
+
+    /// Toggle pause state, returns new state (true = paused)
+    pub fn toggle_pause(&self) -> bool {
+        self.pause_control.toggle()
+    }
+
+    /// Check if plotting has been cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.pause_control.is_cancelled()
+    }
+
+    /// Cancel plotting - raises pen and returns home
+    pub fn cancel(&self) {
+        self.pause_control.cancel();
     }
 
     /// Try to receive the next event without blocking

@@ -47,11 +47,11 @@ impl FrameOptions {
             stroke_width: 0.5,
             color: Color::BLACK,
             font,
-            font_size: 3.0,
+            font_size: 4.5,
             title_offset: 2.0,
             title_margin: 0.0,
             with_signature: false,
-            signature_height: 5.0,
+            signature_height: 7.0,
             signature_margin: 0.0,
         }
     }

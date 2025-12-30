@@ -11,7 +11,7 @@
 //!
 //! The AxiDraw uses the EBB (EiBotBoard) protocol over USB serial.
 //! Key commands:
-//! - `SM,duration,axis1,axis2` - Stepper move
+//! - `XM,duration,stepsX,stepsY` - Stepper move for mixed-axis geometry (CoreXY)
 //! - `SP,value,duration` - Servo position (pen up/down)
 //! - `EM,enable1,enable2` - Enable/disable motors
 //! - `QP` - Query pen state
@@ -45,10 +45,32 @@
 //!
 //! handle.join()?;
 //! ```
+//!
+//! ## Prepared Drawing (Recommended)
+//!
+//! For best performance, use `PreparedDrawing` to cache expensive operations
+//! (flatten, optimize, stats) so they only run once:
+//!
+//! ```ignore
+//! use drawing_plotter::{plot_prepared_in_background, PreparedDrawing, PlotConfig};
+//!
+//! // Prepare once - flattens, optimizes, and calculates stats
+//! let prepared = PreparedDrawing::new(&drawing, &config, &render_ctx);
+//!
+//! // Display stats from the prepared drawing
+//! println!("Strokes: {}, Time: {}", prepared.stats.stroke_count, prepared.stats.format_time());
+//!
+//! // Plot without re-computation
+//! let handle = plot_prepared_in_background(prepared, config, None)?;
+//! handle.join()?;
+//! ```
 
 mod config;
 mod error;
+mod motion;
 mod optimize;
+mod prepared;
+mod stats;
 
 #[cfg(feature = "hardware")]
 mod axidraw;
@@ -58,12 +80,24 @@ mod event;
 // Re-export public API
 pub use config::PlotConfig;
 pub use error::PlotterError;
-pub use optimize::{optimize_strokes, pen_down_distance, total_travel_distance};
+pub use motion::{
+    acceleration_to_accel_param, calculate_junction_velocity, velocity_to_rate, LmCommand,
+    MotionConfig, MotionPlanner, MotionProfile, MotionSegment, PlannedMove,
+};
+pub use optimize::{
+    optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
+    pen_down_distance_optimized, total_travel_distance, total_travel_distance_optimized,
+    travel_distance_optimized, OwnedOptimizedStroke,
+};
+pub use prepared::PreparedDrawing;
+pub use stats::{estimate_plot_time, estimate_plot_time_optimized, DrawingStats};
 
 #[cfg(feature = "hardware")]
-pub use axidraw::{plot_in_background, AxiDraw, PortInfo, AXIDRAW_PID, AXIDRAW_VID};
+pub use axidraw::{
+    plot_in_background, plot_prepared_in_background, AxiDraw, PortInfo, AXIDRAW_PID, AXIDRAW_VID,
+};
 #[cfg(feature = "hardware")]
-pub use event::{PlotEvent, PlotHandle};
+pub use event::{PauseControl, PlotEvent, PlotHandle};
 
 // Re-export constants even without hardware feature for reference
 #[cfg(not(feature = "hardware"))]

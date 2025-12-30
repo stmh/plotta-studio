@@ -234,9 +234,47 @@ mod serial_impl;
 - `winit` for windowing
 - Coordinate system: origin top-left, Y increases downward, units in mm
 
+## Task Tracking with Beans
+
+This project uses **beans** for tracking plans and progress. Beans are stored in the `.beans/` directory.
+
+### Creating Beans
+
+When creating a new bean:
+1. Always specify a type with `-t` (task, feature, bug, epic, milestone)
+2. Include a useful description with `-d`
+3. Set the appropriate parent relationship if the bean belongs to an epic or feature
+4. Check for existing related beans to avoid duplicates
+
+```bash
+# Create a new task under an existing epic
+beans create "Implement feature X" -t task -d "Description..." -s todo
+beans update <new-bean-id> --parent <epic-id>
+
+# Query beans to find related work
+beans query '{ beans(filter: { search: "keyword" }) { id title status parentId } }'
+```
+
+### Maintaining Relationships
+
+- **Parent-child**: Use `--parent` to organize tasks under epics/features
+- **Blocking**: Use `--blocking` for dependencies between beans
+- When completing work, check if parent beans need status updates
+- Keep bean descriptions and checklists up-to-date as work progresses
+
+### Bean Hierarchy
+
+```
+milestone
+  └── epic
+        └── feature
+              └── task/bug
+```
+
 ## Git Workflow
 
 - Run `cargo fmt --all` and `cargo clippy --all-targets -- -D warnings` before committing
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
 - Use jj (Jujutsu) for version control, not git directly
 - Create bookmarks for branches: `jj bookmark create feature-name`
+- Include updated bean files in commits when work status changes
