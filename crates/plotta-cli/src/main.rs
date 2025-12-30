@@ -14,7 +14,9 @@ use clap::{Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal;
 use drawing_core::{Drawing, RenderContext};
-use drawing_plotter::{plot_in_background, AxiDraw, DrawingStats, PlotConfig, PlotEvent};
+use drawing_plotter::{
+    plot_prepared_in_background, AxiDraw, PlotConfig, PlotEvent, PreparedDrawing,
+};
 use drawing_text::FontManager;
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -449,25 +451,23 @@ fn cmd_raw(port: Option<&str>, command: &str) -> Result<()> {
 /// Preview a drawing without plotting
 fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
     let drawing = load_drawing_with_validation(file)?;
-
     let ctx = create_render_context()?;
 
-    log::debug!("Flattening drawing to strokes...");
-    let flatten_start = Instant::now();
-    let strokes = drawing.flatten(&ctx);
+    // Prepare the drawing - flattens, optimizes, and calculates stats
+    log::info!("Preparing drawing...");
+    let prepare_start = Instant::now();
+    let prepared = PreparedDrawing::new(&drawing, &config, &ctx);
     log::info!(
-        "Flattened to {} strokes in {:.2}s",
-        strokes.len(),
-        flatten_start.elapsed().as_secs_f64()
+        "Drawing prepared in {:.2}s",
+        prepare_start.elapsed().as_secs_f64()
     );
 
-    validate_stroke_count(strokes.len())?;
+    validate_stroke_count(prepared.stroke_count())?;
 
-    log::debug!("Calculating drawing statistics...");
-    let stats = DrawingStats::calculate(&strokes, &config);
+    let stats = &prepared.stats;
 
     println!("Drawing: {}", file.display());
-    println!("  Size: {:.0} x {:.0} mm", drawing.width, drawing.height);
+    println!("  Size: {:.0} x {:.0} mm", prepared.width, prepared.height);
     println!(
         "  Strokes: {} ({} reversed for shorter travel)",
         stats.stroke_count, stats.reversed_strokes
@@ -552,29 +552,21 @@ fn format_duration(duration: Duration) -> String {
 /// Plot a drawing with progress bar
 fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()> {
     let drawing = load_drawing_with_validation(file)?;
-
     let ctx = create_render_context()?;
 
-    log::debug!("Flattening drawing to strokes...");
-    let flatten_start = Instant::now();
-    let strokes = drawing.flatten(&ctx);
+    // Prepare the drawing once - flattens, optimizes, and calculates stats
+    log::info!("Preparing drawing...");
+    let prepare_start = Instant::now();
+    let prepared = PreparedDrawing::new(&drawing, &config, &ctx);
     log::info!(
-        "Flattened to {} strokes in {:.2}s",
-        strokes.len(),
-        flatten_start.elapsed().as_secs_f64()
+        "Drawing prepared in {:.2}s",
+        prepare_start.elapsed().as_secs_f64()
     );
 
-    validate_stroke_count(strokes.len())?;
+    validate_stroke_count(prepared.stroke_count())?;
 
-    log::debug!("Calculating drawing statistics...");
-    let stats = DrawingStats::calculate(&strokes, &config);
-    log::debug!(
-        "Stats: pen_down={:.1}mm, travel={:.1}mm, {} strokes ({} reversed)",
-        stats.pen_down_distance,
-        stats.travel_distance,
-        stats.stroke_count,
-        stats.reversed_strokes
-    );
+    // Clone stats before moving prepared to the background thread
+    let stats = prepared.stats.clone();
 
     println!("Plotting: {}", file.display());
     println!(
@@ -604,7 +596,8 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
     println!("  Press SPACE to pause/resume, Q to cancel");
     println!();
 
-    let handle = plot_in_background(drawing, config, ctx, port.map(String::from))?;
+    // Use plot_prepared_in_background - no re-flatten or re-optimize needed!
+    let handle = plot_prepared_in_background(prepared, config, port.map(String::from))?;
 
     let progress = ProgressBar::new(stats.stroke_count as u64);
     progress.set_style(
