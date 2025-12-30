@@ -19,6 +19,7 @@ mod group;
 mod path;
 mod primitives;
 mod shape;
+mod simplify;
 mod stroke;
 mod style;
 mod text;
@@ -32,7 +33,7 @@ pub type Transform = Affine;
 // Re-export our types
 pub use clip::ClipGroup;
 pub use color::Color;
-pub use context::RenderContext;
+pub use context::{RenderContext, DEFAULT_TOLERANCE};
 pub use drawing::Drawing;
 pub use element::Element;
 pub use font_registry::{FontRef, FontRegistry};

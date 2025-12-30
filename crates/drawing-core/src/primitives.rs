@@ -1,4 +1,4 @@
-//! Primitive shapes with segment control
+//! Primitive shapes
 
 use kurbo::Point;
 use serde::{Deserialize, Serialize};
@@ -26,11 +26,13 @@ impl Polyline {
     }
 }
 
+/// A circle defined by center and radius.
+///
+/// Curve subdivision is controlled by the tolerance setting in RenderContext.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Circle {
     pub center: Point,
     pub radius: f64,
-    pub segments: usize,
 }
 
 impl Circle {
@@ -38,13 +40,7 @@ impl Circle {
         Self {
             center: center.into(),
             radius,
-            segments: 64,
         }
-    }
-
-    pub fn with_segments(mut self, segments: usize) -> Self {
-        self.segments = segments;
-        self
     }
 }
 
@@ -53,17 +49,18 @@ impl Default for Circle {
         Self {
             center: Point::ZERO,
             radius: 50.0,
-            segments: 64,
         }
     }
 }
 
+/// An ellipse defined by center and radii.
+///
+/// Curve subdivision is controlled by the tolerance setting in RenderContext.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Ellipse {
     pub center: Point,
     pub rx: f64,
     pub ry: f64,
-    pub segments: usize,
 }
 
 impl Ellipse {
@@ -72,23 +69,19 @@ impl Ellipse {
             center: center.into(),
             rx,
             ry,
-            segments: 64,
         }
-    }
-
-    pub fn with_segments(mut self, segments: usize) -> Self {
-        self.segments = segments;
-        self
     }
 }
 
+/// An arc defined by center, radius, and start/end angles.
+///
+/// Curve subdivision is controlled by the tolerance setting in RenderContext.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Arc {
     pub center: Point,
     pub radius: f64,
     pub start_angle: f64,
     pub end_angle: f64,
-    pub segments: usize,
 }
 
 impl Arc {
@@ -98,13 +91,7 @@ impl Arc {
             radius,
             start_angle,
             end_angle,
-            segments: 32,
         }
-    }
-
-    pub fn with_segments(mut self, segments: usize) -> Self {
-        self.segments = segments;
-        self
     }
 }
 
