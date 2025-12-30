@@ -1,6 +1,6 @@
 //! Configuration for plotting
 
-use crate::motion::{MotionConfig, DEFAULT_JUNCTION_DEVIATION};
+use crate::motion::{MotionConfig, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_JUNCTION_DEVIATION};
 
 /// Servo timing constants from Python AxiDraw driver
 /// These are used to calculate how long to wait for the servo to physically move.
@@ -125,8 +125,8 @@ impl Default for PlotConfig {
             // No additional delay by default (servo timing is calculated dynamically)
             pen_down_delay: 0,
             pen_up_delay: 0,
-            // Motion planning defaults
-            max_acceleration: 500.0,
+            // Motion planning defaults (matches Python AxiDraw driver)
+            max_acceleration: DEFAULT_ACCEL_PEN_DOWN,
             junction_deviation: DEFAULT_JUNCTION_DEVIATION,
             motion_planning_enabled: true,
         }

@@ -560,7 +560,43 @@ impl AxiDraw {
         Ok(())
     }
 
-    /// Execute an LM command
+    /// Execute an SM command
+    ///
+    /// SM commands use constant velocity and are the recommended approach
+    /// for motion control, matching the Python AxiDraw driver.
+    fn execute_sm_command(&mut self, cmd: &crate::motion::SmCommand) -> Result<(), PlotterError> {
+        // Skip empty commands
+        if cmd.is_empty() {
+            log::trace!("Skipping empty SM command");
+            return Ok(());
+        }
+
+        let cmd_str = cmd.to_command_string();
+        log::trace!("SM command: {} (sleep: {}ms)", cmd_str, cmd.sleep_time_ms());
+        self.send_command_ok(&cmd_str)?;
+
+        // Sleep with buffer lead time to ensure continuous motion
+        let sleep_ms = cmd.sleep_time_ms();
+        if sleep_ms > 0 {
+            std::thread::sleep(Duration::from_millis(sleep_ms as u64));
+        }
+        Ok(())
+    }
+
+    /// Execute a planned move using SM commands (recommended)
+    fn execute_sm_planned_move(
+        &mut self,
+        planned: &crate::motion::SmPlannedMove,
+    ) -> Result<(), PlotterError> {
+        for cmd in &planned.commands {
+            self.execute_sm_command(cmd)?;
+        }
+        self.current_pos = planned.end;
+        Ok(())
+    }
+
+    /// Execute an LM command (legacy, kept for compatibility)
+    #[allow(dead_code)]
     fn execute_lm_command(&mut self, cmd: &LmCommand) -> Result<(), PlotterError> {
         // Skip empty commands
         if cmd.is_empty() {
@@ -586,7 +622,8 @@ impl AxiDraw {
         Ok(())
     }
 
-    /// Execute a planned move (sequence of LM commands)
+    /// Execute a planned move (sequence of LM commands) - legacy
+    #[allow(dead_code)]
     fn execute_planned_move(&mut self, planned: &PlannedMove) -> Result<(), PlotterError> {
         for cmd in &planned.commands {
             self.execute_lm_command(cmd)?;
@@ -597,7 +634,8 @@ impl AxiDraw {
 
     /// Move to a position with motion planning (uses acceleration profiles)
     ///
-    /// This creates a simple single-segment move with trapezoidal velocity profile.
+    /// This creates a simple single-segment move with trapezoidal velocity profile
+    /// using SM commands with time-slice interpolation.
     /// For multi-segment moves (like drawing a stroke), use `draw_stroke_with_planning`.
     pub fn move_to_with_planning(&mut self, target: Point) -> Result<(), PlotterError> {
         let delta = target - self.current_pos;
@@ -623,20 +661,22 @@ impl AxiDraw {
             motion_config.max_acceleration, // max acceleration
         );
 
-        let planned = PlannedMove::with_profile(
+        // Generate SM commands using time-slice interpolation
+        let planned = crate::motion::generate_sm_commands(
+            &profile,
             self.current_pos,
             target,
-            &profile,
             motion_config.steps_per_mm,
         );
 
-        self.execute_planned_move(&planned)
+        self.execute_sm_planned_move(&planned)
     }
 
     /// Draw a stroke with motion planning
     ///
     /// Uses the motion planner to compute optimal velocities through corners,
     /// creating smooth motion with proper acceleration/deceleration.
+    /// Motion is executed using SM commands with time-slice interpolation.
     pub fn draw_stroke_with_planning(&mut self, points: &[Point]) -> Result<(), PlotterError> {
         if points.len() < 2 {
             return Ok(());
@@ -655,13 +695,14 @@ impl AxiDraw {
         let profiles = planner.generate_profiles(&segments);
 
         for (segment, profile) in segments.iter().zip(profiles.iter()) {
-            let planned = PlannedMove::with_profile(
+            // Generate SM commands using time-slice interpolation
+            let planned = crate::motion::generate_sm_commands(
+                profile,
                 segment.start,
                 segment.end,
-                profile,
                 motion_config.steps_per_mm,
             );
-            self.execute_planned_move(&planned)?;
+            self.execute_sm_planned_move(&planned)?;
         }
 
         Ok(())
