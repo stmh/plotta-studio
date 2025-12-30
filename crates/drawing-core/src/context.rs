@@ -56,16 +56,6 @@ impl RenderContext {
         self
     }
 
-    /// Create a render context with an empty font registry.
-    ///
-    /// Useful for CLI tools or other contexts where fonts are not needed
-    /// (e.g., when drawings contain only geometric primitives).
-    pub fn empty() -> Self {
-        Self {
-            font_registry: Arc::new(FontRegistry::new()),
-        }
-    }
-
     /// Get the font registry.
     pub fn font_registry(&self) -> &Arc<FontRegistry> {
         &self.font_registry

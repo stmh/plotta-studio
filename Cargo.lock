@@ -2455,7 +2455,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sketch-007-wool-ball"
+name = "sketch-008-wool-ball"
 version = "0.1.0"
 dependencies = [
  "drawing-plotter",
