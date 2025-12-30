@@ -195,7 +195,8 @@ impl WoolBallSketch {
 
                 // Calculate point on the "surface" of the wool ball
                 let x = center.x + angle.cos() * current_r;
-                let y = center.y + (angle.sin() * current_r * 0.8) + (strand_tilt * current_r * 0.3);
+                let y =
+                    center.y + (angle.sin() * current_r * 0.8) + (strand_tilt * current_r * 0.3);
 
                 let current_point = Point::new(x, y);
 
