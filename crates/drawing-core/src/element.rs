@@ -273,7 +273,7 @@ impl Element {
             }
 
             Shape::Circle(circle) => {
-                let points = flatten_circle(circle, &transform);
+                let points = flatten_circle(circle, &transform, ctx.tolerance);
                 vec![Stroke {
                     points,
                     style: scaled_style,
@@ -282,7 +282,7 @@ impl Element {
             }
 
             Shape::Ellipse(ellipse) => {
-                let points = flatten_ellipse(ellipse, &transform);
+                let points = flatten_ellipse(ellipse, &transform, ctx.tolerance);
                 vec![Stroke {
                     points,
                     style: scaled_style,
@@ -306,7 +306,7 @@ impl Element {
             }
 
             Shape::Arc(arc) => {
-                let points = flatten_arc(arc, &transform);
+                let points = flatten_arc(arc, &transform, ctx.tolerance);
                 vec![Stroke {
                     points,
                     style: scaled_style,
@@ -323,7 +323,7 @@ impl Element {
                 }]
             }
 
-            Shape::Path(path) => flatten_path(path, &transform, scaled_style),
+            Shape::Path(path) => flatten_path(path, &transform, scaled_style, ctx.tolerance),
 
             Shape::Group(group) => group
                 .children

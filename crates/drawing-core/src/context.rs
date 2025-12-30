@@ -7,6 +7,9 @@ use std::sync::Arc;
 
 use crate::font_registry::{FontRef, FontRegistry};
 
+/// Default curve flattening tolerance in mm
+pub const DEFAULT_TOLERANCE: f64 = 0.05;
+
 /// Context for rendering operations
 ///
 /// Holds shared resources like fonts that are needed when flattening
@@ -26,12 +29,31 @@ use crate::font_registry::{FontRef, FontRegistry};
 /// ```
 pub struct RenderContext {
     font_registry: Arc<FontRegistry>,
+    /// Curve flattening tolerance in mm (default: 0.05)
+    pub tolerance: f64,
 }
 
 impl RenderContext {
     /// Create a new render context with the given font registry.
     pub fn new(font_registry: Arc<FontRegistry>) -> Self {
-        Self { font_registry }
+        Self {
+            font_registry,
+            tolerance: DEFAULT_TOLERANCE,
+        }
+    }
+
+    /// Create a render context with an empty font registry.
+    pub fn empty() -> Self {
+        Self {
+            font_registry: Arc::new(FontRegistry::new()),
+            tolerance: DEFAULT_TOLERANCE,
+        }
+    }
+
+    /// Set the curve flattening tolerance in mm.
+    pub fn with_tolerance(mut self, tolerance: f64) -> Self {
+        self.tolerance = tolerance;
+        self
     }
 
     /// Get the font registry.
@@ -61,6 +83,7 @@ impl std::fmt::Debug for RenderContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RenderContext")
             .field("font_registry", &self.font_registry)
+            .field("tolerance", &self.tolerance)
             .finish()
     }
 }
@@ -91,5 +114,26 @@ mod tests {
 
         // Both should reference the same registry
         assert!(Arc::ptr_eq(ctx.font_registry(), &registry));
+    }
+
+    #[test]
+    fn test_render_context_default_tolerance() {
+        let registry = Arc::new(FontRegistry::new());
+        let ctx = RenderContext::new(registry);
+        assert_eq!(ctx.tolerance, DEFAULT_TOLERANCE);
+    }
+
+    #[test]
+    fn test_render_context_with_tolerance() {
+        let registry = Arc::new(FontRegistry::new());
+        let ctx = RenderContext::new(registry).with_tolerance(0.1);
+        assert_eq!(ctx.tolerance, 0.1);
+    }
+
+    #[test]
+    fn test_render_context_empty() {
+        let ctx = RenderContext::empty();
+        assert!(ctx.font_names().is_empty());
+        assert_eq!(ctx.tolerance, DEFAULT_TOLERANCE);
     }
 }
