@@ -17,8 +17,14 @@ cargo run -p sketch-004-hatched-circles
 # Run the SVG viewer
 cargo run -p sketch-005-svg-viewer
 
-# Run the Hamburg SVG demo
+# Run the Hamburg city map demo
 cargo run -p sketch-006-hamburg
+
+# Run the 1000 lines pattern
+cargo run -p sketch-007-1000-lines
+
+# Run the wool ball demo
+cargo run -p sketch-008-wool-ball
 ```
 
 ## Controls
@@ -49,13 +55,16 @@ plotta-studio/
 │   ├── hershey/           # Classic Hershey stroke fonts
 │   ├── svg/               # SVG single-line fonts
 │   └── vsf/               # Vector Stroke Font files
-└── sketches/
-    ├── sketch-001-radial/
-    ├── sketch-002-dvd-screensaver/
-    ├── sketch-003-text/
-    ├── sketch-004-hatched-circles/
-    ├── sketch-005-svg-viewer/
-    └── sketch-006-hamburg/
+├── sketches/
+│   ├── sketch-001-radial/
+│   ├── sketch-002-dvd-screensaver/
+│   ├── sketch-003-text/
+│   ├── sketch-004-hatched-circles/
+│   ├── sketch-005-svg-viewer/
+│   ├── sketch-006-hamburg/
+│   ├── sketch-007-1000-lines/
+│   └── sketch-008-wool-ball/
+└── plotta-cli                 # Command-line tool for plotting
 ```
 
 ## Creating a Sketch
@@ -308,18 +317,22 @@ drawing_svg::export_svg(&drawing, "output.svg", &ctx.render)?;
 
 ## Path Optimization
 
-The plotter module includes stroke optimization for efficient plotting:
+The plotter module includes advanced stroke optimization for efficient plotting:
+
+- **R\*-tree spatial indexing** - O(n log n) nearest-neighbor queries for fast optimization
+- **Stroke reversal** - Automatically reverses strokes when it reduces travel distance
+- **Greedy nearest-neighbor** - Minimizes pen-up travel between strokes
+
+For large drawings (100k+ strokes), optimization completes in under a second.
 
 ```rust
-use drawing_plotter::{optimize_strokes, total_travel_distance, pen_down_distance};
+use drawing_plotter::{optimize_strokes_with_reversal, total_travel_distance_optimized};
 
-// Optimize stroke order to minimize pen-up travel
-let optimized = optimize_strokes(&strokes);
+// Optimize stroke order with reversal support
+let optimized = optimize_strokes_with_reversal(&strokes, true);
 
 // Calculate distances
-let total = total_travel_distance(&optimized);
-let drawing_dist = pen_down_distance(&optimized);
-let travel_dist = total - drawing_dist;
+let total = total_travel_distance_optimized(&optimized);
 ```
 
 ## AxiDraw Plotter Control
@@ -356,6 +369,31 @@ Drawing::a3_portrait()   // 297 x 420 mm
 Drawing::new(w, h)       // Custom size
 ```
 
+## Command-Line Tool
+
+The `plotta-cli` tool provides command-line control for plotting:
+
+```bash
+# Preview a drawing (shows stats and estimated time)
+cargo run -p plotta-cli -- preview drawing.json
+
+# Plot a drawing
+cargo run -p plotta-cli -- plot drawing.json
+
+# Move pen to position
+cargo run -p plotta-cli -- move 100 50
+
+# Pen up/down control
+cargo run -p plotta-cli -- pen up
+cargo run -p plotta-cli -- pen down
+
+# Home the plotter
+cargo run -p plotta-cli -- home
+
+# Check plotter status
+cargo run -p plotta-cli -- status
+```
+
 ## Roadmap
 
 - [x] Core drawing primitives
@@ -364,15 +402,16 @@ Drawing::new(w, h)       // Custom size
 - [x] Pan/zoom navigation
 - [x] JSON serialization
 - [x] SVG export
-- [x] Path optimization for plotting (greedy nearest-neighbor)
+- [x] Path optimization with R\*-tree spatial indexing
+- [x] Stroke reversal optimization
 - [x] Single-line font support (Hershey, VSF, SVG fonts)
 - [x] Text rendering with alignment and spacing
 - [x] ClipGroup for clipping elements to shapes
 - [x] Hatching utilities
-- [x] AxiDraw plotter control
+- [x] AxiDraw plotter control with motion planning
 - [x] SVG import
+- [x] Command-line tool (plotta-cli)
 - [ ] 2-opt path optimization
-- [ ] Stroke reversal optimization
 - [ ] GUI for parameters (egui)
 - [ ] Sketch templates with cargo-generate
 
