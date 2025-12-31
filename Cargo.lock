@@ -623,6 +623,7 @@ version = "0.1.0"
 dependencies = [
  "drawing-core",
  "log",
+ "rstar",
  "serialport",
  "thiserror 2.0.17",
 ]
@@ -2460,6 +2461,17 @@ version = "0.1.0"
 dependencies = [
  "drawing-plotter",
  "drawing-svg",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
+name = "sketch-009-altoetting"
+version = "0.1.0"
+dependencies = [
+ "drawing-plotter",
+ "drawing-svg",
+ "drawing-text",
  "drawing-utils",
  "sketch-runner",
 ]

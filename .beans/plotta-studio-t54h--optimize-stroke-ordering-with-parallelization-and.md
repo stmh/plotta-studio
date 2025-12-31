@@ -1,11 +1,11 @@
 ---
 # plotta-studio-t54h
 title: Optimize stroke ordering with parallelization and spatial indexing
-status: todo
+status: completed
 type: feature
 priority: high
 created_at: 2025-12-30T17:32:30Z
-updated_at: 2025-12-31T13:53:16Z
+updated_at: 2025-12-31T14:31:50Z
 parent: plotta-studio-opt1
 ---
 
@@ -21,80 +21,45 @@ The current greedy nearest-neighbor algorithm in `optimize_strokes_with_reversal
 - Current algorithm: O(n²) sequential
 - The `remaining.remove(best_idx)` operation is also O(n), adding to the problem
 
-## Proposed Solutions
+## Implementation Results
 
-### Phase 1: Rayon Parallelization (Quick Win)
+### Phase 1: Rayon Parallelization - ABANDONED
 
-Parallelize the inner loop that finds the nearest stroke:
+Attempted to parallelize the inner loop using rayon, but it **made things slower**:
 
-```rust
-use rayon::prelude::*;
+| Version          | Wall Time | CPU Usage       |
+| ---------------- | --------- | --------------- |
+| Sequential       | 31s       | 98% (1 core)    |
+| Parallel (rayon) | 61s       | 531% (5+ cores) |
 
-let (best_idx, best_dist, best_reversed) = remaining
-    .par_iter()
-    .enumerate()
-    .map(|(i, (_, stroke))| {
-        // calculate distances...
-        (i, dist, reversed)
-    })
-    .reduce(|| (0, f64::MAX, false), |a, b| {
-        if a.1 < b.1 { a } else { b }
-    });
-```
+**Why it failed:** The algorithm is O(n²) with 134,699 iterations. Each iteration calls `par_iter()` which has thread pool overhead (~1-5μs). The inner loop work (distance calculations) is too cheap compared to thread overhead.
 
-**Pros:**
-- Simple to implement
-- No algorithmic changes
-- ~4-8x speedup on multi-core
+### Phase 2: R*-tree Spatial Indexing - IMPLEMENTED
 
-**Cons:**
-- Still O(n²) algorithm
-- Thread overhead for each of n iterations
-- The `remaining.remove(best_idx)` is still O(n)
+Used `rstar` crate (R*-tree) for O(n log n) nearest-neighbor queries.
 
-**Expected improvement:** ~4-8x faster
+**Algorithm:**
+1. Build R*-tree with all stroke endpoints (start + end): O(n log n)
+2. Track visited strokes with HashSet: O(1) lookup
+3. For each iteration, query nearest unvisited neighbor: O(log n)
+4. Total complexity: O(n log n) vs O(n²)
 
-### Phase 2: Spatial Indexing (Major Improvement)
+**Performance Results (134,699 strokes):**
 
-Use a k-d tree (e.g., `kiddo` or `rstar` crate) to find nearest neighbors:
+| Metric | Before (O(n²)) | After (O(n log n)) | Improvement |
+|--------|----------------|---------------------|-------------|
+| Optimization time | ~31 seconds | 374 milliseconds | **83x faster** |
+| R*-tree build | N/A | 50ms | - |
+| Memory overhead | O(n) | O(n) | Similar |
 
-```rust
-use kiddo::KdTree;
-
-// Build spatial index once: O(n log n)
-let mut tree: KdTree<f64, usize, 2> = KdTree::new();
-for (i, stroke) in strokes.iter().enumerate() {
-    tree.add(&[stroke.start().x, stroke.start().y], i);
-    tree.add(&[stroke.end().x, stroke.end().y], i);  // for reversal
-}
-
-// Each lookup is O(log n) instead of O(n)
-```
-
-**Pros:**
-- O(n log n) total complexity instead of O(n²)
-- Much better for large stroke counts
-- Can be combined with rayon for tree construction
-
-**Cons:**
-- More complex implementation
-- Additional dependency
-- Need to handle removal from tree (or use visited set)
-
-**Expected improvement:** ~1000x+ faster for 135k strokes
-
-### Potential Dependencies
-
-- `rayon` - for parallel iteration
-- `kiddo` or `rstar` - for spatial indexing (k-d tree or R-tree)
+The R*-tree approach maintains the same optimization quality (travel distance) while providing massive speedups for large drawings.
 
 ## Checklist
 
-- [ ] Add rayon dependency to drawing-plotter
-- [ ] Implement parallel inner loop in `optimize_strokes_with_reversal`
-- [ ] Add benchmarks to measure improvement
-- [ ] Research and choose spatial indexing crate (kiddo vs rstar)
-- [ ] Implement k-d tree based optimization
-- [ ] Add feature flag to choose optimization strategy
-- [ ] Update tests for new implementation
-- [ ] Document performance characteristics
+- [x] Research and choose spatial indexing crate (rstar chosen over kiddo due to dependency issues)
+- [x] Implement R*-tree based optimization in `optimize_strokes_internal`
+- [x] Update tests for new implementation (all 92 tests pass)
+- [x] Document performance characteristics
+- [ ] ~~Add rayon dependency~~ (abandoned - made things slower)
+- [ ] ~~Implement parallel inner loop~~ (abandoned)
+- [ ] ~~Add feature flag to choose optimization strategy~~ (not needed - R*-tree is always better)

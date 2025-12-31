@@ -1,6 +1,9 @@
 //! Stroke path optimization for efficient plotting
 
+use std::collections::HashSet;
+
 use drawing_core::{Point, ResolvedStyle, Stroke};
+use rstar::{primitives::GeomWithData, RTree};
 
 /// A reference to a stroke that may be drawn in reverse direction (internal use only)
 #[derive(Debug, Clone, Copy)]
@@ -149,10 +152,22 @@ pub fn optimize_strokes(strokes: &[Stroke]) -> Vec<&Stroke> {
     ordered
 }
 
-/// Optimize stroke order with reversal support (returns borrowed references)
+/// An endpoint entry for the R*-tree spatial index.
 ///
-/// This is an internal function that returns borrowed references. For most use cases,
-/// prefer `optimize_strokes_owned` which returns owned data that can be sent across threads.
+/// Each stroke contributes two entries: one for its start point, one for its end point.
+/// The `is_end` flag indicates which endpoint this represents.
+type EndpointEntry = GeomWithData<[f64; 2], (usize, bool)>;
+
+/// Optimize stroke order with reversal support using R*-tree spatial indexing.
+///
+/// This implementation uses an R*-tree for O(n log n) nearest-neighbor queries,
+/// compared to O(n²) for the naive algorithm. This provides massive speedups for
+/// large stroke counts (100k+ strokes).
+///
+/// Algorithm:
+/// 1. Build R*-tree with all stroke endpoints: O(n log n)
+/// 2. For each iteration, query nearest unvisited neighbor: O(log n)
+/// 3. Total complexity: O(n log n) vs O(n²)
 fn optimize_strokes_internal(strokes: &[Stroke], allow_reversal: bool) -> Vec<OptimizedStroke<'_>> {
     if strokes.is_empty() {
         return vec![];
@@ -160,57 +175,73 @@ fn optimize_strokes_internal(strokes: &[Stroke], allow_reversal: bool) -> Vec<Op
 
     let total_strokes = strokes.len();
     log::debug!(
-        "Optimizing {} strokes (reversal={})",
+        "Optimizing {} strokes using R*-tree (reversal={})",
         total_strokes,
         allow_reversal
     );
 
-    // Track remaining strokes with their indices
-    let mut remaining: Vec<(usize, &Stroke)> = strokes.iter().enumerate().collect();
-    let mut ordered = Vec::with_capacity(strokes.len());
-    let mut current_pos = Point::ZERO;
+    // Build R*-tree with all stroke endpoints
+    // Each entry contains: (stroke_index, is_end_point)
+    let start_time = std::time::Instant::now();
+
+    let entries: Vec<EndpointEntry> = strokes
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| !s.points.is_empty())
+        .flat_map(|(idx, stroke)| {
+            let start = stroke.points[0];
+            let start_entry = GeomWithData::new([start.x, start.y], (idx, false));
+
+            if allow_reversal {
+                let end = stroke.points.last().unwrap();
+                let end_entry = GeomWithData::new([end.x, end.y], (idx, true));
+                vec![start_entry, end_entry]
+            } else {
+                vec![start_entry]
+            }
+        })
+        .collect();
+
+    let tree = RTree::bulk_load(entries);
+
+    log::debug!(
+        "R*-tree built in {:?} with {} entries",
+        start_time.elapsed(),
+        tree.size()
+    );
+
+    // Track which strokes have been visited
+    let mut visited = HashSet::with_capacity(total_strokes);
+    let mut ordered = Vec::with_capacity(total_strokes);
+    let mut current_pos = [0.0_f64, 0.0_f64];
     let mut reversed_count = 0;
 
     // Log progress every 10% for large stroke sets
     let log_interval = (total_strokes / 10).max(1000);
     let mut last_log = 0;
 
-    while !remaining.is_empty() {
-        let mut best_idx = 0;
-        let mut best_dist = f64::MAX;
-        let mut best_reversed = false;
+    while visited.len() < total_strokes {
+        // Find nearest unvisited endpoint
+        let nearest = tree
+            .nearest_neighbor_iter(&current_pos)
+            .find(|entry| !visited.contains(&entry.data.0));
 
-        for (i, (_, stroke)) in remaining.iter().enumerate() {
-            if stroke.points.is_empty() {
-                continue;
-            }
+        let Some(nearest) = nearest else {
+            // No more unvisited strokes (shouldn't happen if data is consistent)
+            break;
+        };
 
-            // Check distance to start point
-            let start = stroke.points[0];
-            let dist_to_start = current_pos.distance(start);
-            if dist_to_start < best_dist {
-                best_dist = dist_to_start;
-                best_idx = i;
-                best_reversed = false;
-            }
+        let (stroke_idx, is_end) = nearest.data;
+        visited.insert(stroke_idx);
 
-            // Check distance to end point (if reversal allowed)
-            if allow_reversal {
-                if let Some(&end) = stroke.points.last() {
-                    let dist_to_end = current_pos.distance(end);
-                    if dist_to_end < best_dist {
-                        best_dist = dist_to_end;
-                        best_idx = i;
-                        best_reversed = true;
-                    }
-                }
-            }
-        }
+        let stroke = &strokes[stroke_idx];
+        let reversed = is_end; // If nearest point is end, draw in reverse
 
-        let (_, stroke) = remaining.remove(best_idx);
-        let optimized = OptimizedStroke::new(stroke, best_reversed);
-        current_pos = optimized.end();
-        if best_reversed {
+        let optimized = OptimizedStroke::new(stroke, reversed);
+        let end_pos = optimized.end();
+        current_pos = [end_pos.x, end_pos.y];
+
+        if reversed {
             reversed_count += 1;
         }
         ordered.push(optimized);
@@ -229,10 +260,15 @@ fn optimize_strokes_internal(strokes: &[Stroke], allow_reversal: bool) -> Vec<Op
     }
 
     log::debug!(
-        "Optimization complete: {} strokes, {} reversed ({:.1}%)",
+        "Optimization complete in {:?}: {} strokes, {} reversed ({:.1}%)",
+        start_time.elapsed(),
         ordered.len(),
         reversed_count,
-        (reversed_count as f64 / ordered.len() as f64) * 100.0
+        if ordered.is_empty() {
+            0.0
+        } else {
+            (reversed_count as f64 / ordered.len() as f64) * 100.0
+        }
     );
 
     ordered

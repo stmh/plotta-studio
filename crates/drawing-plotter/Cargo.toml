@@ -12,6 +12,7 @@ hardware = ["serialport"]
 drawing-core = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
+rstar = { workspace = true }
 
 # Serial communication for AxiDraw (optional, requires system libraries)
 serialport = { version = "4.3", optional = true }
