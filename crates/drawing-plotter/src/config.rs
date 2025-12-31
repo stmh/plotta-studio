@@ -15,12 +15,15 @@ pub mod servo {
 
     /// EBB servo channel period in ms (8 channels * 3ms each)
     /// The servo rate is applied once per period.
+    #[cfg_attr(not(feature = "hardware"), allow(dead_code))]
     const SERVO_PERIOD_MS: f64 = 24.0;
 
     /// Minimum servo pulse width (1ms = ~7500 EBB units)
+    #[cfg_attr(not(feature = "hardware"), allow(dead_code))]
     const SERVO_MIN: f64 = 7500.0;
 
     /// Maximum servo pulse width (2ms = ~28000 EBB units)
+    #[cfg_attr(not(feature = "hardware"), allow(dead_code))]
     const SERVO_MAX: f64 = 28000.0;
 
     /// Calculate servo move time based on pen position delta and rate
@@ -49,6 +52,7 @@ pub mod servo {
     /// We calculate this to match the timing from our `calculate_move_time` formula.
     ///
     /// Formula: rate_ebb = distance_ebb_units * SERVO_PERIOD_MS / time_ms
+    #[cfg_attr(not(feature = "hardware"), allow(dead_code))]
     pub fn calculate_ebb_rate(from_pos: u8, to_pos: u8, rate: u8) -> u16 {
         let distance_percent = (from_pos as i16 - to_pos as i16).unsigned_abs() as f64;
         if distance_percent < 0.001 {

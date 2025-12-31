@@ -2461,6 +2461,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sketch-010-schnellstrasse"
+version = "0.1.0"
+dependencies = [
+ "drawing-svg",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
 name = "sketch-runner"
 version = "0.1.0"
 dependencies = [
