@@ -3,6 +3,13 @@ name = "sketch-runner"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = ["svg"]
+# Enable SVG export (E key)
+svg = ["drawing-svg"]
+# Enable AxiDraw plotting (P key) - requires libudev on Linux
+hardware = ["drawing-plotter/hardware"]
+
 [dependencies]
 drawing-core = { workspace = true }
 drawing-text = { workspace = true }
@@ -11,3 +18,7 @@ winit = { workspace = true }
 pollster = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+
+# Optional dependencies for built-in key handlers
+drawing-svg = { workspace = true, optional = true }
+drawing-plotter = { workspace = true, default-features = false, optional = true }

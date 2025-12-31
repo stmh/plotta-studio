@@ -6,11 +6,9 @@ edition.workspace = true
 [features]
 default = []
 # Enable AxiDraw plotting (requires libudev on Linux)
-hardware = ["drawing-plotter/hardware"]
+hardware = ["sketch-runner/hardware"]
 
 [dependencies]
 sketch-runner = { workspace = true }
 drawing-svg = { workspace = true }
-drawing-text = { workspace = true }
 drawing-utils = { workspace = true }
-drawing-plotter = { workspace = true, default-features = false }

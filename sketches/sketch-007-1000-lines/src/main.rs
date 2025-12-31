@@ -9,30 +9,22 @@
 //! - Scroll wheel: Zoom
 //! - Space: Fit drawing to window
 //! - R: Reset view
-//! - E: Export to drawing.svg
+//! - E: Export to SVG (built-in)
 //! - G: Regenerate drawing
-//! - P: Plot to AxiDraw (requires `hardware` feature)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
 //! - Escape: Quit
 
-#[cfg(feature = "hardware")]
-use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 use drawing_utils::{draw_frame_with_title, FrameOptions};
 use sketch_runner::*;
 
 const NUM_LINES: usize = 1000;
 const MARGIN: f64 = 15.0; // 1.5 cm margin on all sides
 
-struct LinesSketch {
-    #[cfg(feature = "hardware")]
-    plot_handle: Option<PlotHandle>,
-}
+struct LinesSketch;
 
 impl LinesSketch {
     fn new() -> Self {
-        Self {
-            #[cfg(feature = "hardware")]
-            plot_handle: None,
-        }
+        Self
     }
 
     fn build_drawing(&self, ctx: &SketchContext) -> Drawing {
@@ -121,76 +113,17 @@ impl Sketch for LinesSketch {
     }
 
     fn update(&mut self, _drawing: &mut Drawing, _ctx: &UpdateContext) -> bool {
-        #[cfg(feature = "hardware")]
-        {
-            if let Some(ref handle) = self.plot_handle {
-                for event in handle.drain_events() {
-                    match event {
-                        PlotEvent::Started { total_strokes } => {
-                            log::info!("Plotting started: {} strokes", total_strokes);
-                        }
-                        PlotEvent::StrokeComplete { index, total } => {
-                            if index % 100 == 0 || index + 1 == total {
-                                log::info!("Stroke {}/{} complete", index + 1, total);
-                            }
-                        }
-                        PlotEvent::Completed => {
-                            log::info!("Plotting completed!");
-                        }
-                        PlotEvent::Error(e) => {
-                            log::error!("Plotting error: {}", e);
-                        }
-                        _ => {}
-                    }
-                }
-
-                if !handle.is_running() {
-                    self.plot_handle = None;
-                }
-            }
-        }
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) -> bool {
         match key {
             Key::Character(c) if c.as_str() == "g" => {
                 log::info!("Regenerating drawing...");
                 *drawing = self.build_drawing(ctx);
+                true
             }
-            Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "1000-lines.svg", ctx.render) {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to 1000-lines.svg");
-                }
-            }
-            #[cfg(feature = "hardware")]
-            Key::Character(c) if c.as_str() == "p" => {
-                if self.plot_handle.is_some() {
-                    log::warn!("Plotting already in progress");
-                } else {
-                    log::info!("Starting plot...");
-                    let plot_ctx = RenderContext::new(ctx.fonts.registry().clone());
-                    match plot_in_background(drawing.clone(), PlotConfig::default(), plot_ctx, None)
-                    {
-                        Ok(handle) => {
-                            self.plot_handle = Some(handle);
-                            log::info!("Plot started in background thread");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start plot: {e}");
-                        }
-                    }
-                }
-            }
-            #[cfg(not(feature = "hardware"))]
-            Key::Character(c) if c.as_str() == "p" => {
-                log::warn!(
-                    "Plotting requires the 'hardware' feature. Run with: cargo run --features hardware"
-                );
-            }
-            _ => {}
+            _ => false,
         }
     }
 }

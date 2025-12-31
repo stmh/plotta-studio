@@ -10,6 +10,8 @@
 //! - Space: Fit drawing to window
 //! - R: Reset view
 //! - S: Save to drawing.json
+//! - E: Export to SVG (requires `svg` feature)
+//! - P: Plot to AxiDraw (requires `hardware` feature)
 //! - Escape: Quit
 
 #![allow(hidden_glob_reexports)]
@@ -31,6 +33,14 @@ pub use drawing_core::*;
 
 // Re-export drawing-text types for convenience
 pub use drawing_text::{FontFormat, FontManager, Hershey};
+
+// Re-export drawing-svg for convenience (when enabled)
+#[cfg(feature = "svg")]
+pub use drawing_svg;
+
+// Re-export drawing-plotter types for convenience (when enabled)
+#[cfg(feature = "hardware")]
+pub use drawing_plotter::{self, plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 
 /// Create a FontManager with all built-in fonts pre-loaded
 pub fn create_default_font_manager() -> FontManager {
@@ -79,7 +89,20 @@ pub trait Sketch {
     }
 
     /// Optional: handle keyboard input
-    fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing, _ctx: &SketchContext) {}
+    ///
+    /// Return `true` if the key was handled (prevents default behavior),
+    /// or `false` to allow the built-in key handler to process it.
+    ///
+    /// Built-in keys that can be overridden:
+    /// - `E`: Export to SVG
+    /// - `P`: Plot to AxiDraw
+    /// - `S`: Save to drawing.json
+    /// - `R`: Reset view
+    /// - `Space`: Fit drawing to window
+    /// - `Escape`: Quit
+    fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing, _ctx: &SketchContext) -> bool {
+        false
+    }
 
     /// Optional: handle mouse press
     fn mouse_pressed(&mut self, _pos: Point, _drawing: &mut Drawing, _ctx: &SketchContext) {}
@@ -239,6 +262,9 @@ struct AppState<S: Sketch> {
     strokes_dirty: bool,
     /// Track if Alt/Option key is held for pan mode
     alt_held: bool,
+    /// Handle for background plotting (when hardware feature is enabled)
+    #[cfg(feature = "hardware")]
+    plot_handle: Option<drawing_plotter::PlotHandle>,
 }
 
 impl<S: Sketch> AppState<S> {
@@ -275,6 +301,8 @@ impl<S: Sketch> AppState<S> {
             cached_strokes: Vec::new(),
             strokes_dirty: true,
             alt_held: false,
+            #[cfg(feature = "hardware")]
+            plot_handle: None,
         }
     }
 
@@ -617,42 +645,98 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
             }
 
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                match &event.logical_key {
-                    Key::Named(NamedKey::Escape) => event_loop.exit(),
+                // Give sketch first chance to handle the key
+                let ctx = SketchContext {
+                    render: &self.render_ctx,
+                    fonts: &self.font_manager,
+                };
+                let handled = self
+                    .sketch
+                    .key_pressed(&event.logical_key, &mut self.drawing, &ctx);
 
-                    Key::Named(NamedKey::Space) => {
-                        // Fit drawing to window
-                        if let Some(state) = &self.render_state {
-                            let width = state.surface_config.width as f64;
-                            let height = state.surface_config.height as f64;
-                            self.view.fit_drawing(&self.drawing, width, height);
+                if handled {
+                    // Sketch handled the key, skip built-in handling
+                    self.strokes_dirty = true;
+                    needs_redraw = true;
+                } else {
+                    // Fall back to built-in key handling
+                    match &event.logical_key {
+                        Key::Named(NamedKey::Escape) => event_loop.exit(),
+
+                        Key::Named(NamedKey::Space) => {
+                            // Fit drawing to window
+                            if let Some(state) = &self.render_state {
+                                let width = state.surface_config.width as f64;
+                                let height = state.surface_config.height as f64;
+                                self.view.fit_drawing(&self.drawing, width, height);
+                            }
+                            needs_redraw = true;
                         }
-                        needs_redraw = true;
-                    }
 
-                    Key::Character(c) if c.as_str() == "s" => {
-                        // Save drawing
-                        let path = std::path::Path::new("drawing.json");
-                        match self.drawing.save(path) {
-                            Ok(_) => log::info!("Saved to {}", path.display()),
-                            Err(e) => log::error!("Failed to save: {e}"),
+                        Key::Character(c) if c.as_str() == "s" => {
+                            // Save drawing
+                            let path = std::path::Path::new("drawing.json");
+                            match self.drawing.save(path) {
+                                Ok(_) => log::info!("Saved to {}", path.display()),
+                                Err(e) => log::error!("Failed to save: {e}"),
+                            }
                         }
-                    }
 
-                    Key::Character(c) if c.as_str() == "r" => {
-                        // Reset view
-                        self.view.reset();
-                        needs_redraw = true;
-                    }
+                        Key::Character(c) if c.as_str() == "r" => {
+                            // Reset view
+                            self.view.reset();
+                            needs_redraw = true;
+                        }
 
-                    key => {
-                        let ctx = SketchContext {
-                            render: &self.render_ctx,
-                            fonts: &self.font_manager,
-                        };
-                        self.sketch.key_pressed(key, &mut self.drawing, &ctx);
-                        self.strokes_dirty = true;
-                        needs_redraw = true;
+                        #[cfg(feature = "svg")]
+                        Key::Character(c) if c.as_str() == "e" => {
+                            // Export SVG
+                            let filename = format!(
+                                "{}.svg",
+                                self.config.title.to_lowercase().replace(' ', "-")
+                            );
+                            match drawing_svg::export_svg(
+                                &self.drawing,
+                                &filename,
+                                &self.render_ctx,
+                            ) {
+                                Ok(_) => log::info!("Exported to {}", filename),
+                                Err(e) => log::error!("Failed to export SVG: {e}"),
+                            }
+                        }
+
+                        #[cfg(feature = "hardware")]
+                        Key::Character(c) if c.as_str() == "p" => {
+                            // Plot to AxiDraw
+                            if self.plot_handle.is_some() {
+                                log::warn!("Plotting already in progress");
+                            } else {
+                                log::info!("Starting plot...");
+                                let plot_ctx =
+                                    RenderContext::new(self.font_manager.registry().clone());
+                                match drawing_plotter::plot_in_background(
+                                    self.drawing.clone(),
+                                    drawing_plotter::PlotConfig::default(),
+                                    plot_ctx,
+                                    None,
+                                ) {
+                                    Ok(handle) => {
+                                        self.plot_handle = Some(handle);
+                                        log::info!("Plot started in background thread");
+                                    }
+                                    Err(e) => log::error!("Failed to start plot: {e}"),
+                                }
+                            }
+                        }
+
+                        #[cfg(not(feature = "hardware"))]
+                        Key::Character(c) if c.as_str() == "p" => {
+                            log::warn!("Plotting requires the 'hardware' feature. Run with: cargo run --features hardware");
+                        }
+
+                        _ => {
+                            // Key not handled by sketch or built-in handlers
+                        }
                     }
                 }
             }
@@ -689,6 +773,57 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
         self.ctx.time = now.duration_since(self.start_time).as_secs_f64();
         self.ctx.frame += 1;
         self.last_frame_time = now;
+
+        // Monitor plot events (when hardware feature is enabled)
+        #[cfg(feature = "hardware")]
+        {
+            if let Some(ref handle) = self.plot_handle {
+                for event in handle.drain_events() {
+                    match event {
+                        drawing_plotter::PlotEvent::Started { total_strokes } => {
+                            log::info!("Plotting started: {} strokes", total_strokes);
+                        }
+                        drawing_plotter::PlotEvent::StrokeStart { index, total } => {
+                            log::debug!("Starting stroke {}/{}", index + 1, total);
+                        }
+                        drawing_plotter::PlotEvent::StrokeComplete { index, total } => {
+                            // Log progress every 10 strokes or for the last one
+                            if index % 10 == 0 || index + 1 == total {
+                                log::info!("Stroke {}/{} complete", index + 1, total);
+                            }
+                        }
+                        drawing_plotter::PlotEvent::MoveTo { position, pen_down } => {
+                            log::trace!(
+                                "Move to ({:.1}, {:.1}) pen {}",
+                                position.x,
+                                position.y,
+                                if pen_down { "down" } else { "up" }
+                            );
+                        }
+                        drawing_plotter::PlotEvent::Completed => {
+                            log::info!("Plotting completed!");
+                        }
+                        drawing_plotter::PlotEvent::Error(e) => {
+                            log::error!("Plotting error: {}", e);
+                        }
+                        drawing_plotter::PlotEvent::Paused => {
+                            log::info!("Plotting paused");
+                        }
+                        drawing_plotter::PlotEvent::Resumed => {
+                            log::info!("Plotting resumed");
+                        }
+                        drawing_plotter::PlotEvent::Cancelled => {
+                            log::info!("Plotting cancelled");
+                        }
+                    }
+                }
+
+                // Clean up finished handle
+                if !handle.is_running() {
+                    self.plot_handle = None;
+                }
+            }
+        }
 
         // Always call update to allow background task monitoring (e.g., plotting)
         // even when not animating

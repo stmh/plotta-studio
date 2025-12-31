@@ -2390,8 +2390,6 @@ checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
 name = "sketch-001-radial"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
- "drawing-svg",
  "sketch-runner",
 ]
 
@@ -2399,8 +2397,6 @@ dependencies = [
 name = "sketch-002-dvd-screensaver"
 version = "0.1.0"
 dependencies = [
- "drawing-svg",
- "log",
  "sketch-runner",
 ]
 
@@ -2408,8 +2404,6 @@ dependencies = [
 name = "sketch-003-text"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
- "drawing-svg",
  "drawing-text",
  "sketch-runner",
 ]
@@ -2418,8 +2412,6 @@ dependencies = [
 name = "sketch-004-hatched-circles"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
- "drawing-svg",
  "drawing-text",
  "drawing-utils",
  "sketch-runner",
@@ -2438,9 +2430,7 @@ dependencies = [
 name = "sketch-006-hamburg"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
  "drawing-svg",
- "drawing-text",
  "drawing-utils",
  "sketch-runner",
 ]
@@ -2449,8 +2439,6 @@ dependencies = [
 name = "sketch-007-1000-lines"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
- "drawing-svg",
  "drawing-utils",
  "sketch-runner",
 ]
@@ -2459,8 +2447,6 @@ dependencies = [
 name = "sketch-008-wool-ball"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
- "drawing-svg",
  "drawing-utils",
  "sketch-runner",
 ]
@@ -2469,9 +2455,7 @@ dependencies = [
 name = "sketch-009-altoetting"
 version = "0.1.0"
 dependencies = [
- "drawing-plotter",
  "drawing-svg",
- "drawing-text",
  "drawing-utils",
  "sketch-runner",
 ]
@@ -2481,6 +2465,8 @@ name = "sketch-runner"
 version = "0.1.0"
 dependencies = [
  "drawing-core",
+ "drawing-plotter",
+ "drawing-svg",
  "drawing-text",
  "env_logger",
  "log",

@@ -6,7 +6,8 @@
 //! - Scroll wheel: Zoom
 //! - Space: Fit drawing to window
 //! - R: Reset view
-//! - E: Export current SVG to drawing.svg
+//! - E: Export to SVG (built-in)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
 //! - Escape: Quit
 
 use drawing_svg::{import_svg_string, ImportResult};
@@ -188,25 +189,19 @@ impl Sketch for SvgViewerSketch {
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, _ctx: &SketchContext) -> bool {
         match key {
             Key::Named(NamedKey::ArrowRight) => {
                 self.next();
                 *drawing = self.build_drawing();
+                true
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 self.prev();
                 *drawing = self.build_drawing();
+                true
             }
-            Key::Character(c) if c.as_str() == "e" => {
-                // Export current SVG
-                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx.render) {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to drawing.svg");
-                }
-            }
-            _ => {}
+            _ => false,
         }
     }
 }

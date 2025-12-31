@@ -6,13 +6,12 @@
 //! - Space: Fit drawing to window
 //! - R: Reset view
 //! - S: Save to drawing.json
-//! - E: Export to drawing.svg
+//! - E: Export to drawing.svg (built-in)
 //! - G: Regenerate drawing
-//! - P: Plot to AxiDraw (requires `hardware` feature)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
+//! - Arrow keys: Adjust circle/ray count
 //! - Escape: Quit
 
-#[cfg(feature = "hardware")]
-use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 use sketch_runner::*;
 use std::f64::consts::{PI, TAU};
 
@@ -20,8 +19,6 @@ struct RadialSketch {
     num_circles: usize,
     num_rays: usize,
     seed: u64,
-    #[cfg(feature = "hardware")]
-    plot_handle: Option<PlotHandle>,
 }
 
 impl Default for RadialSketch {
@@ -30,8 +27,6 @@ impl Default for RadialSketch {
             num_circles: 8,
             num_rays: 24,
             seed: 42,
-            #[cfg(feature = "hardware")]
-            plot_handle: None,
         }
     }
 }
@@ -44,107 +39,42 @@ impl Sketch for RadialSketch {
     }
 
     fn update(&mut self, _drawing: &mut Drawing, _ctx: &UpdateContext) -> bool {
-        #[cfg(feature = "hardware")]
-        {
-            // Check for plot events
-            if let Some(ref handle) = self.plot_handle {
-                for event in handle.drain_events() {
-                    match event {
-                        PlotEvent::Started { total_strokes } => {
-                            log::info!("Plotting started: {} strokes", total_strokes);
-                        }
-                        PlotEvent::StrokeStart { index, total } => {
-                            log::debug!("Starting stroke {}/{}", index + 1, total);
-                        }
-                        PlotEvent::StrokeComplete { index, total } => {
-                            log::info!("Stroke {}/{} complete", index + 1, total);
-                        }
-                        PlotEvent::MoveTo { position, pen_down } => {
-                            log::trace!(
-                                "Move to ({:.1}, {:.1}) pen {}",
-                                position.x,
-                                position.y,
-                                if pen_down { "down" } else { "up" }
-                            );
-                        }
-                        PlotEvent::Completed => {
-                            log::info!("Plotting completed!");
-                        }
-                        PlotEvent::Error(e) => {
-                            log::error!("Plotting error: {}", e);
-                        }
-                    }
-                }
-
-                // Clean up finished handle
-                if !handle.is_running() {
-                    self.plot_handle = None;
-                }
-            }
-        }
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) -> bool {
         match key {
             Key::Character(c) if c.as_str() == "g" => {
                 // Regenerate with new seed
                 self.seed = self.seed.wrapping_add(1);
                 self.generate(drawing, ctx.render);
-            }
-            Key::Character(c) if c.as_str() == "e" => {
-                // Export SVG
-                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx.render) {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to drawing.svg");
-                }
-            }
-            #[cfg(feature = "hardware")]
-            Key::Character(c) if c.as_str() == "p" => {
-                // Plot to AxiDraw
-                if self.plot_handle.is_some() {
-                    log::warn!("Plotting already in progress");
-                } else {
-                    log::info!("Starting plot...");
-                    let plot_ctx = RenderContext::new(ctx.fonts.registry().clone());
-                    match plot_in_background(drawing.clone(), PlotConfig::default(), plot_ctx, None)
-                    {
-                        Ok(handle) => {
-                            self.plot_handle = Some(handle);
-                            log::info!("Plot started in background thread");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start plot: {e}");
-                        }
-                    }
-                }
-            }
-            #[cfg(not(feature = "hardware"))]
-            Key::Character(c) if c.as_str() == "p" => {
-                log::warn!("Plotting requires the 'hardware' feature. Run with: cargo run --features hardware");
+                true
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.num_circles += 1;
                 self.generate(drawing, ctx.render);
+                true
             }
             Key::Named(NamedKey::ArrowDown) => {
                 if self.num_circles > 1 {
                     self.num_circles -= 1;
                     self.generate(drawing, ctx.render);
                 }
+                true
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.num_rays += 4;
                 self.generate(drawing, ctx.render);
+                true
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 if self.num_rays > 4 {
                     self.num_rays -= 4;
                     self.generate(drawing, ctx.render);
                 }
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
 }

@@ -5,15 +5,13 @@
 //! - Scroll wheel: Zoom
 //! - Space: Fit drawing to window
 //! - R: Reset view
-//! - E: Export to drawing.svg
+//! - E: Export to SVG (built-in)
 //! - G: Regenerate with new seed
-//! - P: Plot to AxiDraw (requires `hardware` feature)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
 //! - Arrow Up/Down: Adjust number of curves
 //! - Arrow Left/Right: Adjust curve complexity
 //! - Escape: Quit
 
-#[cfg(feature = "hardware")]
-use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 use drawing_utils::{draw_frame_with_title, FrameOptions};
 use sketch_runner::*;
 use std::f64::consts::{PI, TAU};
@@ -22,8 +20,6 @@ struct WoolBallSketch {
     num_strands: usize,
     segments_per_strand: usize,
     seed: u64,
-    #[cfg(feature = "hardware")]
-    plot_handle: Option<PlotHandle>,
 }
 
 impl Default for WoolBallSketch {
@@ -32,8 +28,6 @@ impl Default for WoolBallSketch {
             num_strands: 12,
             segments_per_strand: 8,
             seed: 42,
-            #[cfg(feature = "hardware")]
-            plot_handle: None,
         }
     }
 }
@@ -68,92 +62,41 @@ impl Sketch for WoolBallSketch {
     }
 
     fn update(&mut self, _drawing: &mut Drawing, _ctx: &UpdateContext) -> bool {
-        #[cfg(feature = "hardware")]
-        {
-            if let Some(ref handle) = self.plot_handle {
-                for event in handle.drain_events() {
-                    match event {
-                        PlotEvent::Started { total_strokes } => {
-                            log::info!("Plotting started: {} strokes", total_strokes);
-                        }
-                        PlotEvent::StrokeComplete { index, total } => {
-                            log::info!("Stroke {}/{} complete", index + 1, total);
-                        }
-                        PlotEvent::Completed => {
-                            log::info!("Plotting completed!");
-                        }
-                        PlotEvent::Error(e) => {
-                            log::error!("Plotting error: {}", e);
-                        }
-                        _ => {}
-                    }
-                }
-
-                if !handle.is_running() {
-                    self.plot_handle = None;
-                }
-            }
-        }
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) -> bool {
         match key {
             Key::Character(c) if c.as_str() == "g" => {
                 self.seed = self.seed.wrapping_add(1);
                 self.generate(drawing, ctx);
-            }
-            Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx.render) {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to drawing.svg");
-                }
-            }
-            #[cfg(feature = "hardware")]
-            Key::Character(c) if c.as_str() == "p" => {
-                if self.plot_handle.is_some() {
-                    log::warn!("Plotting already in progress");
-                } else {
-                    log::info!("Starting plot...");
-                    let plot_ctx = RenderContext::new(ctx.fonts.registry().clone());
-                    match plot_in_background(drawing.clone(), PlotConfig::default(), plot_ctx, None)
-                    {
-                        Ok(handle) => {
-                            self.plot_handle = Some(handle);
-                            log::info!("Plot started in background thread");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start plot: {e}");
-                        }
-                    }
-                }
-            }
-            #[cfg(not(feature = "hardware"))]
-            Key::Character(c) if c.as_str() == "p" => {
-                log::warn!("Plotting requires the 'hardware' feature. Run with: cargo run --features hardware");
+                true
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.num_strands += 2;
                 self.generate(drawing, ctx);
+                true
             }
             Key::Named(NamedKey::ArrowDown) => {
                 if self.num_strands > 4 {
                     self.num_strands -= 2;
                     self.generate(drawing, ctx);
                 }
+                true
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.segments_per_strand += 1;
                 self.generate(drawing, ctx);
+                true
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 if self.segments_per_strand > 3 {
                     self.segments_per_strand -= 1;
                     self.generate(drawing, ctx);
                 }
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
 }
@@ -195,7 +138,8 @@ impl WoolBallSketch {
 
                 // Calculate point on the "surface" of the wool ball
                 let x = center.x + angle.cos() * current_r;
-                let y = center.y + (angle.sin() * current_r * 0.8) + (strand_tilt * current_r * 0.3);
+                let y =
+                    center.y + (angle.sin() * current_r * 0.8) + (strand_tilt * current_r * 0.3);
 
                 let current_point = Point::new(x, y);
 

@@ -223,9 +223,10 @@ mod tests {
 
     #[test]
     fn test_flatten_path_with_bezier() {
-        let path = Path::new()
-            .move_to((0.0, 0.0))
-            .cubic_to((10.0, 0.0), (20.0, 10.0), (20.0, 20.0));
+        let path =
+            Path::new()
+                .move_to((0.0, 0.0))
+                .cubic_to((10.0, 0.0), (20.0, 10.0), (20.0, 20.0));
         let strokes = flatten_path(&path, &Affine::IDENTITY, ResolvedStyle::default(), 0.05);
         assert_eq!(strokes.len(), 1);
         // Bezier should be flattened to multiple line segments

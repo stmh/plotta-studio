@@ -5,13 +5,11 @@
 //! - Scroll wheel: Zoom
 //! - Space: Fit drawing to window
 //! - R: Reset view
-//! - E: Export to drawing.svg
-//! - P: Plot to AxiDraw (requires `hardware` feature)
+//! - E: Export to SVG (built-in)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
 //! - T: Toggle SVG rendering on/off
 //! - Escape: Quit
 
-#[cfg(feature = "hardware")]
-use drawing_plotter::{plot_in_background, PlotConfig, PlotEvent, PlotHandle};
 use drawing_svg::import_svg_string;
 use drawing_utils::{draw_frame_with_title, FrameOptions};
 use sketch_runner::*;
@@ -20,16 +18,12 @@ const ALTOETTING_SVG: &str = include_str!("../assets/altoetting.svg");
 
 struct AltoettingSketch {
     show_svg: bool,
-    #[cfg(feature = "hardware")]
-    plot_handle: Option<PlotHandle>,
 }
 
 impl AltoettingSketch {
     fn new() -> Self {
         Self {
             show_svg: true, // Start with SVG enabled - press T to toggle
-            #[cfg(feature = "hardware")]
-            plot_handle: None,
         }
     }
 
@@ -156,36 +150,10 @@ impl Sketch for AltoettingSketch {
     }
 
     fn update(&mut self, _drawing: &mut Drawing, _ctx: &UpdateContext) -> bool {
-        #[cfg(feature = "hardware")]
-        {
-            if let Some(ref handle) = self.plot_handle {
-                for event in handle.drain_events() {
-                    match event {
-                        PlotEvent::Started { total_strokes } => {
-                            log::info!("Plotting started: {} strokes", total_strokes);
-                        }
-                        PlotEvent::StrokeComplete { index, total } => {
-                            log::info!("Stroke {}/{} complete", index + 1, total);
-                        }
-                        PlotEvent::Completed => {
-                            log::info!("Plotting completed!");
-                        }
-                        PlotEvent::Error(e) => {
-                            log::error!("Plotting error: {}", e);
-                        }
-                        _ => {}
-                    }
-                }
-
-                if !handle.is_running() {
-                    self.plot_handle = None;
-                }
-            }
-        }
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) -> bool {
         match key {
             Key::Character(c) if c.as_str() == "t" => {
                 self.show_svg = !self.show_svg;
@@ -198,38 +166,9 @@ impl Sketch for AltoettingSketch {
                 *drawing = self.build_drawing(ctx);
                 log::info!("Drawing rebuilt in {:?}", start.elapsed());
                 log::info!("Drawing has {} elements total", drawing.elements.len());
+                true
             }
-            Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "drawing.svg", ctx.render) {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to drawing.svg");
-                }
-            }
-            #[cfg(feature = "hardware")]
-            Key::Character(c) if c.as_str() == "p" => {
-                if self.plot_handle.is_some() {
-                    log::warn!("Plotting already in progress");
-                } else {
-                    log::info!("Starting plot...");
-                    let plot_ctx = RenderContext::new(ctx.fonts.registry().clone());
-                    match plot_in_background(drawing.clone(), PlotConfig::default(), plot_ctx, None)
-                    {
-                        Ok(handle) => {
-                            self.plot_handle = Some(handle);
-                            log::info!("Plot started in background thread");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to start plot: {e}");
-                        }
-                    }
-                }
-            }
-            #[cfg(not(feature = "hardware"))]
-            Key::Character(c) if c.as_str() == "p" => {
-                log::warn!("Plotting requires the 'hardware' feature. Run with: cargo run --features hardware");
-            }
-            _ => {}
+            _ => false,
         }
     }
 }

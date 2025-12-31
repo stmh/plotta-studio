@@ -9,7 +9,8 @@
 //! - D: Toggle debug visualization (baselines, bounding boxes)
 //! - Arrow Up/Down: Increase/decrease font size
 //! - Arrow Left/Right: Adjust letter spacing
-//! - E: Export to SVG
+//! - E: Export to SVG (built-in)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
 //! - Space: Fit to window
 //! - Escape: Quit
 
@@ -92,16 +93,18 @@ impl Sketch for TextSketch {
         drawing
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) -> bool {
         match key {
             Key::Character(c) if c.as_str() == "f" => {
                 self.font_index = (self.font_index + 1) % self.font_names.len();
                 log::info!("Switched to font: {}", self.current_font_name());
                 self.generate(drawing, ctx);
+                true
             }
             Key::Character(c) if c.as_str() == "g" => {
                 self.sample_index = (self.sample_index + 1) % SAMPLE_TEXTS.len();
                 self.generate(drawing, ctx);
+                true
             }
             Key::Character(c) if c.as_str() == "d" => {
                 self.show_debug = !self.show_debug;
@@ -110,31 +113,29 @@ impl Sketch for TextSketch {
                     if self.show_debug { "ON" } else { "OFF" }
                 );
                 self.generate(drawing, ctx);
-            }
-            Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "text_drawing.svg", ctx.render) {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to text_drawing.svg");
-                }
+                true
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.font_size = (self.font_size + 1.0).min(50.0);
                 self.generate(drawing, ctx);
+                true
             }
             Key::Named(NamedKey::ArrowDown) => {
                 self.font_size = (self.font_size - 1.0).max(3.0);
                 self.generate(drawing, ctx);
+                true
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.letter_spacing += 0.05;
                 self.generate(drawing, ctx);
+                true
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 self.letter_spacing = (self.letter_spacing - 0.05).max(-0.2);
                 self.generate(drawing, ctx);
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
 }

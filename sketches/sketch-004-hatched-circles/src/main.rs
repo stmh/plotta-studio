@@ -8,7 +8,8 @@
 //! - Scroll wheel: Zoom
 //! - Space: Fit drawing to window
 //! - R: Reset view
-//! - E: Export to drawing.svg
+//! - E: Export to SVG (built-in)
+//! - P: Plot to AxiDraw (built-in, requires `hardware` feature)
 //! - G: Regenerate drawing
 //! - Up/Down: Adjust hatch density
 //! - Left/Right: Adjust circle radius
@@ -43,40 +44,37 @@ impl Sketch for HatchedCirclesSketch {
         false
     }
 
-    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) {
+    fn key_pressed(&mut self, key: &Key, drawing: &mut Drawing, ctx: &SketchContext) -> bool {
         match key {
             Key::Character(c) if c.as_str() == "g" => {
                 self.generate(drawing, ctx);
-            }
-            Key::Character(c) if c.as_str() == "e" => {
-                if let Err(e) = drawing_svg::export_svg(drawing, "hatched-circles.svg", ctx.render)
-                {
-                    log::error!("Failed to export SVG: {e}");
-                } else {
-                    log::info!("Exported to hatched-circles.svg");
-                }
+                true
             }
             Key::Named(NamedKey::ArrowUp) => {
                 self.hatch_spacing = (self.hatch_spacing - 0.5).max(1.0);
                 self.generate(drawing, ctx);
                 log::info!("Hatch spacing: {:.1}", self.hatch_spacing);
+                true
             }
             Key::Named(NamedKey::ArrowDown) => {
                 self.hatch_spacing += 0.5;
                 self.generate(drawing, ctx);
                 log::info!("Hatch spacing: {:.1}", self.hatch_spacing);
+                true
             }
             Key::Named(NamedKey::ArrowRight) => {
                 self.circle_radius += 5.0;
                 self.generate(drawing, ctx);
                 log::info!("Circle radius: {:.1}", self.circle_radius);
+                true
             }
             Key::Named(NamedKey::ArrowLeft) => {
                 self.circle_radius = (self.circle_radius - 5.0).max(20.0);
                 self.generate(drawing, ctx);
                 log::info!("Circle radius: {:.1}", self.circle_radius);
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
 }
