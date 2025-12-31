@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2025-12-29T21:22:20Z
-updated_at: 2025-12-29T21:24:18Z
+updated_at: 2025-12-31T13:55:10Z
+parent: plotta-studio-7wzz
 ---
 
 Enhance the plotta CLI to show:

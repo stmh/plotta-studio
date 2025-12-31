@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2025-12-28T17:09:51Z
-updated_at: 2025-12-28T17:11:24Z
+updated_at: 2025-12-31T13:55:10Z
+parent: plotta-studio-7wzz
 ---
 
 Add CLI options to control plotting speed for the plot and preview commands.

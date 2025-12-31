@@ -1,10 +1,11 @@
 ---
 # plotta-studio-q9lh
 title: Replace hardcoded curve segments with tolerance-based flattening
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-29T18:04:17Z
-updated_at: 2025-12-29T18:04:17Z
+updated_at: 2025-12-31T13:54:45Z
 ---
 
 Currently curve flattening uses hardcoded segment counts (16 for QuadTo, 24 for CurveTo, 64 for circles). This should use a tolerance/epsilon-based approach like kurbo's flatten() method, which adaptively subdivides curves based on a maximum deviation from the true curve. This allows users to control the trade-off between accuracy and segment count.

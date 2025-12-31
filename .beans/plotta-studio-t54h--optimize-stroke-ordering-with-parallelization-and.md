@@ -5,7 +5,8 @@ status: todo
 type: feature
 priority: high
 created_at: 2025-12-30T17:32:30Z
-updated_at: 2025-12-30T17:32:30Z
+updated_at: 2025-12-31T13:53:16Z
+parent: plotta-studio-opt1
 ---
 
 Research and implementation plan for speeding up stroke optimization for large drawings (100k+ strokes).

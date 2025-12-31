@@ -3,8 +3,9 @@
 title: AxiDraw plotter control
 status: in-progress
 type: epic
+priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-29T12:30:00Z
+updated_at: 2025-12-31T13:56:23Z
 ---
 
 Implement full AxiDraw pen plotter control via USB serial communication using the EBB (EiBotBoard) protocol.

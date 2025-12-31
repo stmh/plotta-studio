@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2025-12-28T20:29:08Z
-updated_at: 2025-12-28T20:37:58Z
+updated_at: 2025-12-31T13:55:10Z
+parent: plotta-studio-7wzz
 ---
 
 Add ability to pause plotting by pressing space bar. When paused, wait for another space press to resume.

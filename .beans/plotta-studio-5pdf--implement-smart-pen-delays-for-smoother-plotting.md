@@ -1,10 +1,12 @@
 ---
 # plotta-studio-5pdf
 title: Implement smart pen delays for smoother plotting
-status: todo
+status: completed
 type: feature
+priority: normal
 created_at: 2025-12-28T17:18:54Z
-updated_at: 2025-12-28T17:18:54Z
+updated_at: 2025-12-31T13:54:47Z
+parent: plotta-studio-axi1
 ---
 
 Reduce pen up/down delays by using smarter EBB commands instead of fixed sleep delays.

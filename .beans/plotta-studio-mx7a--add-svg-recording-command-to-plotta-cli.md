@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2025-12-30T19:40:29Z
-updated_at: 2025-12-30T19:51:07Z
+updated_at: 2025-12-31T13:55:10Z
+parent: plotta-studio-7wzz
 ---
 
 Add a 'record' command to plotta-cli that simulates plotting and records all optimized strokes into an SVG file. This shows exactly what would be plotted including stroke order optimization and reversal.

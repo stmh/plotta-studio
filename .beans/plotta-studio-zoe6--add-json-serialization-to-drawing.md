@@ -1,11 +1,11 @@
 ---
 # plotta-studio-zoe6
 title: Add JSON serialization to Drawing
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2025-12-28T15:31:35Z
-updated_at: 2025-12-28T15:32:10Z
+updated_at: 2025-12-31T13:41:52Z
 parent: plotta-studio-7wzz
 blocking:
     - plotta-studio-w0yp

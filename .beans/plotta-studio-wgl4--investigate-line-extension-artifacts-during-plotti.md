@@ -1,11 +1,11 @@
 ---
 # plotta-studio-wgl4
 title: Investigate line extension artifacts during plotting
-status: in-progress
+status: completed
 type: bug
 priority: normal
 created_at: 2025-12-30T19:25:38Z
-updated_at: 2025-12-30T19:30:01Z
+updated_at: 2025-12-31T13:48:23Z
 parent: plotta-studio-q6v8
 ---
 

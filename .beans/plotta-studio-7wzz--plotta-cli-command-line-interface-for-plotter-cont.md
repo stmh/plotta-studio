@@ -2,10 +2,10 @@
 # plotta-studio-7wzz
 title: Plotta CLI - Command-line interface for plotter control
 status: completed
-type: feature
+type: epic
 priority: normal
 created_at: 2025-12-28T15:31:25Z
-updated_at: 2025-12-28T15:52:56Z
+updated_at: 2025-12-31T13:55:03Z
 ---
 
 A command-based CLI tool for controlling the plotter and plotting drawings.

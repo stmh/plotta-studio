@@ -1,11 +1,11 @@
 ---
 # plotta-studio-xypd
 title: Add DrawingStats and time estimation to drawing-plotter
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2025-12-28T15:31:41Z
-updated_at: 2025-12-28T15:32:10Z
+updated_at: 2025-12-31T13:41:52Z
 parent: plotta-studio-7wzz
 blocking:
     - plotta-studio-vd8d

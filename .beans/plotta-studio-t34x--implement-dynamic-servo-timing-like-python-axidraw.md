@@ -1,10 +1,12 @@
 ---
 # plotta-studio-t34x
 title: Implement dynamic servo timing like Python AxiDraw driver
-status: in-progress
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-29T13:36:16Z
-updated_at: 2025-12-29T13:36:16Z
+updated_at: 2025-12-31T13:48:23Z
+parent: plotta-studio-q6v8
 ---
 
 The Python AxiDraw driver calculates servo timing dynamically based on pen position travel distance, rather than using fixed delays.

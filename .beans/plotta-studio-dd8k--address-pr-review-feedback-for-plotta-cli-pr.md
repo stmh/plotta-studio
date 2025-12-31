@@ -1,11 +1,11 @@
 ---
 # plotta-studio-dd8k
 title: Address PR review feedback for plotta-cli PR
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2025-12-29T12:45:10Z
-updated_at: 2025-12-29T12:45:18Z
+updated_at: 2025-12-31T13:41:22Z
 parent: plotta-studio-7wzz
 ---
 

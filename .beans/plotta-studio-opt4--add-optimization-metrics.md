@@ -1,10 +1,11 @@
 ---
 # plotta-studio-opt4
 title: Add optimization metrics and reporting
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-23T19:00:00Z
+updated_at: 2025-12-31T13:51:06Z
 parent: plotta-studio-opt1
 ---
 

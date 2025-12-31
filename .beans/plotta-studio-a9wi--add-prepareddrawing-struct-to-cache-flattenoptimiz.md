@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: high
 created_at: 2025-12-30T18:02:41Z
-updated_at: 2025-12-30T18:18:07Z
+updated_at: 2025-12-31T13:54:47Z
+parent: plotta-studio-opt1
 ---
 
 Create a 'variable bag' pattern to avoid duplicate computation when plotting.

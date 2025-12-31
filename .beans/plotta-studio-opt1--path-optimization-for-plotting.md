@@ -1,10 +1,11 @@
 ---
 # plotta-studio-opt1
 title: Path optimization for plotting
-status: todo
+status: in-progress
 type: epic
+priority: normal
 created_at: 2025-12-23T19:00:00Z
-updated_at: 2025-12-23T19:00:00Z
+updated_at: 2025-12-31T13:56:23Z
 ---
 
 Improve path optimization algorithms to minimize pen-up travel time when plotting, making plotter output faster and more efficient.

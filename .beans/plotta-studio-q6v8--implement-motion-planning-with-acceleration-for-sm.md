@@ -1,11 +1,12 @@
 ---
 # plotta-studio-q6v8
 title: Implement motion planning with acceleration for smooth plotting
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2025-12-29T18:06:40Z
-updated_at: 2025-12-29T21:05:05Z
+updated_at: 2025-12-31T13:54:47Z
+parent: plotta-studio-axi1
 ---
 
 Implement proper motion planning to eliminate harsh motor noise when plotting curves.
