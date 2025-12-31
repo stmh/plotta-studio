@@ -104,6 +104,10 @@ enum Commands {
         /// Pen lower rate (1-100, default 50, lower=slower)
         #[arg(long)]
         pen_rate_lower: Option<u8>,
+
+        /// Enable position verification (diagnostic mode, adds latency)
+        #[arg(long)]
+        verify_position: bool,
     },
 
     /// Show drawing stats without plotting
@@ -142,6 +146,10 @@ enum Commands {
         /// Pen lower rate (1-100, default 50, lower=slower)
         #[arg(long)]
         pen_rate_lower: Option<u8>,
+
+        /// Enable position verification flag (accepted for API consistency, no effect in preview)
+        #[arg(long)]
+        verify_position: bool,
     },
 
     /// Record plot to SVG file (simulate without hardware)
@@ -210,6 +218,7 @@ fn build_config(
     pen_up_pos: Option<u8>,
     pen_rate_raise: Option<u8>,
     pen_rate_lower: Option<u8>,
+    verify_position: bool,
 ) -> PlotConfig {
     let defaults = PlotConfig::default();
     PlotConfig {
@@ -225,6 +234,8 @@ fn build_config(
         max_acceleration: defaults.max_acceleration,
         junction_deviation: defaults.junction_deviation,
         motion_planning_enabled: defaults.motion_planning_enabled,
+        // Position verification (diagnostic mode)
+        verify_position,
     }
 }
 
@@ -253,6 +264,7 @@ fn main() -> Result<()> {
             pen_up_pos,
             pen_rate_raise,
             pen_rate_lower,
+            verify_position,
         } => {
             let config = build_config(
                 draw_speed,
@@ -263,6 +275,7 @@ fn main() -> Result<()> {
                 pen_up_pos,
                 pen_rate_raise,
                 pen_rate_lower,
+                verify_position,
             );
             cmd_plot(cli.port.as_deref(), &file, config)
         }
@@ -276,6 +289,7 @@ fn main() -> Result<()> {
             pen_up_pos,
             pen_rate_raise,
             pen_rate_lower,
+            verify_position,
         } => {
             let config = build_config(
                 draw_speed,
@@ -286,6 +300,7 @@ fn main() -> Result<()> {
                 pen_up_pos,
                 pen_rate_raise,
                 pen_rate_lower,
+                verify_position,
             );
             cmd_preview(&file, config)
         }
@@ -313,6 +328,7 @@ fn main() -> Result<()> {
                 pen_up_pos,
                 pen_rate_raise,
                 pen_rate_lower,
+                false, // verify_position not applicable for Record
             );
             let record_options = RecordOptions {
                 show_travel,
@@ -736,6 +752,9 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
             "disabled (constant velocity)"
         }
     );
+    if config.verify_position {
+        println!("  Position verification: ENABLED (diagnostic mode)");
+    }
     println!("  Press SPACE to pause/resume, Q to cancel");
     println!();
 

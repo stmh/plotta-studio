@@ -112,6 +112,12 @@ pub struct PlotConfig {
     /// When enabled, uses trapezoidal velocity profiles with corner velocity planning.
     /// When disabled, uses constant velocity (legacy behavior).
     pub motion_planning_enabled: bool,
+
+    /// Enable position verification logging (diagnostic mode)
+    /// When enabled, queries hardware position (QS) after each stroke and logs
+    /// any discrepancy between tracked and actual position.
+    /// Warning: Adds ~10ms latency per stroke. Use for diagnosing drift issues only.
+    pub verify_position: bool,
 }
 
 impl Default for PlotConfig {
@@ -133,6 +139,8 @@ impl Default for PlotConfig {
             max_acceleration: DEFAULT_ACCEL_PEN_DOWN,
             junction_deviation: DEFAULT_JUNCTION_DEVIATION,
             motion_planning_enabled: true,
+            // Position verification disabled by default (diagnostic feature)
+            verify_position: false,
         }
     }
 }

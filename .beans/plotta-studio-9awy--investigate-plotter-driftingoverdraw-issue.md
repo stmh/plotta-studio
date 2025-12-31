@@ -4,7 +4,7 @@ title: Investigate plotter drifting/overdraw issue
 status: in-progress
 type: bug
 created_at: 2025-12-31T16:41:53Z
-updated_at: 2025-12-31T16:41:53Z
+updated_at: 2025-12-31T18:30:00Z
 ---
 
 The plotter is drifting during plots, causing overdrawn sections that shouldn't be overdrawn. This is visible as offset/doubled strokes in curves (see Schnellstrasse map photo).
@@ -104,16 +104,18 @@ self.current_pos = Point::new(
 - [x] Look for missing delays between commands
 - [x] Compare with known working AxiDraw implementations
 
-### Implementation (Todo)
-- [ ] Create drift test patterns (concentric squares + zigzag)
-- [ ] Add `verify_position` option to PlotConfig
-- [ ] Add `actual_steps_x/y` fields to SmPlannedMove
-- [ ] Update generate_sm_commands() to track actual steps
-- [ ] Update generate_single_sm_command() to track actual steps
-- [ ] Fix execute_sm_planned_move() to use actual steps
-- [ ] Fix move_to() to use actual steps
-- [ ] Add verify_position() method with cumulative error tracking
-- [ ] Add --verify-position CLI flag to Plot command
-- [ ] Add --verify-position CLI flag to Preview command
-- [ ] Test fix with drift test patterns
+### Implementation
+- [x] Create drift test patterns (concentric squares + zigzag)
+- [x] Add `verify_position` option to PlotConfig
+- [x] Add `actual_steps_x/y` fields to SmPlannedMove
+- [x] Update generate_sm_commands() to track actual steps
+- [x] Update generate_single_sm_command() to track actual steps
+- [x] Fix execute_sm_planned_move() to use actual steps
+- [x] Fix move_to() to use actual steps
+- [x] Add verify_position() method with cumulative error tracking
+- [x] Add --verify-position CLI flag to Plot command
+- [x] Add --verify-position CLI flag to Preview command
+
+### Hardware Testing (Todo)
+- [ ] Test fix with drift test patterns on physical plotter
 - [ ] Verify no regression in existing functionality

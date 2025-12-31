@@ -735,6 +735,17 @@ impl SmCommand {
         self.steps_axis1 == 0 && self.steps_axis2 == 0
     }
 
+    /// Get the actual X/Y steps this command will execute
+    ///
+    /// Reverses the CoreXY transform to get back X/Y steps from axis steps.
+    /// Use after `validate_and_adjust()` to get the actual steps that will be sent.
+    pub fn xy_steps(&self) -> (i32, i32) {
+        // Reverse CoreXY: x = (axis1 + axis2) / 2, y = (axis1 - axis2) / 2
+        let steps_x = (self.steps_axis1 + self.steps_axis2) / 2;
+        let steps_y = (self.steps_axis1 - self.steps_axis2) / 2;
+        (steps_x, steps_y)
+    }
+
     /// Calculate time to sleep before sending next command
     ///
     /// Returns the duration minus the buffer lead time, ensuring the next
@@ -793,8 +804,14 @@ pub struct SmPlannedMove {
     pub total_duration_ms: u32,
     /// Start point (mm)
     pub start: Point,
-    /// End point (mm)
+    /// End point (mm) - the requested endpoint (may differ slightly from actual due to rounding)
     pub end: Point,
+    /// Actual X steps sent (sum of all commands after validation/adjustment)
+    /// Use this to calculate actual position to avoid cumulative drift
+    pub actual_steps_x: i32,
+    /// Actual Y steps sent (sum of all commands after validation/adjustment)
+    /// Use this to calculate actual position to avoid cumulative drift
+    pub actual_steps_y: i32,
 }
 
 impl SmPlannedMove {
@@ -805,6 +822,8 @@ impl SmPlannedMove {
             total_duration_ms: 0,
             start,
             end,
+            actual_steps_x: 0,
+            actual_steps_y: 0,
         }
     }
 
@@ -812,6 +831,17 @@ impl SmPlannedMove {
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
+    }
+
+    /// Calculate the actual endpoint based on start position and actual steps sent
+    ///
+    /// This should be used instead of `end` to avoid cumulative position drift
+    /// from rounding errors.
+    pub fn actual_end(&self, steps_per_mm: f64) -> Point {
+        Point::new(
+            self.start.x + (self.actual_steps_x as f64 / steps_per_mm),
+            self.start.y + (self.actual_steps_y as f64 / steps_per_mm),
+        )
     }
 }
 
@@ -857,10 +887,14 @@ pub fn generate_sm_commands(
     let mut commands = Vec::with_capacity(num_slices as usize);
     let mut total_duration_ms = 0u32;
 
-    // Track cumulative distance and steps to avoid drift
+    // Track cumulative distance and steps for velocity profile interpolation
     let mut cumulative_distance = 0.0;
     let mut cumulative_steps_x = 0i32;
     let mut cumulative_steps_y = 0i32;
+
+    // Track actual steps sent (after validation/adjustment) to avoid position drift
+    let mut actual_total_steps_x = 0i32;
+    let mut actual_total_steps_y = 0i32;
 
     for slice_idx in 0..num_slices {
         let slice_start_time = slice_idx as f64 * TIME_SLICE_MS as f64 / 1000.0;
@@ -901,11 +935,17 @@ pub fn generate_sm_commands(
 
         // Validate and adjust for motor safety
         if cmd.validate_and_adjust() {
+            // Track actual steps from the validated command (may differ from intended)
+            let (actual_x, actual_y) = cmd.xy_steps();
+            actual_total_steps_x += actual_x;
+            actual_total_steps_y += actual_y;
+
             total_duration_ms += cmd.duration_ms;
             commands.push(cmd);
         }
 
-        // Update cumulative tracking
+        // Update cumulative tracking for velocity profile interpolation
+        // (uses intended steps to maintain smooth velocity curve)
         cumulative_distance = new_cumulative;
         cumulative_steps_x = target_steps_x;
         cumulative_steps_y = target_steps_y;
@@ -916,6 +956,8 @@ pub fn generate_sm_commands(
         total_duration_ms,
         start,
         end,
+        actual_steps_x: actual_total_steps_x,
+        actual_steps_y: actual_total_steps_y,
     }
 }
 
@@ -954,11 +996,16 @@ fn generate_single_sm_command(
     let mut cmd = SmCommand::from_xy_steps(duration_ms, steps_x, steps_y);
 
     if cmd.validate_and_adjust() {
+        // Get actual steps after validation (may differ from intended due to adjustments)
+        let (actual_x, actual_y) = cmd.xy_steps();
+
         SmPlannedMove {
             commands: vec![cmd],
             total_duration_ms: duration_ms,
             start,
             end,
+            actual_steps_x: actual_x,
+            actual_steps_y: actual_y,
         }
     } else {
         SmPlannedMove::empty(start, end)

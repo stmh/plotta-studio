@@ -322,6 +322,36 @@ impl AxiDraw {
         Ok(())
     }
 
+    /// Verify tracked position against hardware position (diagnostic)
+    ///
+    /// Queries the hardware position (QS) and compares with the internally tracked position.
+    /// Returns the position error in mm. Logs a warning if error exceeds threshold.
+    ///
+    /// This adds ~10ms latency and should only be used for diagnostics.
+    pub fn verify_position(&mut self) -> Result<f64, PlotterError> {
+        let tracked = self.current_pos;
+        let hardware = self.query_step_position()?;
+
+        let error_x = tracked.x - hardware.x;
+        let error_y = tracked.y - hardware.y;
+        let error_total = (error_x.powi(2) + error_y.powi(2)).sqrt();
+
+        if error_total > 0.01 {
+            // More than 10 microns drift
+            log::warn!(
+                "Position drift: tracked=({:.4}, {:.4}), hardware=({:.4}, {:.4}), error=({:.4}, {:.4}) = {:.4}mm",
+                tracked.x, tracked.y,
+                hardware.x, hardware.y,
+                error_x, error_y,
+                error_total
+            );
+        } else {
+            log::debug!("Position verified: error={:.4}mm", error_total);
+        }
+
+        Ok(error_total)
+    }
+
     // ========================================================================
     // Command Protocol
     // ========================================================================
@@ -556,7 +586,15 @@ impl AxiDraw {
         self.send_command_ok(&cmd)?;
         std::thread::sleep(Duration::from_millis(duration_ms as u64));
 
-        self.current_pos = target;
+        // Update position based on actual integer steps sent, not requested target
+        // This prevents cumulative drift from floating-point rounding errors
+        // Reverse CoreXY: actual_x = (axis1 + axis2) / 2, actual_y = (axis1 - axis2) / 2
+        let actual_steps_x = (steps_axis1 + steps_axis2) / 2;
+        let actual_steps_y = (steps_axis1 - steps_axis2) / 2;
+        self.current_pos = Point::new(
+            self.current_pos.x + (actual_steps_x as f64 / Self::STEPS_PER_MM),
+            self.current_pos.y + (actual_steps_y as f64 / Self::STEPS_PER_MM),
+        );
         Ok(())
     }
 
@@ -584,6 +622,9 @@ impl AxiDraw {
     }
 
     /// Execute a planned move using SM commands (recommended)
+    ///
+    /// Updates current_pos based on actual steps sent (not requested endpoint)
+    /// to prevent cumulative drift from rounding errors.
     fn execute_sm_planned_move(
         &mut self,
         planned: &crate::motion::SmPlannedMove,
@@ -591,7 +632,13 @@ impl AxiDraw {
         for cmd in &planned.commands {
             self.execute_sm_command(cmd)?;
         }
-        self.current_pos = planned.end;
+        // Update position based on actual steps executed, starting from our current
+        // tracked position (not the planned.start which is the intended start).
+        // This prevents cumulative drift from floating-point rounding.
+        self.current_pos = Point::new(
+            self.current_pos.x + (planned.actual_steps_x as f64 / Self::STEPS_PER_MM),
+            self.current_pos.y + (planned.actual_steps_y as f64 / Self::STEPS_PER_MM),
+        );
         Ok(())
     }
 
@@ -825,6 +872,11 @@ impl AxiDraw {
         F: FnMut(PlotEvent),
     {
         let total = strokes.len();
+
+        // Position verification tracking (only when verify_position is enabled)
+        let mut max_error = 0.0f64;
+        let mut total_error = 0.0f64;
+        let mut verification_count = 0usize;
         log::info!("Starting to plot {} strokes", total);
 
         on_event(PlotEvent::Started {
@@ -954,6 +1006,15 @@ impl AxiDraw {
             // Lift pen
             self.pen_up()?;
 
+            // Position verification (diagnostic mode only)
+            if self.config.verify_position {
+                if let Ok(error) = self.verify_position() {
+                    max_error = max_error.max(error);
+                    total_error += error;
+                    verification_count += 1;
+                }
+            }
+
             on_event(PlotEvent::StrokeComplete { index, total });
         }
 
@@ -973,6 +1034,23 @@ impl AxiDraw {
             elapsed.as_secs_f64(),
             total as f64 / elapsed.as_secs_f64()
         );
+
+        // Log position verification summary if enabled
+        if self.config.verify_position && verification_count > 0 {
+            let avg_error = total_error / verification_count as f64;
+            log::info!(
+                "Position verification: {} checks, max error={:.4}mm, avg error={:.4}mm",
+                verification_count,
+                max_error,
+                avg_error
+            );
+            if max_error > 0.1 {
+                log::warn!(
+                    "Significant position drift detected! Max error {:.4}mm exceeds 0.1mm threshold",
+                    max_error
+                );
+            }
+        }
 
         on_event(PlotEvent::Completed);
         Ok(())
