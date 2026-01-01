@@ -1,10 +1,11 @@
 ---
 # plotta-studio-9awy
 title: Investigate plotter drifting/overdraw issue
-status: in-progress
+status: completed
 type: bug
+priority: normal
 created_at: 2025-12-31T16:41:53Z
-updated_at: 2025-12-31T18:30:00Z
+updated_at: 2026-01-01T15:24:07Z
 ---
 
 The plotter is drifting during plots, causing overdrawn sections that shouldn't be overdrawn. This is visible as offset/doubled strokes in curves (see Schnellstrasse map photo).
