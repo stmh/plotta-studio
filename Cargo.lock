@@ -657,6 +657,7 @@ version = "0.1.0"
 dependencies = [
  "drawing-core",
  "drawing-text",
+ "rand",
 ]
 
 [[package]]
@@ -2465,6 +2466,15 @@ name = "sketch-010-schnellstrasse"
 version = "0.1.0"
 dependencies = [
  "drawing-svg",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
+name = "sketch-011-clip-demo"
+version = "0.1.0"
+dependencies = [
+ "drawing-text",
  "drawing-utils",
  "sketch-runner",
 ]

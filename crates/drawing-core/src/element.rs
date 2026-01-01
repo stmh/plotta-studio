@@ -219,6 +219,15 @@ impl Element {
         self
     }
 
+    /// Invert the clipping behavior (keep outside instead of inside)
+    /// Only applies to ClipGroup shapes
+    pub fn invert(mut self, invert: bool) -> Self {
+        if let Shape::ClipGroup(ref mut clip_group) = self.shape {
+            clip_group.invert = invert;
+        }
+        self
+    }
+
     // === Flattening ===
 
     /// Flatten to strokes, applying transform

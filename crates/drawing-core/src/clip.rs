@@ -25,6 +25,9 @@ pub struct ClipGroup {
     pub clip: Box<Element>,
     /// Children to be clipped
     pub children: Vec<Element>,
+    /// If true, keep content outside the clip region instead of inside
+    #[serde(default)]
+    pub invert: bool,
 }
 
 impl ClipGroup {
@@ -32,7 +35,14 @@ impl ClipGroup {
         Self {
             clip: Box::new(clip),
             children: Vec::new(),
+            invert: false,
         }
+    }
+
+    /// Set whether to invert the clipping (keep outside instead of inside)
+    pub fn invert(mut self, invert: bool) -> Self {
+        self.invert = invert;
+        self
     }
 
     // We use `add` for builder pattern, not arithmetic addition
@@ -81,7 +91,7 @@ impl ClipGroup {
         // 3. Clip each stroke against the union of clip polygons
         child_strokes
             .iter()
-            .flat_map(|stroke| clip_stroke(stroke, &clip_polygons))
+            .flat_map(|stroke| clip_stroke(stroke, &clip_polygons, self.invert))
             .collect()
     }
 }
@@ -123,13 +133,15 @@ fn stroke_to_polygon(stroke: &Stroke) -> Option<Polygon<f64>> {
 ///
 /// For pen plotting, all strokes are treated as lines (not filled shapes),
 /// so we always use line clipping even for closed paths.
-fn clip_stroke(stroke: &Stroke, clip_polygons: &[Polygon<f64>]) -> Vec<Stroke> {
+///
+/// If `invert` is true, keeps content outside the clip region instead of inside.
+fn clip_stroke(stroke: &Stroke, clip_polygons: &[Polygon<f64>], invert: bool) -> Vec<Stroke> {
     let clip_region = union_polygons(clip_polygons);
 
     // Always use line clipping for pen plotting
     // Even closed strokes are just outlines that need to be clipped as lines
     let line = stroke_to_linestring(stroke);
-    let clipped = clip_linestring_to_region(&line, &clip_region);
+    let clipped = clip_linestring_to_region(&line, &clip_region, invert);
 
     // Preserve the closed flag if the original stroke was closed and we got a single result
     let mut result = linestrings_to_strokes(&clipped, stroke.style);
@@ -169,9 +181,12 @@ fn union_polygons(polygons: &[Polygon<f64>]) -> MultiPolygon<f64> {
 }
 
 /// Clip a linestring to a multi-polygon region
+///
+/// If `invert` is true, keeps content outside the clip region instead of inside.
 fn clip_linestring_to_region(
     line: &LineString<f64>,
     clip_region: &MultiPolygon<f64>,
+    invert: bool,
 ) -> MultiLineString<f64> {
     use geo::{Contains, Line as GeoLine, LineIntersection};
 
@@ -197,7 +212,8 @@ fn clip_linestring_to_region(
     for i in 0..coords.len() {
         let current = coords[i];
         let current_point = geo::Point::new(current.x, current.y);
-        let current_inside = clip_region.contains(&current_point);
+        // When inverted, we want to keep what's outside, so we flip the inside check
+        let current_inside = clip_region.contains(&current_point) != invert;
 
         if i == 0 {
             // First point
@@ -209,7 +225,7 @@ fn clip_linestring_to_region(
 
         let prev = coords[i - 1];
         let prev_point = geo::Point::new(prev.x, prev.y);
-        let prev_inside = clip_region.contains(&prev_point);
+        let prev_inside = clip_region.contains(&prev_point) != invert;
 
         let segment = GeoLine::new(*prev, *current);
 
@@ -579,5 +595,170 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_clip_rect_diagonal_lines_bottom_to_top() {
+        let ctx = test_ctx();
+
+        // Create a rect from (25,25) to (75,75)
+        let clip_rect = Element::rect(25.0, 25.0, 50.0, 50.0);
+
+        // Create two diagonal lines that start at the bottom of the rect and end at the top
+        // Line 1: from (30, 75) to (30, 25) - vertical, should be fully inside
+        let line1 = Element::polyline(vec![Point::new(30.0, 75.0), Point::new(30.0, 25.0)]);
+
+        // Line 2: from (20, 80) to (80, 20) - diagonal crossing through rect
+        let line2 = Element::polyline(vec![Point::new(20.0, 80.0), Point::new(80.0, 20.0)]);
+
+        // Line 3: from (40, 100) to (60, 0) - diagonal from bottom to top, crossing rect
+        let line3 = Element::polyline(vec![Point::new(40.0, 100.0), Point::new(60.0, 0.0)]);
+
+        let lines = Element::group(
+            Group::new()
+                .add(line1.clone())
+                .add(line2.clone())
+                .add(line3.clone()),
+        );
+
+        let clipped = Element::clip(clip_rect).add(lines);
+        let strokes = clipped.flatten(&ctx);
+
+        // All three lines should produce clipped output
+        assert!(
+            !strokes.is_empty(),
+            "Diagonal lines through rect should produce clipped strokes"
+        );
+
+        // All clipped points should be within the rect bounds (with small tolerance)
+        for stroke in &strokes {
+            for p in &stroke.points {
+                assert!(
+                    p.x >= 24.9 && p.x <= 75.1,
+                    "Point x={} outside rect x bounds",
+                    p.x
+                );
+                assert!(
+                    p.y >= 24.9 && p.y <= 75.1,
+                    "Point y={} outside rect y bounds",
+                    p.y
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_clip_inverted_keeps_outside() {
+        let ctx = test_ctx();
+
+        // Create a horizontal line through a circle
+        let line = Element::polyline(vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]);
+
+        // Normal clip: keeps inside
+        let normal_clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(line.clone());
+        let normal_strokes = normal_clipped.flatten(&ctx);
+
+        // Inverted clip: keeps outside
+        let inverted_clipped = Element::clip(Element::circle((50.0, 50.0), 20.0))
+            .invert(true)
+            .add(line);
+        let inverted_strokes = inverted_clipped.flatten(&ctx);
+
+        // Normal should have strokes inside the circle
+        assert!(
+            !normal_strokes.is_empty(),
+            "Normal clip should produce strokes"
+        );
+        for stroke in &normal_strokes {
+            for p in &stroke.points {
+                let dist = ((p.x - 50.0).powi(2) + (p.y - 50.0).powi(2)).sqrt();
+                assert!(
+                    dist <= 21.0,
+                    "Normal clip: point ({}, {}) should be inside circle (dist={})",
+                    p.x,
+                    p.y,
+                    dist
+                );
+            }
+        }
+
+        // Inverted should have strokes outside the circle
+        assert!(
+            !inverted_strokes.is_empty(),
+            "Inverted clip should produce strokes"
+        );
+        // Should have 2 segments (one on each side of the circle)
+        assert_eq!(
+            inverted_strokes.len(),
+            2,
+            "Inverted clip should produce 2 segments (left and right of circle)"
+        );
+
+        for stroke in &inverted_strokes {
+            for p in &stroke.points {
+                let dist = ((p.x - 50.0).powi(2) + (p.y - 50.0).powi(2)).sqrt();
+                assert!(
+                    dist >= 19.0,
+                    "Inverted clip: point ({}, {}) should be outside circle (dist={})",
+                    p.x,
+                    p.y,
+                    dist
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_clip_inverted_line_fully_inside() {
+        let ctx = test_ctx();
+
+        // Create a line fully inside a circle
+        let line = Element::polyline(vec![Point::new(40.0, 50.0), Point::new(60.0, 50.0)]);
+
+        // Normal clip: should keep the line
+        let normal_clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(line.clone());
+        let normal_strokes = normal_clipped.flatten(&ctx);
+        assert_eq!(
+            normal_strokes.len(),
+            1,
+            "Normal clip should keep line inside"
+        );
+
+        // Inverted clip: should remove the line (it's fully inside)
+        let inverted_clipped = Element::clip(Element::circle((50.0, 50.0), 20.0))
+            .invert(true)
+            .add(line);
+        let inverted_strokes = inverted_clipped.flatten(&ctx);
+        assert!(
+            inverted_strokes.is_empty(),
+            "Inverted clip should remove line that's fully inside"
+        );
+    }
+
+    #[test]
+    fn test_clip_inverted_line_fully_outside() {
+        let ctx = test_ctx();
+
+        // Create a line fully outside a circle
+        let line = Element::polyline(vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)]);
+
+        // Normal clip: should remove the line
+        let normal_clipped = Element::clip(Element::circle((50.0, 50.0), 20.0)).add(line.clone());
+        let normal_strokes = normal_clipped.flatten(&ctx);
+        assert!(
+            normal_strokes.is_empty(),
+            "Normal clip should remove line outside"
+        );
+
+        // Inverted clip: should keep the line
+        let inverted_clipped = Element::clip(Element::circle((50.0, 50.0), 20.0))
+            .invert(true)
+            .add(line);
+        let inverted_strokes = inverted_clipped.flatten(&ctx);
+        assert_eq!(
+            inverted_strokes.len(),
+            1,
+            "Inverted clip should keep line outside"
+        );
     }
 }
