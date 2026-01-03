@@ -109,7 +109,13 @@ fn coord_to_point(c: Coord<f64>) -> Point {
 }
 
 fn stroke_to_linestring(stroke: &Stroke) -> LineString<f64> {
-    LineString::new(stroke.points.iter().map(|p| point_to_coord(*p)).collect())
+    let mut coords: Vec<_> = stroke.points.iter().map(|p| point_to_coord(*p)).collect();
+    // For closed strokes, explicitly add the first point at the end to close the path
+    // This ensures the closing edge (last point -> first point) is included in clipping
+    if stroke.closed && coords.len() >= 2 {
+        coords.push(coords[0]);
+    }
+    LineString::new(coords)
 }
 
 fn linestring_to_points(ls: &LineString<f64>) -> Vec<Point> {
@@ -759,6 +765,90 @@ mod tests {
             inverted_strokes.len(),
             1,
             "Inverted clip should keep line outside"
+        );
+    }
+
+    #[test]
+    fn test_clip_inverted_rotated_rect() {
+        let ctx = test_ctx();
+
+        // Simulate the rotated squares sketch case:
+        // Two rectangles centered at the same point, with different rotations
+        // First rect clipped by second (inverted)
+        let cx = 100.0;
+        let cy = 100.0;
+        let half = 50.0;
+        let size = 100.0;
+
+        // First rotation (about 5 degrees)
+        let rot1 = 5.0_f64.to_radians();
+        // Second rotation (about -3 degrees)
+        let rot2 = (-3.0_f64).to_radians();
+
+        // Create the first square (the one being clipped)
+        let square1 = Element::rect(-half, -half, size, size)
+            .rotate(rot1)
+            .translate(cx, cy);
+
+        // Create clip shape from the second square
+        let clip_shape = Element::rect(-half, -half, size, size)
+            .rotate(rot2)
+            .translate(cx, cy);
+
+        // Apply inverted clip
+        let clipped = Element::clip(clip_shape).invert(true).add(square1);
+        let strokes = clipped.flatten(&ctx);
+
+        // The clipped result should have segments for all 4 edges (plus the closing edge)
+        assert!(
+            !strokes.is_empty(),
+            "Inverted clip of rotated rectangles should produce strokes"
+        );
+
+        // We expect visible portions from all 4 edges of the first rectangle
+        // With the closing edge fix, we should have 5 segments (4 edges + closing)
+        // or at least 4 if some edges are fully inside the clip region
+        assert!(
+            strokes.len() >= 4,
+            "Expected at least 4 segments (one per edge), got {}",
+            strokes.len()
+        );
+    }
+
+    #[test]
+    fn test_clip_closed_stroke_includes_closing_edge() {
+        let ctx = test_ctx();
+
+        // Create a rectangle centered at origin, then rotate slightly
+        // Rect corners are at (-50,-50), (50,-50), (50,50), (-50,50)
+        // The closing edge goes from (-50,50) back to (-50,-50) - this is the left edge
+        let half = 50.0;
+        let size = 100.0;
+        let rot = 5.0_f64.to_radians();
+
+        let rect = Element::rect(-half, -half, size, size)
+            .rotate(rot)
+            .translate(100.0, 100.0);
+
+        // Use inverted clip with a non-rotated rectangle
+        // The rotated corners will stick out
+        let clip_shape = Element::rect(50.0, 50.0, 100.0, 100.0);
+
+        let clipped = Element::clip(clip_shape).invert(true).add(rect);
+        let strokes = clipped.flatten(&ctx);
+
+        // The clipped rectangle should have visible portions (the rotated corners sticking out)
+        assert!(
+            !strokes.is_empty(),
+            "Inverted clipped rotated rectangle should have visible corner portions"
+        );
+
+        // With the closing edge fix, we should have at least 4 visible segments
+        // (parts of all edges including the closing edge)
+        assert!(
+            strokes.len() >= 4,
+            "Should have at least 4 segments for rotated rect corners, got {}",
+            strokes.len()
         );
     }
 }

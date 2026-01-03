@@ -2480,6 +2480,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sketch-012-rotated-squares"
+version = "0.1.0"
+dependencies = [
+ "drawing-utils",
+ "rand",
+ "sketch-runner",
+]
+
+[[package]]
 name = "sketch-runner"
 version = "0.1.0"
 dependencies = [
