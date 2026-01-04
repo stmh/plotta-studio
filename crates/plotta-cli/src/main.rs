@@ -1,8 +1,11 @@
 //! Plotta CLI - Command-line interface for plotter control
 
 use std::fs;
+use std::io::{self, BufRead};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+use plotta_cli::setup_diagram::{PlotterSetup, SetupDiagram};
 
 /// Maximum allowed drawing file size (10 MB)
 const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024;
@@ -72,6 +75,15 @@ enum Commands {
     Plot {
         /// Path to JSON drawing file
         file: PathBuf,
+
+        /// Plotter physical setup: top, bottom, left, right (default: top)
+        /// Can also be set via PLOTTA_PLOTTER_SETUP environment variable
+        #[arg(short = 's', long, env = "PLOTTA_PLOTTER_SETUP", default_value = "top")]
+        plotter_setup: String,
+
+        /// Skip confirmation prompt and start plotting immediately
+        #[arg(short = 'y', long)]
+        yes: bool,
 
         /// Drawing speed in mm/s (pen down movement)
         #[arg(long)]
@@ -256,6 +268,8 @@ fn main() -> Result<()> {
         Commands::Raw { command } => cmd_raw(cli.port.as_deref(), &command),
         Commands::Plot {
             file,
+            plotter_setup,
+            yes,
             draw_speed,
             travel_speed,
             pen_down_delay,
@@ -277,7 +291,10 @@ fn main() -> Result<()> {
                 pen_rate_lower,
                 verify_position,
             );
-            cmd_plot(cli.port.as_deref(), &file, config)
+            let setup = plotter_setup
+                .parse::<PlotterSetup>()
+                .map_err(|e| anyhow::anyhow!(e))?;
+            cmd_plot(cli.port.as_deref(), &file, config, setup, yes)
         }
         Commands::Preview {
             file,
@@ -708,8 +725,22 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
+/// Wait for user to press Enter
+fn wait_for_enter() -> Result<()> {
+    let stdin = io::stdin();
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line)?;
+    Ok(())
+}
+
 /// Plot a drawing with progress bar
-fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()> {
+fn cmd_plot(
+    port: Option<&str>,
+    file: &PathBuf,
+    config: PlotConfig,
+    setup: PlotterSetup,
+    skip_confirmation: bool,
+) -> Result<()> {
     let drawing = load_drawing_with_validation(file)?;
     let ctx = create_render_context()?;
 
@@ -727,12 +758,30 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
     // Clone stats before moving prepared to the background thread
     let stats = prepared.stats.clone();
 
-    println!("Plotting: {}", file.display());
+    // Show setup diagram and confirmation unless --yes was passed
+    if !skip_confirmation {
+        // Render the setup diagram
+        println!("Plotter Setup: {:?} ({})", setup, setup.description());
+        println!();
+
+        let diagram = SetupDiagram::new(setup, drawing.width, drawing.height);
+        diagram.render_to_terminal();
+        println!();
+
+        // Print legend
+        diagram.print_legend_for_setup();
+        println!();
+    }
+
+    // Print stats (always shown)
+    println!("Drawing: {}", file.display());
+    println!("  Size: {:.0} x {:.0} mm", drawing.width, drawing.height);
     println!(
-        "  {} strokes, estimated time: {}",
-        stats.stroke_count,
-        stats.format_time()
+        "  Strokes: {} ({} reversed for shorter travel)",
+        stats.stroke_count, stats.reversed_strokes
     );
+    println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
+    println!("  Travel distance: {:.1} mm", stats.travel_distance);
     println!(
         "  Speed: draw={} mm/s, travel={} mm/s",
         config.pen_down_speed, config.pen_up_speed
@@ -755,7 +804,17 @@ fn cmd_plot(port: Option<&str>, file: &PathBuf, config: PlotConfig) -> Result<()
     if config.verify_position {
         println!("  Position verification: ENABLED (diagnostic mode)");
     }
-    println!("  Press SPACE to pause/resume, Q to cancel");
+    println!("  Estimated time: {}", stats.format_time());
+    println!();
+
+    // Wait for confirmation unless --yes was passed
+    if !skip_confirmation {
+        println!("Press Enter to start plotting, Ctrl+C to cancel");
+        wait_for_enter()?;
+        println!();
+    }
+
+    println!("Press SPACE to pause/resume, Q to cancel");
     println!();
 
     // Use plot_prepared_in_background - no re-flatten or re-optimize needed!
