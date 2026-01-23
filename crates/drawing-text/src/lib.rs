@@ -34,7 +34,7 @@ pub mod vsf;
 
 // Re-export main types
 pub use error::FontError;
-pub use font::{Font, FontFormat, FontLoader, FontSource};
+pub use font::{Font, FontFormat};
 pub use hershey::{Hershey, HersheyFont};
 pub use manager::{FontManager, DEFAULT_FONT_NAME};
 pub use svgfont::SvgFont;

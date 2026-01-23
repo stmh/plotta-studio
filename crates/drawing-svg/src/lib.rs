@@ -77,23 +77,28 @@ pub fn drawing_to_svg_string(drawing: &Drawing, ctx: &RenderContext) -> String {
     svg
 }
 
-fn stroke_to_svg(stroke: &Stroke) -> String {
+/// Generate SVG path data (M/L commands) from points
+fn points_to_svg_path_data(points: &[drawing_core::Point], closed: bool) -> String {
+    if points.is_empty() {
+        return String::new();
+    }
+
     let mut d = String::new();
+    d.push_str(&format!("M{:.3},{:.3}", points[0].x, points[0].y));
 
-    // Move to first point
-    d.push_str(&format!(
-        "M{:.3},{:.3}",
-        stroke.points[0].x, stroke.points[0].y
-    ));
-
-    // Line to remaining points
-    for pt in &stroke.points[1..] {
+    for pt in &points[1..] {
         d.push_str(&format!(" L{:.3},{:.3}", pt.x, pt.y));
     }
 
-    if stroke.closed {
+    if closed {
         d.push_str(" Z");
     }
+
+    d
+}
+
+fn stroke_to_svg(stroke: &Stroke) -> String {
+    let d = points_to_svg_path_data(&stroke.points, stroke.closed);
 
     format!(
         r#"  <path d="{}" fill="none" stroke="{}" stroke-width="{:.3}" stroke-linecap="round" stroke-linejoin="round"/>
@@ -275,19 +280,7 @@ fn optimized_stroke_to_svg(stroke: &OwnedOptimizedStroke, stroke_width: f64) -> 
         return String::new();
     }
 
-    let mut d = String::new();
-
-    // Move to first point
-    d.push_str(&format!("M{:.3},{:.3}", points[0].x, points[0].y));
-
-    // Line to remaining points
-    for pt in &points[1..] {
-        d.push_str(&format!(" L{:.3},{:.3}", pt.x, pt.y));
-    }
-
-    if stroke.closed {
-        d.push_str(" Z");
-    }
+    let d = points_to_svg_path_data(&points, stroke.closed);
 
     format!(
         r#"    <path d="{}" fill="none" stroke="{}" stroke-width="{:.3}" stroke-linecap="round" stroke-linejoin="round"/>

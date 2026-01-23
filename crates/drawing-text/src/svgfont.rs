@@ -88,9 +88,7 @@ impl SvgFont {
             .children()
             .filter(|n| n.tag_name().name() == "glyph")
         {
-            if let Some((c, glyph)) =
-                Self::parse_glyph(&glyph_elem, default_advance, metrics.units_per_em)?
-            {
+            if let Some((c, glyph)) = Self::parse_glyph(&glyph_elem, default_advance)? {
                 glyphs.insert(c, glyph);
             }
         }
@@ -155,7 +153,6 @@ impl SvgFont {
     fn parse_glyph(
         glyph_elem: &roxmltree::Node,
         default_advance: f64,
-        _units_per_em: f64,
     ) -> Result<Option<(char, Glyph)>, FontError> {
         // Get unicode character
         let unicode_str = match glyph_elem.attribute("unicode") {
