@@ -414,6 +414,79 @@ fn create_render_context() -> Result<RenderContext> {
     Ok(RenderContext::new(font_manager.registry().clone()))
 }
 
+/// Prepare a drawing file for plotting: load, validate, flatten, and optimize
+fn prepare_drawing_from_file(
+    file: &PathBuf,
+    config: &PlotConfig,
+) -> Result<(Drawing, PreparedDrawing)> {
+    let drawing = load_drawing_with_validation(file)?;
+    let ctx = create_render_context()?;
+
+    log::info!("Preparing drawing...");
+    let prepare_start = Instant::now();
+    let prepared = PreparedDrawing::new(&drawing, config, &ctx);
+    log::info!(
+        "Drawing prepared in {:.2}s",
+        prepare_start.elapsed().as_secs_f64()
+    );
+
+    validate_stroke_count(prepared.stroke_count())?;
+    Ok((drawing, prepared))
+}
+
+/// Options for printing drawing statistics
+struct PrintStatsOptions {
+    show_motion_planning: bool,
+    show_position_verify: bool,
+}
+
+/// Print drawing statistics
+fn print_drawing_stats(
+    file: &PathBuf,
+    prepared: &PreparedDrawing,
+    config: &PlotConfig,
+    opts: &PrintStatsOptions,
+) {
+    let stats = &prepared.stats;
+
+    println!("Drawing: {}", file.display());
+    println!("  Size: {:.0} x {:.0} mm", prepared.width, prepared.height);
+    println!(
+        "  Strokes: {} ({} reversed for shorter travel)",
+        stats.stroke_count, stats.reversed_strokes
+    );
+    println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
+    println!("  Travel distance: {:.1} mm", stats.travel_distance);
+
+    if opts.show_motion_planning {
+        println!(
+            "  Speed: draw={} mm/s, travel={} mm/s",
+            config.pen_down_speed, config.pen_up_speed
+        );
+        println!(
+            "  Servo timing: down={}ms, up={}ms (+ {}ms/{}ms extra delay)",
+            config.pen_down_move_time(),
+            config.pen_up_move_time(),
+            config.pen_down_delay,
+            config.pen_up_delay
+        );
+        println!(
+            "  Motion planning: {}",
+            if config.motion_planning_enabled {
+                "enabled (smooth acceleration)"
+            } else {
+                "disabled (constant velocity)"
+            }
+        );
+    }
+
+    if opts.show_position_verify && config.verify_position {
+        println!("  Position verification: ENABLED (diagnostic mode)");
+    }
+
+    println!("  Estimated time: {}", stats.format_time());
+}
+
 /// Validate serial port path format
 fn validate_port_path(port: &str) -> Result<()> {
     // Basic validation: port should look like a device path
@@ -571,50 +644,17 @@ fn cmd_raw(port: Option<&str>, command: &str) -> Result<()> {
 
 /// Preview a drawing without plotting
 fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
-    let drawing = load_drawing_with_validation(file)?;
-    let ctx = create_render_context()?;
+    let (_drawing, prepared) = prepare_drawing_from_file(file, &config)?;
 
-    // Prepare the drawing - flattens, optimizes, and calculates stats
-    log::info!("Preparing drawing...");
-    let prepare_start = Instant::now();
-    let prepared = PreparedDrawing::new(&drawing, &config, &ctx);
-    log::info!(
-        "Drawing prepared in {:.2}s",
-        prepare_start.elapsed().as_secs_f64()
+    print_drawing_stats(
+        file,
+        &prepared,
+        &config,
+        &PrintStatsOptions {
+            show_motion_planning: true,
+            show_position_verify: false,
+        },
     );
-
-    validate_stroke_count(prepared.stroke_count())?;
-
-    let stats = &prepared.stats;
-
-    println!("Drawing: {}", file.display());
-    println!("  Size: {:.0} x {:.0} mm", prepared.width, prepared.height);
-    println!(
-        "  Strokes: {} ({} reversed for shorter travel)",
-        stats.stroke_count, stats.reversed_strokes
-    );
-    println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
-    println!("  Travel distance: {:.1} mm", stats.travel_distance);
-    println!(
-        "  Speed: draw={} mm/s, travel={} mm/s",
-        config.pen_down_speed, config.pen_up_speed
-    );
-    println!(
-        "  Servo timing: down={}ms, up={}ms (+ {}ms/{}ms extra delay)",
-        config.pen_down_move_time(),
-        config.pen_up_move_time(),
-        config.pen_down_delay,
-        config.pen_up_delay
-    );
-    println!(
-        "  Motion planning: {}",
-        if config.motion_planning_enabled {
-            "enabled (smooth acceleration)"
-        } else {
-            "disabled (constant velocity)"
-        }
-    );
-    println!("  Estimated time: {}", stats.format_time());
 
     Ok(())
 }
@@ -626,19 +666,7 @@ fn cmd_record(
     config: PlotConfig,
     record_options: RecordOptions,
 ) -> Result<()> {
-    let drawing = load_drawing_with_validation(file)?;
-    let ctx = create_render_context()?;
-
-    // Prepare the drawing - flattens, optimizes, and calculates stats
-    log::info!("Preparing drawing...");
-    let prepare_start = Instant::now();
-    let prepared = PreparedDrawing::new(&drawing, &config, &ctx);
-    log::info!(
-        "Drawing prepared in {:.2}s",
-        prepare_start.elapsed().as_secs_f64()
-    );
-
-    validate_stroke_count(prepared.stroke_count())?;
+    let (_drawing, prepared) = prepare_drawing_from_file(file, &config)?;
 
     // Generate SVG from optimized strokes
     log::info!("Generating SVG...");
@@ -741,26 +769,13 @@ fn cmd_plot(
     setup: PlotterSetup,
     skip_confirmation: bool,
 ) -> Result<()> {
-    let drawing = load_drawing_with_validation(file)?;
-    let ctx = create_render_context()?;
-
-    // Prepare the drawing once - flattens, optimizes, and calculates stats
-    log::info!("Preparing drawing...");
-    let prepare_start = Instant::now();
-    let prepared = PreparedDrawing::new(&drawing, &config, &ctx);
-    log::info!(
-        "Drawing prepared in {:.2}s",
-        prepare_start.elapsed().as_secs_f64()
-    );
-
-    validate_stroke_count(prepared.stroke_count())?;
+    let (drawing, prepared) = prepare_drawing_from_file(file, &config)?;
 
     // Clone stats before moving prepared to the background thread
     let stats = prepared.stats.clone();
 
     // Show setup diagram and confirmation unless --yes was passed
     if !skip_confirmation {
-        // Render the setup diagram
         println!("Plotter Setup: {:?} ({})", setup, setup.description());
         println!();
 
@@ -768,43 +783,20 @@ fn cmd_plot(
         diagram.render_to_terminal();
         println!();
 
-        // Print legend
         diagram.print_legend_for_setup();
         println!();
     }
 
     // Print stats (always shown)
-    println!("Drawing: {}", file.display());
-    println!("  Size: {:.0} x {:.0} mm", drawing.width, drawing.height);
-    println!(
-        "  Strokes: {} ({} reversed for shorter travel)",
-        stats.stroke_count, stats.reversed_strokes
+    print_drawing_stats(
+        file,
+        &prepared,
+        &config,
+        &PrintStatsOptions {
+            show_motion_planning: true,
+            show_position_verify: true,
+        },
     );
-    println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
-    println!("  Travel distance: {:.1} mm", stats.travel_distance);
-    println!(
-        "  Speed: draw={} mm/s, travel={} mm/s",
-        config.pen_down_speed, config.pen_up_speed
-    );
-    println!(
-        "  Servo timing: down={}ms, up={}ms (+ {}ms/{}ms extra delay)",
-        config.pen_down_move_time(),
-        config.pen_up_move_time(),
-        config.pen_down_delay,
-        config.pen_up_delay
-    );
-    println!(
-        "  Motion planning: {}",
-        if config.motion_planning_enabled {
-            "enabled (smooth acceleration)"
-        } else {
-            "disabled (constant velocity)"
-        }
-    );
-    if config.verify_position {
-        println!("  Position verification: ENABLED (diagnostic mode)");
-    }
-    println!("  Estimated time: {}", stats.format_time());
     println!();
 
     // Wait for confirmation unless --yes was passed
