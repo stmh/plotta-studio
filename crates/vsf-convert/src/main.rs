@@ -8,7 +8,7 @@ mod formats;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use drawing_text::VsfFont;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "vsf-convert")]
@@ -79,7 +79,7 @@ where
 }
 
 /// Convert and write a font using embedded data
-fn convert_embedded<F>(output_dir: &PathBuf, filename: &str, embedded: &str, parse: F) -> Result<()>
+fn convert_embedded<F>(output_dir: &Path, filename: &str, embedded: &str, parse: F) -> Result<()>
 where
     F: FnOnce(&str) -> Result<VsfFont>,
 {
