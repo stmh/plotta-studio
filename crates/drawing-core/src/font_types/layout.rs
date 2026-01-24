@@ -1,10 +1,42 @@
 //! Text layout and rendering types
+//!
+//! # Coordinate Systems
+//!
+//! This module handles conversion between two coordinate systems:
+//!
+//! - **Font space**: Y-axis points UP (positive Y = ascenders, negative Y = descenders).
+//!   This is the standard for font files (TrueType, OpenType, SVG fonts).
+//!
+//! - **Plotter/Drawing space**: Y-axis points DOWN (positive Y = lower on page).
+//!   This matches screen coordinates and our drawing system.
+//!
+//! The [`font_y_to_drawing`] function centralizes this conversion to ensure consistency.
 
 use crate::font_registry::FontRef;
 use crate::stroke::Stroke;
 use crate::style::ResolvedStyle;
 use kurbo::{Point, Rect};
+use log::warn;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Convert a Y coordinate from font space (Y-up) to drawing space (Y-down).
+///
+/// Font glyphs use Y-up coordinates where:
+/// - Positive Y = ascenders (parts above baseline, like 'h', 'l')
+/// - Negative Y = descenders (parts below baseline, like 'p', 'g')
+///
+/// Our drawing system uses Y-down coordinates (like screen coordinates).
+/// This function negates Y to flip the coordinate system.
+///
+/// # Arguments
+/// * `font_y` - Y coordinate in font space
+/// * `scale` - Scale factor (typically size / units_per_em)
+/// * `baseline_y` - Y position of the baseline in drawing space
+#[inline]
+fn font_y_to_drawing(font_y: f64, scale: f64, baseline_y: f64) -> f64 {
+    baseline_y - font_y * scale
+}
 
 /// Text alignment options
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -152,16 +184,14 @@ impl TextLayout {
                         .contours
                         .iter()
                         .map(|contour| {
-                            // Scale and translate points
-                            // Font glyphs use Y-up coordinates (positive = ascenders, negative = descenders)
-                            // Our drawing system uses Y-down, so we negate Y during scaling
+                            // Scale and translate points, converting from font space to drawing space
                             let scaled_points: Vec<Point> = contour
                                 .flatten(tolerance)
                                 .iter()
                                 .map(|p| {
                                     Point::new(
                                         p.x * pg.scale + pg.position.x,
-                                        -p.y * pg.scale + pg.position.y, // Negate Y to flip
+                                        font_y_to_drawing(p.y, pg.scale, pg.position.y),
                                     )
                                 })
                                 .collect();
@@ -213,8 +243,18 @@ impl TextRenderer {
         let mut current_line_width = 0.0;
         let mut line_count = 1;
 
-        // Calculate fallback space width (roughly 1/3 of em)
+        // Fallback space width: 1/3 of em-square
+        //
+        // This heuristic is based on typical Latin font metrics where the space
+        // character is usually between 1/4 and 1/3 of the em-square. We use 1/3
+        // as a reasonable default that works well for most text fonts.
+        //
+        // Reference: Most fonts define space width as roughly 250-333 units in
+        // a 1000 UPM font, which is 25-33% of em.
         let fallback_space_width = metrics.units_per_em / 3.0;
+
+        // Track if we've already warned about missing space glyph for this layout
+        static WARNED_MISSING_SPACE: AtomicBool = AtomicBool::new(false);
 
         // First pass: calculate layout
         for c in text.chars() {
@@ -228,10 +268,17 @@ impl TextRenderer {
 
             // Handle space specially - use fallback if font doesn't have space glyph
             if c == ' ' {
-                let space_width = font
-                    .glyph(' ')
-                    .map(|g| g.advance_width)
-                    .unwrap_or(fallback_space_width);
+                let space_width = font.glyph(' ').map(|g| g.advance_width).unwrap_or_else(|| {
+                    // Warn once about missing space glyph (helps debug font issues)
+                    if !WARNED_MISSING_SPACE.swap(true, Ordering::Relaxed) {
+                        warn!(
+                            "Font '{}' has no space glyph, using fallback width (1/3 em = {:.1} units)",
+                            font.name(),
+                            fallback_space_width
+                        );
+                    }
+                    fallback_space_width
+                });
                 current_line_width += space_width * scale;
                 current_line_width += options.word_spacing * options.size;
                 prev_char = Some(c);
@@ -270,6 +317,7 @@ impl TextRenderer {
             }
 
             // Handle space specially - advance position even if font doesn't have space glyph
+            // (warning was already emitted in first pass if fallback is used)
             if c == ' ' {
                 let space_width = font
                     .glyph(' ')
@@ -325,10 +373,12 @@ impl TextRenderer {
             for pg in &glyphs {
                 if let Some(glyph) = font.glyph(pg.char) {
                     if let Some(glyph_bounds) = glyph.bounds() {
+                        // Convert bounds from font space to drawing space
+                        // Note: y0/y1 are swapped because Y is flipped
                         let x0 = pg.position.x + glyph_bounds.x0 * pg.scale;
-                        let y0 = pg.position.y - glyph_bounds.y1 * pg.scale; // Flip Y
+                        let y0 = font_y_to_drawing(glyph_bounds.y1, pg.scale, pg.position.y);
                         let x1 = pg.position.x + glyph_bounds.x1 * pg.scale;
-                        let y1 = pg.position.y - glyph_bounds.y0 * pg.scale; // Flip Y
+                        let y1 = font_y_to_drawing(glyph_bounds.y0, pg.scale, pg.position.y);
 
                         min_x = min_x.min(x0);
                         min_y = min_y.min(y0);
@@ -374,5 +424,66 @@ mod tests {
         assert_eq!(options.position, Point::new(100.0, 200.0));
         assert_eq!(options.align, TextAlign::Center);
         assert_eq!(options.letter_spacing, 0.1);
+    }
+
+    #[test]
+    fn test_font_y_to_drawing_coordinate_handedness() {
+        // Font space: Y-up (positive Y = above baseline)
+        // Drawing space: Y-down (positive Y = below baseline)
+        let baseline_y = 100.0;
+        let scale = 1.0;
+
+        // A point above the baseline in font space (positive Y)
+        // should be above the baseline in drawing space (smaller Y value)
+        let font_y_above = 50.0; // 50 units above baseline in font space
+        let drawing_y = font_y_to_drawing(font_y_above, scale, baseline_y);
+        assert!(
+            drawing_y < baseline_y,
+            "Font Y above baseline ({}) should map to drawing Y above baseline (< {}), got {}",
+            font_y_above,
+            baseline_y,
+            drawing_y
+        );
+        assert_eq!(drawing_y, 50.0); // baseline (100) - font_y (50) * scale (1) = 50
+
+        // A point below the baseline in font space (negative Y)
+        // should be below the baseline in drawing space (larger Y value)
+        let font_y_below = -30.0; // 30 units below baseline in font space
+        let drawing_y = font_y_to_drawing(font_y_below, scale, baseline_y);
+        assert!(
+            drawing_y > baseline_y,
+            "Font Y below baseline ({}) should map to drawing Y below baseline (> {}), got {}",
+            font_y_below,
+            baseline_y,
+            drawing_y
+        );
+        assert_eq!(drawing_y, 130.0); // baseline (100) - font_y (-30) * scale (1) = 130
+    }
+
+    #[test]
+    fn test_font_y_to_drawing_with_scale() {
+        let baseline_y = 200.0;
+        let scale = 2.0; // Double size
+
+        // 50 units above baseline, scaled 2x
+        let drawing_y = font_y_to_drawing(50.0, scale, baseline_y);
+        assert_eq!(drawing_y, 100.0); // 200 - 50 * 2 = 100
+
+        // 25 units below baseline, scaled 2x
+        let drawing_y = font_y_to_drawing(-25.0, scale, baseline_y);
+        assert_eq!(drawing_y, 250.0); // 200 - (-25) * 2 = 250
+    }
+
+    #[test]
+    fn test_font_y_to_drawing_baseline_at_origin() {
+        // When baseline is at Y=0, ascenders should have negative Y in drawing space
+        let baseline_y = 0.0;
+        let scale = 1.0;
+
+        let ascender_y = font_y_to_drawing(100.0, scale, baseline_y);
+        assert_eq!(ascender_y, -100.0);
+
+        let descender_y = font_y_to_drawing(-50.0, scale, baseline_y);
+        assert_eq!(descender_y, 50.0);
     }
 }

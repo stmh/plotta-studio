@@ -133,7 +133,6 @@ impl LmCommand {
         steps_y: i32,
         velocity_mm_s: f64,
         distance_mm: f64,
-        _steps_per_mm: f64,
     ) -> Self {
         // Apply CoreXY transform
         let steps_axis1 = steps_x + steps_y;
@@ -216,8 +215,7 @@ impl PlannedMove {
         let steps_x = (delta.x * steps_per_mm).round() as i32;
         let steps_y = (delta.y * steps_per_mm).round() as i32;
 
-        let cmd =
-            LmCommand::constant_velocity(steps_x, steps_y, velocity_mm_s, distance, steps_per_mm);
+        let cmd = LmCommand::constant_velocity(steps_x, steps_y, velocity_mm_s, distance);
         let duration = cmd.duration_ms;
 
         Self {
@@ -459,7 +457,7 @@ mod tests {
     #[test]
     fn test_lm_command_constant_velocity() {
         // Move 10mm in X direction at 25mm/s
-        let cmd = LmCommand::constant_velocity(800, 0, 25.0, 10.0, 80.0);
+        let cmd = LmCommand::constant_velocity(800, 0, 25.0, 10.0);
 
         // Duration should be 10mm / 25mm/s = 0.4s = 400ms
         assert_eq!(cmd.duration_ms, 400);
