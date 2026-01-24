@@ -704,7 +704,6 @@ pub struct SmCommand {
 
 impl SmCommand {
     /// Create a new SM command
-    #[allow(dead_code)]
     pub fn new(duration_ms: u32, steps_axis1: i32, steps_axis2: i32) -> Self {
         Self {
             duration_ms,
@@ -796,7 +795,6 @@ impl SmCommand {
 
 /// A sequence of SM commands representing a motion-planned move
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct SmPlannedMove {
     /// The SM commands to execute in sequence
     pub commands: Vec<SmCommand>,
@@ -828,7 +826,6 @@ impl SmPlannedMove {
     }
 
     /// Check if this planned move has any commands
-    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }

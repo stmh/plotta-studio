@@ -55,31 +55,50 @@ enum Commands {
     List,
 }
 
+/// Convert a font from input (file or embedded) and write to output
+fn convert_font<F>(
+    name: &str,
+    input: Option<PathBuf>,
+    output: &PathBuf,
+    embedded: &str,
+    parse: F,
+) -> Result<()>
+where
+    F: FnOnce(&str) -> Result<VsfFont>,
+{
+    println!("Converting {} font...", name);
+    let data = match input {
+        Some(path) => std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?,
+        None => embedded.to_string(),
+    };
+    let font = parse(&data)?;
+    write_vsf(&font, output)?;
+    println!("Written to {}", output.display());
+    Ok(())
+}
+
+/// Convert and write a font using embedded data
+fn convert_embedded<F>(output_dir: &PathBuf, filename: &str, embedded: &str, parse: F) -> Result<()>
+where
+    F: FnOnce(&str) -> Result<VsfFont>,
+{
+    let font = parse(embedded)?;
+    let path = output_dir.join(filename);
+    write_vsf(&font, &path)?;
+    println!("  Written {}", path.display());
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Asteroids { input, output } => {
-            println!("Converting Asteroids font...");
-            let json = match input {
-                Some(path) => std::fs::read_to_string(&path)
-                    .with_context(|| format!("Failed to read {}", path.display()))?,
-                None => formats::asteroids::embedded_data().to_string(),
-            };
-            let font = formats::asteroids::parse(&json)?;
-            write_vsf(&font, &output)?;
-            println!("Written to {}", output.display());
+            convert_font("Asteroids", input, &output, formats::asteroids::embedded_data(), formats::asteroids::parse)?;
         }
         Commands::Apple410 { input, output } => {
-            println!("Converting Apple 410 font...");
-            let json = match input {
-                Some(path) => std::fs::read_to_string(&path)
-                    .with_context(|| format!("Failed to read {}", path.display()))?,
-                None => formats::apple410::embedded_data().to_string(),
-            };
-            let font = formats::apple410::parse(&json)?;
-            write_vsf(&font, &output)?;
-            println!("Written to {}", output.display());
+            convert_font("Apple 410", input, &output, formats::apple410::embedded_data(), formats::apple410::parse)?;
         }
         Commands::Minf { input, output } => {
             println!("Converting minf font...");
@@ -96,28 +115,11 @@ fn main() -> Result<()> {
             std::fs::create_dir_all(&output_dir)
                 .with_context(|| format!("Failed to create {}", output_dir.display()))?;
 
-            println!(
-                "Converting all embedded fonts to {}...",
-                output_dir.display()
-            );
+            println!("Converting all embedded fonts to {}...", output_dir.display());
 
-            // Asteroids
-            let font = formats::asteroids::parse(formats::asteroids::embedded_data())?;
-            let path = output_dir.join("asteroids.vsf");
-            write_vsf(&font, &path)?;
-            println!("  Written {}", path.display());
-
-            // Apple 410
-            let font = formats::apple410::parse(formats::apple410::embedded_data())?;
-            let path = output_dir.join("apple410.vsf");
-            write_vsf(&font, &path)?;
-            println!("  Written {}", path.display());
-
-            // minf
-            let font = formats::minf::parse(formats::minf::EMBEDDED_DATA)?;
-            let path = output_dir.join("minf.vsf");
-            write_vsf(&font, &path)?;
-            println!("  Written {}", path.display());
+            convert_embedded(&output_dir, "asteroids.vsf", formats::asteroids::embedded_data(), formats::asteroids::parse)?;
+            convert_embedded(&output_dir, "apple410.vsf", formats::apple410::embedded_data(), formats::apple410::parse)?;
+            convert_embedded(&output_dir, "minf.vsf", formats::minf::EMBEDDED_DATA, formats::minf::parse)?;
 
             println!("Done!");
         }
