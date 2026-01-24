@@ -51,7 +51,7 @@ pub(super) fn convert_group(
                 }
             }
             Node::Path(path) => {
-                if let Some(element) = convert_path(path, options, warnings, for_clip_path) {
+                if let Some(element) = convert_path(path, options, for_clip_path) {
                     elements.push(element);
                 }
             }
@@ -109,7 +109,6 @@ fn convert_clip_path(
 fn convert_path(
     path: &usvg::Path,
     options: &ImportOptions,
-    _warnings: &mut Vec<ImportWarning>,
     for_clip_path: bool,
 ) -> Option<Element> {
     // For clip paths, always import the geometry regardless of stroke/fill

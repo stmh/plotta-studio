@@ -422,204 +422,76 @@ const HERSHEY_SCRIPT_COMPLEX_MAP: &[(u32, char)] = &[
 ];
 
 /// Mapping for Hershey Gothic fonts (German, Italian variants)
-/// Gothic fonts use 3301-3326 for uppercase and 3401-3426 for lowercase
-const HERSHEY_GOTHIC_MAP: &[(u32, char)] = &[
-    (3699, ' '), // space
-    (3714, '!'),
-    (3728, '"'),
-    (2275, '#'), // shared
-    (3719, '$'),
-    (2271, '%'), // shared
-    (3718, '&'),
-    (3717, '\''),
-    (3721, '('),
-    (3722, ')'),
-    (3723, '*'),
-    (3725, '+'),
-    (3711, ','),
-    (3724, '-'),
-    (3710, '.'),
-    (3720, '/'),
-    (3700, '0'),
-    (3701, '1'),
-    (3702, '2'),
-    (3703, '3'),
-    (3704, '4'),
-    (3705, '5'),
-    (3706, '6'),
-    (3707, '7'),
-    (3708, '8'),
-    (3709, '9'),
-    (3712, ':'),
-    (3713, ';'),
-    (2241, '<'), // shared
-    (3726, '='),
-    (2242, '>'), // shared
-    (3715, '?'),
-    (2273, '@'), // shared
-    (3301, 'A'),
-    (3302, 'B'),
-    (3303, 'C'),
-    (3304, 'D'),
-    (3305, 'E'),
-    (3306, 'F'),
-    (3307, 'G'),
-    (3308, 'H'),
-    (3309, 'I'),
-    (3310, 'J'),
-    (3311, 'K'),
-    (3312, 'L'),
-    (3313, 'M'),
-    (3314, 'N'),
-    (3315, 'O'),
-    (3316, 'P'),
-    (3317, 'Q'),
-    (3318, 'R'),
-    (3319, 'S'),
-    (3320, 'T'),
-    (3321, 'U'),
-    (3322, 'V'),
-    (3323, 'W'),
-    (3324, 'X'),
-    (3325, 'Y'),
-    (3326, 'Z'),
-    (2223, '['), // shared
-    (804, '\\'), // shared
-    (2224, ']'), // shared
-    (2262, '^'), // shared
-    (999, '_'),  // shared
-    (3729, '`'),
-    (3401, 'a'),
-    (3402, 'b'),
-    (3403, 'c'),
-    (3404, 'd'),
-    (3405, 'e'),
-    (3406, 'f'),
-    (3407, 'g'),
-    (3408, 'h'),
-    (3409, 'i'),
-    (3410, 'j'),
-    (3411, 'k'),
-    (3412, 'l'),
-    (3413, 'm'),
-    (3414, 'n'),
-    (3415, 'o'),
-    (3416, 'p'),
-    (3417, 'q'),
-    (3418, 'r'),
-    (3419, 's'),
-    (3420, 't'),
-    (3421, 'u'),
-    (3422, 'v'),
-    (3423, 'w'),
-    (3424, 'x'),
-    (3425, 'y'),
-    (3426, 'z'),
-    (2225, '{'), // shared
-    (3716, '|'),
-    (2226, '}'), // shared
-    (2246, '~'), // shared
-];
+/// Gothic fonts use different glyph ranges for uppercase and lowercase letters.
+/// This function generates the character map based on the provided base offsets.
+fn build_gothic_map(uppercase_base: u32, lowercase_base: u32) -> Vec<(u32, char)> {
+    // Shared characters (punctuation, numbers, special chars)
+    let mut map = vec![
+        (3699, ' '), // space
+        (3714, '!'),
+        (3728, '"'),
+        (2275, '#'), // shared
+        (3719, '$'),
+        (2271, '%'), // shared
+        (3718, '&'),
+        (3717, '\''),
+        (3721, '('),
+        (3722, ')'),
+        (3723, '*'),
+        (3725, '+'),
+        (3711, ','),
+        (3724, '-'),
+        (3710, '.'),
+        (3720, '/'),
+        (3700, '0'),
+        (3701, '1'),
+        (3702, '2'),
+        (3703, '3'),
+        (3704, '4'),
+        (3705, '5'),
+        (3706, '6'),
+        (3707, '7'),
+        (3708, '8'),
+        (3709, '9'),
+        (3712, ':'),
+        (3713, ';'),
+        (2241, '<'), // shared
+        (3726, '='),
+        (2242, '>'), // shared
+        (3715, '?'),
+        (2273, '@'), // shared
+    ];
 
-/// Mapping for Hershey Gothic Italian font
-/// Italian Gothic uses 3801-3826 for uppercase and 3901-3926 for lowercase
-const HERSHEY_GOTHIC_ITALIAN_MAP: &[(u32, char)] = &[
-    (3699, ' '), // space
-    (3714, '!'),
-    (3728, '"'),
-    (2275, '#'), // shared
-    (3719, '$'),
-    (2271, '%'), // shared
-    (3718, '&'),
-    (3717, '\''),
-    (3721, '('),
-    (3722, ')'),
-    (3723, '*'),
-    (3725, '+'),
-    (3711, ','),
-    (3724, '-'),
-    (3710, '.'),
-    (3720, '/'),
-    (3700, '0'),
-    (3701, '1'),
-    (3702, '2'),
-    (3703, '3'),
-    (3704, '4'),
-    (3705, '5'),
-    (3706, '6'),
-    (3707, '7'),
-    (3708, '8'),
-    (3709, '9'),
-    (3712, ':'),
-    (3713, ';'),
-    (2241, '<'), // shared
-    (3726, '='),
-    (2242, '>'), // shared
-    (3715, '?'),
-    (2273, '@'), // shared
-    (3801, 'A'),
-    (3802, 'B'),
-    (3803, 'C'),
-    (3804, 'D'),
-    (3805, 'E'),
-    (3806, 'F'),
-    (3807, 'G'),
-    (3808, 'H'),
-    (3809, 'I'),
-    (3810, 'J'),
-    (3811, 'K'),
-    (3812, 'L'),
-    (3813, 'M'),
-    (3814, 'N'),
-    (3815, 'O'),
-    (3816, 'P'),
-    (3817, 'Q'),
-    (3818, 'R'),
-    (3819, 'S'),
-    (3820, 'T'),
-    (3821, 'U'),
-    (3822, 'V'),
-    (3823, 'W'),
-    (3824, 'X'),
-    (3825, 'Y'),
-    (3826, 'Z'),
-    (2223, '['), // shared
-    (804, '\\'), // shared
-    (2224, ']'), // shared
-    (2262, '^'), // shared
-    (999, '_'),  // shared
-    (3729, '`'),
-    (3901, 'a'),
-    (3902, 'b'),
-    (3903, 'c'),
-    (3904, 'd'),
-    (3905, 'e'),
-    (3906, 'f'),
-    (3907, 'g'),
-    (3908, 'h'),
-    (3909, 'i'),
-    (3910, 'j'),
-    (3911, 'k'),
-    (3912, 'l'),
-    (3913, 'm'),
-    (3914, 'n'),
-    (3915, 'o'),
-    (3916, 'p'),
-    (3917, 'q'),
-    (3918, 'r'),
-    (3919, 's'),
-    (3920, 't'),
-    (3921, 'u'),
-    (3922, 'v'),
-    (3923, 'w'),
-    (3924, 'x'),
-    (3925, 'y'),
-    (3926, 'z'),
-    (2225, '{'), // shared
-    (3716, '|'),
-    (2226, '}'), // shared
-    (2246, '~'), // shared
-];
+    // Add uppercase A-Z using the provided base
+    for (i, c) in ('A'..='Z').enumerate() {
+        map.push((uppercase_base + i as u32, c));
+    }
+
+    // Add brackets and special chars
+    map.extend([
+        (2223, '['), // shared
+        (804, '\\'), // shared
+        (2224, ']'), // shared
+        (2262, '^'), // shared
+        (999, '_'),  // shared
+        (3729, '`'),
+    ]);
+
+    // Add lowercase a-z using the provided base
+    for (i, c) in ('a'..='z').enumerate() {
+        map.push((lowercase_base + i as u32, c));
+    }
+
+    // Add remaining special chars
+    map.extend([
+        (2225, '{'), // shared
+        (3716, '|'),
+        (2226, '}'), // shared
+        (2246, '~'), // shared
+    ]);
+
+    map
+}
 
 impl HersheyFont {
     /// Create a new empty Hershey font
@@ -903,20 +775,16 @@ pub fn load_gothic_german_bold() -> Result<HersheyFont, FontError> {
 
 /// Load the Hershey Gothic German font (Fraktur-style)
 pub fn load_gothic_german() -> Result<HersheyFont, FontError> {
-    HersheyFont::from_jhf_with_mapping(
-        "Hershey Gothic German",
-        HERSHEY_GOTHIC_GERMAN,
-        HERSHEY_GOTHIC_MAP,
-    )
+    // Gothic German: uppercase 3301-3326, lowercase 3401-3426
+    let map = build_gothic_map(3301, 3401);
+    HersheyFont::from_jhf_with_mapping("Hershey Gothic German", HERSHEY_GOTHIC_GERMAN, &map)
 }
 
 /// Load the Hershey Gothic Italian font (Fraktur-style, Italian variant)
 pub fn load_gothic_italian() -> Result<HersheyFont, FontError> {
-    HersheyFont::from_jhf_with_mapping(
-        "Hershey Gothic Italian",
-        HERSHEY_GOTHIC_ITALIAN,
-        HERSHEY_GOTHIC_ITALIAN_MAP,
-    )
+    // Gothic Italian: uppercase 3801-3826, lowercase 3901-3926
+    let map = build_gothic_map(3801, 3901);
+    HersheyFont::from_jhf_with_mapping("Hershey Gothic Italian", HERSHEY_GOTHIC_ITALIAN, &map)
 }
 
 #[cfg(test)]

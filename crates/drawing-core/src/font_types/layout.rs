@@ -1,269 +1,41 @@
-//! Core font types for text rendering
+//! Text layout and rendering types
 //!
-//! These types are shared between drawing-core and drawing-text to avoid
-//! cyclic dependencies.
+//! # Coordinate Systems
+//!
+//! This module handles conversion between two coordinate systems:
+//!
+//! - **Font space**: Y-axis points UP (positive Y = ascenders, negative Y = descenders).
+//!   This is the standard for font files (TrueType, OpenType, SVG fonts).
+//!
+//! - **Plotter/Drawing space**: Y-axis points DOWN (positive Y = lower on page).
+//!   This matches screen coordinates and our drawing system.
+//!
+//! The [`font_y_to_drawing`] function centralizes this conversion to ensure consistency.
 
 use crate::font_registry::FontRef;
 use crate::stroke::Stroke;
 use crate::style::ResolvedStyle;
-use crate::Path;
-use kurbo::Rect;
-use kurbo::{Point, Shape};
+use kurbo::{Point, Rect};
+use log::warn;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Font metrics for layout calculations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FontMetrics {
-    /// Units per em (typically 1000 or 2048)
-    pub units_per_em: f64,
-    /// Distance from baseline to top of tallest glyph
-    pub ascender: f64,
-    /// Distance from baseline to bottom of deepest glyph (negative)
-    pub descender: f64,
-    /// Height of lowercase 'x'
-    pub x_height: Option<f64>,
-    /// Height of capital letters
-    pub cap_height: Option<f64>,
-    /// Additional space between lines
-    pub line_gap: f64,
-}
-
-impl Default for FontMetrics {
-    fn default() -> Self {
-        Self {
-            units_per_em: 1000.0,
-            ascender: 800.0,
-            descender: -200.0,
-            x_height: Some(500.0),
-            cap_height: Some(700.0),
-            line_gap: 100.0,
-        }
-    }
-}
-
-impl FontMetrics {
-    /// Calculate line height (ascender - descender + line_gap)
-    pub fn line_height(&self) -> f64 {
-        self.ascender - self.descender + self.line_gap
-    }
-}
-
-/// A segment within a contour
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum ContourSegment {
-    /// Move to point (pen up)
-    MoveTo(Point),
-    /// Draw line to point
-    LineTo(Point),
-    /// Quadratic bezier curve
-    QuadTo { ctrl: Point, to: Point },
-    /// Cubic bezier curve
-    CubicTo {
-        ctrl1: Point,
-        ctrl2: Point,
-        to: Point,
-    },
-}
-
-/// A contour (open or closed path) within a glyph
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Contour {
-    /// The segments making up this contour
-    pub segments: Vec<ContourSegment>,
-    /// Whether this contour is closed
-    pub closed: bool,
-}
-
-impl Contour {
-    /// Create a new empty contour
-    pub fn new() -> Self {
-        Self {
-            segments: Vec::new(),
-            closed: false,
-        }
-    }
-
-    /// Create an open contour from segments
-    pub fn open(segments: Vec<ContourSegment>) -> Self {
-        Self {
-            segments,
-            closed: false,
-        }
-    }
-
-    /// Create a closed contour from segments
-    pub fn closed(segments: Vec<ContourSegment>) -> Self {
-        Self {
-            segments,
-            closed: true,
-        }
-    }
-
-    /// Add a move_to segment
-    pub fn move_to(mut self, p: impl Into<Point>) -> Self {
-        self.segments.push(ContourSegment::MoveTo(p.into()));
-        self
-    }
-
-    /// Add a line_to segment
-    pub fn line_to(mut self, p: impl Into<Point>) -> Self {
-        self.segments.push(ContourSegment::LineTo(p.into()));
-        self
-    }
-
-    /// Add a quad_to segment
-    pub fn quad_to(mut self, ctrl: impl Into<Point>, to: impl Into<Point>) -> Self {
-        self.segments.push(ContourSegment::QuadTo {
-            ctrl: ctrl.into(),
-            to: to.into(),
-        });
-        self
-    }
-
-    /// Add a cubic_to segment
-    pub fn cubic_to(
-        mut self,
-        ctrl1: impl Into<Point>,
-        ctrl2: impl Into<Point>,
-        to: impl Into<Point>,
-    ) -> Self {
-        self.segments.push(ContourSegment::CubicTo {
-            ctrl1: ctrl1.into(),
-            ctrl2: ctrl2.into(),
-            to: to.into(),
-        });
-        self
-    }
-
-    /// Mark the contour as closed
-    pub fn close(mut self) -> Self {
-        self.closed = true;
-        self
-    }
-
-    /// Convert to a drawing-core Path
-    pub fn to_path(&self) -> Path {
-        let mut path = Path::new();
-        for seg in &self.segments {
-            path = match seg {
-                ContourSegment::MoveTo(p) => path.move_to(*p),
-                ContourSegment::LineTo(p) => path.line_to(*p),
-                ContourSegment::QuadTo { ctrl, to } => path.quad_to(*ctrl, *to),
-                ContourSegment::CubicTo { ctrl1, ctrl2, to } => path.cubic_to(*ctrl1, *ctrl2, *to),
-            };
-        }
-        if self.closed {
-            path = path.close();
-        }
-        path
-    }
-
-    /// Convert to a drawing-core Stroke by flattening curves
-    pub fn to_stroke(&self, style: ResolvedStyle, tolerance: f64) -> Stroke {
-        let points = self.flatten(tolerance);
-        let mut stroke = Stroke::new(points, style);
-        if self.closed {
-            stroke = stroke.closed();
-        }
-        stroke
-    }
-
-    /// Flatten curves to line segments
-    pub fn flatten(&self, tolerance: f64) -> Vec<Point> {
-        let bezpath = self.to_path().to_bezpath();
-        let mut points = Vec::new();
-
-        #[allow(deprecated)]
-        bezpath.flatten(tolerance, |el| match el {
-            kurbo::PathEl::MoveTo(p) | kurbo::PathEl::LineTo(p) => {
-                points.push(p);
-            }
-            _ => {}
-        });
-
-        points
-    }
-
-    /// Calculate bounding box
-    pub fn bounds(&self) -> Option<Rect> {
-        let bezpath = self.to_path().to_bezpath();
-        let bbox = bezpath.bounding_box();
-        if bbox.width() == 0.0 && bbox.height() == 0.0 && bbox.x0 == 0.0 && bbox.y0 == 0.0 {
-            None
-        } else {
-            Some(bbox)
-        }
-    }
-}
-
-impl Default for Contour {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// A single glyph from a font
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Glyph {
-    /// The unicode character this glyph represents
-    pub unicode: char,
-    /// Optional glyph name
-    pub name: Option<String>,
-    /// Width to advance after drawing this glyph
-    pub advance_width: f64,
-    /// The contours making up this glyph
-    pub contours: Vec<Contour>,
-}
-
-impl Glyph {
-    /// Create a new glyph
-    pub fn new(unicode: char, advance_width: f64) -> Self {
-        Self {
-            unicode,
-            name: None,
-            advance_width,
-            contours: Vec::new(),
-        }
-    }
-
-    /// Add a contour to the glyph
-    pub fn with_contour(mut self, contour: Contour) -> Self {
-        self.contours.push(contour);
-        self
-    }
-
-    /// Set the glyph name
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Convert all contours to paths
-    pub fn to_paths(&self) -> Vec<Path> {
-        self.contours.iter().map(|c| c.to_path()).collect()
-    }
-
-    /// Convert all contours to strokes
-    pub fn to_strokes(&self, style: ResolvedStyle, tolerance: f64) -> Vec<Stroke> {
-        self.contours
-            .iter()
-            .map(|c| c.to_stroke(style, tolerance))
-            .collect()
-    }
-
-    /// Calculate bounding box
-    pub fn bounds(&self) -> Option<Rect> {
-        let mut result: Option<Rect> = None;
-        for contour in &self.contours {
-            if let Some(bbox) = contour.bounds() {
-                result = Some(match result {
-                    Some(r) => r.union(bbox),
-                    None => bbox,
-                });
-            }
-        }
-        result
-    }
+/// Convert a Y coordinate from font space (Y-up) to drawing space (Y-down).
+///
+/// Font glyphs use Y-up coordinates where:
+/// - Positive Y = ascenders (parts above baseline, like 'h', 'l')
+/// - Negative Y = descenders (parts below baseline, like 'p', 'g')
+///
+/// Our drawing system uses Y-down coordinates (like screen coordinates).
+/// This function negates Y to flip the coordinate system.
+///
+/// # Arguments
+/// * `font_y` - Y coordinate in font space
+/// * `scale` - Scale factor (typically size / units_per_em)
+/// * `baseline_y` - Y position of the baseline in drawing space
+#[inline]
+fn font_y_to_drawing(font_y: f64, scale: f64, baseline_y: f64) -> f64 {
+    baseline_y - font_y * scale
 }
 
 /// Text alignment options
@@ -412,16 +184,14 @@ impl TextLayout {
                         .contours
                         .iter()
                         .map(|contour| {
-                            // Scale and translate points
-                            // Font glyphs use Y-up coordinates (positive = ascenders, negative = descenders)
-                            // Our drawing system uses Y-down, so we negate Y during scaling
+                            // Scale and translate points, converting from font space to drawing space
                             let scaled_points: Vec<Point> = contour
                                 .flatten(tolerance)
                                 .iter()
                                 .map(|p| {
                                     Point::new(
                                         p.x * pg.scale + pg.position.x,
-                                        -p.y * pg.scale + pg.position.y, // Negate Y to flip
+                                        font_y_to_drawing(p.y, pg.scale, pg.position.y),
                                     )
                                 })
                                 .collect();
@@ -438,31 +208,6 @@ impl TextLayout {
             .flatten()
             .collect()
     }
-}
-
-/// Trait for font implementations
-pub trait Font: Send + Sync {
-    /// Font family name
-    fn name(&self) -> &str;
-
-    /// Get a glyph by unicode character
-    fn glyph(&self, c: char) -> Option<Glyph>;
-
-    /// Get kerning adjustment between two characters (in font units)
-    fn kerning(&self, _left: char, _right: char) -> f64 {
-        0.0
-    }
-
-    /// Get font metrics
-    fn metrics(&self) -> FontMetrics;
-
-    /// Check if font has a glyph for character
-    fn has_glyph(&self, c: char) -> bool {
-        self.glyph(c).is_some()
-    }
-
-    /// Get all available characters
-    fn available_chars(&self) -> Vec<char>;
 }
 
 /// Text renderer for laying out and rendering text using fonts
@@ -498,8 +243,18 @@ impl TextRenderer {
         let mut current_line_width = 0.0;
         let mut line_count = 1;
 
-        // Calculate fallback space width (roughly 1/3 of em)
+        // Fallback space width: 1/3 of em-square
+        //
+        // This heuristic is based on typical Latin font metrics where the space
+        // character is usually between 1/4 and 1/3 of the em-square. We use 1/3
+        // as a reasonable default that works well for most text fonts.
+        //
+        // Reference: Most fonts define space width as roughly 250-333 units in
+        // a 1000 UPM font, which is 25-33% of em.
         let fallback_space_width = metrics.units_per_em / 3.0;
+
+        // Track if we've already warned about missing space glyph for this layout
+        static WARNED_MISSING_SPACE: AtomicBool = AtomicBool::new(false);
 
         // First pass: calculate layout
         for c in text.chars() {
@@ -513,10 +268,17 @@ impl TextRenderer {
 
             // Handle space specially - use fallback if font doesn't have space glyph
             if c == ' ' {
-                let space_width = font
-                    .glyph(' ')
-                    .map(|g| g.advance_width)
-                    .unwrap_or(fallback_space_width);
+                let space_width = font.glyph(' ').map(|g| g.advance_width).unwrap_or_else(|| {
+                    // Warn once about missing space glyph (helps debug font issues)
+                    if !WARNED_MISSING_SPACE.swap(true, Ordering::Relaxed) {
+                        warn!(
+                            "Font '{}' has no space glyph, using fallback width (1/3 em = {:.1} units)",
+                            font.name(),
+                            fallback_space_width
+                        );
+                    }
+                    fallback_space_width
+                });
                 current_line_width += space_width * scale;
                 current_line_width += options.word_spacing * options.size;
                 prev_char = Some(c);
@@ -555,6 +317,7 @@ impl TextRenderer {
             }
 
             // Handle space specially - advance position even if font doesn't have space glyph
+            // (warning was already emitted in first pass if fallback is used)
             if c == ' ' {
                 let space_width = font
                     .glyph(' ')
@@ -610,10 +373,12 @@ impl TextRenderer {
             for pg in &glyphs {
                 if let Some(glyph) = font.glyph(pg.char) {
                     if let Some(glyph_bounds) = glyph.bounds() {
+                        // Convert bounds from font space to drawing space
+                        // Note: y0/y1 are swapped because Y is flipped
                         let x0 = pg.position.x + glyph_bounds.x0 * pg.scale;
-                        let y0 = pg.position.y - glyph_bounds.y1 * pg.scale; // Flip Y
+                        let y0 = font_y_to_drawing(glyph_bounds.y1, pg.scale, pg.position.y);
                         let x1 = pg.position.x + glyph_bounds.x1 * pg.scale;
-                        let y1 = pg.position.y - glyph_bounds.y0 * pg.scale; // Flip Y
+                        let y1 = font_y_to_drawing(glyph_bounds.y0, pg.scale, pg.position.y);
 
                         min_x = min_x.min(x0);
                         min_y = min_y.min(y0);
@@ -647,40 +412,6 @@ impl TextRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PathSegment;
-
-    #[test]
-    fn test_font_metrics_line_height() {
-        let metrics = FontMetrics::default();
-        assert_eq!(metrics.line_height(), 1100.0); // 800 - (-200) + 100
-    }
-
-    #[test]
-    fn test_contour_to_path() {
-        let contour = Contour::new()
-            .move_to((0.0, 0.0))
-            .line_to((100.0, 0.0))
-            .line_to((100.0, 100.0));
-
-        let path = contour.to_path();
-        assert_eq!(path.segments.len(), 3);
-        assert!(matches!(path.segments[0], PathSegment::MoveTo(_)));
-        assert!(matches!(path.segments[1], PathSegment::LineTo(_)));
-    }
-
-    #[test]
-    fn test_glyph_creation() {
-        let glyph = Glyph::new('A', 600.0).with_name("A").with_contour(
-            Contour::new()
-                .move_to((0.0, 0.0))
-                .line_to((300.0, 700.0))
-                .line_to((600.0, 0.0)),
-        );
-
-        assert_eq!(glyph.unicode, 'A');
-        assert_eq!(glyph.advance_width, 600.0);
-        assert_eq!(glyph.contours.len(), 1);
-    }
 
     #[test]
     fn test_text_options_builder() {
@@ -693,5 +424,66 @@ mod tests {
         assert_eq!(options.position, Point::new(100.0, 200.0));
         assert_eq!(options.align, TextAlign::Center);
         assert_eq!(options.letter_spacing, 0.1);
+    }
+
+    #[test]
+    fn test_font_y_to_drawing_coordinate_handedness() {
+        // Font space: Y-up (positive Y = above baseline)
+        // Drawing space: Y-down (positive Y = below baseline)
+        let baseline_y = 100.0;
+        let scale = 1.0;
+
+        // A point above the baseline in font space (positive Y)
+        // should be above the baseline in drawing space (smaller Y value)
+        let font_y_above = 50.0; // 50 units above baseline in font space
+        let drawing_y = font_y_to_drawing(font_y_above, scale, baseline_y);
+        assert!(
+            drawing_y < baseline_y,
+            "Font Y above baseline ({}) should map to drawing Y above baseline (< {}), got {}",
+            font_y_above,
+            baseline_y,
+            drawing_y
+        );
+        assert_eq!(drawing_y, 50.0); // baseline (100) - font_y (50) * scale (1) = 50
+
+        // A point below the baseline in font space (negative Y)
+        // should be below the baseline in drawing space (larger Y value)
+        let font_y_below = -30.0; // 30 units below baseline in font space
+        let drawing_y = font_y_to_drawing(font_y_below, scale, baseline_y);
+        assert!(
+            drawing_y > baseline_y,
+            "Font Y below baseline ({}) should map to drawing Y below baseline (> {}), got {}",
+            font_y_below,
+            baseline_y,
+            drawing_y
+        );
+        assert_eq!(drawing_y, 130.0); // baseline (100) - font_y (-30) * scale (1) = 130
+    }
+
+    #[test]
+    fn test_font_y_to_drawing_with_scale() {
+        let baseline_y = 200.0;
+        let scale = 2.0; // Double size
+
+        // 50 units above baseline, scaled 2x
+        let drawing_y = font_y_to_drawing(50.0, scale, baseline_y);
+        assert_eq!(drawing_y, 100.0); // 200 - 50 * 2 = 100
+
+        // 25 units below baseline, scaled 2x
+        let drawing_y = font_y_to_drawing(-25.0, scale, baseline_y);
+        assert_eq!(drawing_y, 250.0); // 200 - (-25) * 2 = 250
+    }
+
+    #[test]
+    fn test_font_y_to_drawing_baseline_at_origin() {
+        // When baseline is at Y=0, ascenders should have negative Y in drawing space
+        let baseline_y = 0.0;
+        let scale = 1.0;
+
+        let ascender_y = font_y_to_drawing(100.0, scale, baseline_y);
+        assert_eq!(ascender_y, -100.0);
+
+        let descender_y = font_y_to_drawing(-50.0, scale, baseline_y);
+        assert_eq!(descender_y, 50.0);
     }
 }
