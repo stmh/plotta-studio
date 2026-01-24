@@ -4,8 +4,8 @@ use drawing_core::Point;
 
 use super::config::MotionConfig;
 use super::segment::{
-    calculate_junction_velocity, distance_to_velocity, time_to_velocity, velocity_after_acceleration,
-    MotionSegment,
+    calculate_junction_velocity, distance_to_velocity, time_to_velocity,
+    velocity_after_acceleration, MotionSegment,
 };
 
 /// A planned motion profile for a segment

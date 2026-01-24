@@ -64,6 +64,4 @@ pub use profile::{MotionPlanner, MotionProfile};
 pub use sm_command::{generate_sm_commands, SmCommand, SmPlannedMove};
 
 // Re-export LM command types (legacy)
-pub use lm_command::{
-    acceleration_to_accel_param, velocity_to_rate, LmCommand, PlannedMove,
-};
+pub use lm_command::{acceleration_to_accel_param, velocity_to_rate, LmCommand, PlannedMove};

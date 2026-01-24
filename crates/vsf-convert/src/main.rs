@@ -95,10 +95,22 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Asteroids { input, output } => {
-            convert_font("Asteroids", input, &output, formats::asteroids::embedded_data(), formats::asteroids::parse)?;
+            convert_font(
+                "Asteroids",
+                input,
+                &output,
+                formats::asteroids::embedded_data(),
+                formats::asteroids::parse,
+            )?;
         }
         Commands::Apple410 { input, output } => {
-            convert_font("Apple 410", input, &output, formats::apple410::embedded_data(), formats::apple410::parse)?;
+            convert_font(
+                "Apple 410",
+                input,
+                &output,
+                formats::apple410::embedded_data(),
+                formats::apple410::parse,
+            )?;
         }
         Commands::Minf { input, output } => {
             println!("Converting minf font...");
@@ -115,11 +127,29 @@ fn main() -> Result<()> {
             std::fs::create_dir_all(&output_dir)
                 .with_context(|| format!("Failed to create {}", output_dir.display()))?;
 
-            println!("Converting all embedded fonts to {}...", output_dir.display());
+            println!(
+                "Converting all embedded fonts to {}...",
+                output_dir.display()
+            );
 
-            convert_embedded(&output_dir, "asteroids.vsf", formats::asteroids::embedded_data(), formats::asteroids::parse)?;
-            convert_embedded(&output_dir, "apple410.vsf", formats::apple410::embedded_data(), formats::apple410::parse)?;
-            convert_embedded(&output_dir, "minf.vsf", formats::minf::EMBEDDED_DATA, formats::minf::parse)?;
+            convert_embedded(
+                &output_dir,
+                "asteroids.vsf",
+                formats::asteroids::embedded_data(),
+                formats::asteroids::parse,
+            )?;
+            convert_embedded(
+                &output_dir,
+                "apple410.vsf",
+                formats::apple410::embedded_data(),
+                formats::apple410::parse,
+            )?;
+            convert_embedded(
+                &output_dir,
+                "minf.vsf",
+                formats::minf::EMBEDDED_DATA,
+                formats::minf::parse,
+            )?;
 
             println!("Done!");
         }
