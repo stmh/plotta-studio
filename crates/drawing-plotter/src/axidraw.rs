@@ -511,7 +511,7 @@ impl AxiDraw {
     /// hardware on connect, we have an accurate current position.
     pub fn home(&mut self) -> Result<(), PlotterError> {
         self.pen_up_with_force(true)?;
-        self.move_to(Point::ZERO)?;
+        self.travel_to(Point::ZERO)?;
         Ok(())
     }
 
@@ -679,6 +679,21 @@ impl AxiDraw {
         Ok(())
     }
 
+    /// Travel to a position with the pen up, using motion planning when enabled.
+    ///
+    /// This is the preferred call for inter-stroke travel: it uses a trapezoidal
+    /// velocity profile (with pen-up acceleration) when `motion_planning_enabled`
+    /// is set, falling back to constant-velocity `move_to` otherwise. Planned
+    /// pen-up travel reduces touchdown jerk and prevents that jerk from being
+    /// recorded as positional skew on the next short stroke.
+    pub fn travel_to(&mut self, target: Point) -> Result<(), PlotterError> {
+        if self.config.motion_planning_enabled {
+            self.move_to_with_planning(target)
+        } else {
+            self.move_to(target)
+        }
+    }
+
     /// Move to a position with motion planning (uses acceleration profiles)
     ///
     /// This creates a simple single-segment move with trapezoidal velocity profile
@@ -692,18 +707,21 @@ impl AxiDraw {
             return Ok(());
         }
 
-        let motion_config = self.config.motion_config();
-        let speed = if self.pen_is_down {
-            self.config.pen_down_speed
+        // Pick the motion config (speed + acceleration) based on pen state.
+        // Pen-up travel uses its own (typically higher) acceleration so the
+        // carriage doesn't arrive at the next stroke start with residual
+        // jerk that would shift short detail strokes.
+        let motion_config = if self.pen_is_down {
+            self.config.motion_config()
         } else {
-            self.config.pen_up_speed
+            self.config.motion_config_pen_up()
         };
 
         // For single-segment moves, we start and end at zero velocity
         let profile = MotionProfile::calculate(
             0.0,                            // entry velocity
             0.0,                            // exit velocity
-            speed,                          // max velocity
+            motion_config.max_velocity,     // max velocity
             distance,                       // distance
             motion_config.max_acceleration, // max acceleration
         );
@@ -793,8 +811,9 @@ impl AxiDraw {
                 continue;
             }
 
-            // Move to stroke start (pen up) - always use constant velocity for travel
-            self.move_to(opt_stroke.start())?;
+            // Move to stroke start (pen up) - use motion-planned travel when
+            // enabled, so the carriage decelerates to a clean stop before pen-down.
+            self.travel_to(opt_stroke.start())?;
 
             // Put pen down
             self.pen_down()?;
@@ -822,8 +841,8 @@ impl AxiDraw {
             self.pen_up()?;
         }
 
-        // Return home
-        self.move_to(Point::ZERO)?;
+        // Return home (pen up) - use motion-planned travel.
+        self.travel_to(Point::ZERO)?;
         self.disable_motors()?;
 
         Ok(())
@@ -899,7 +918,7 @@ impl AxiDraw {
                 if ctrl.is_cancelled() {
                     // Cancel requested - raise pen, go home, and exit
                     self.pen_up()?;
-                    self.move_to(Point::ZERO)?;
+                    self.travel_to(Point::ZERO)?;
                     self.disable_motors()?;
                     on_event(PlotEvent::Cancelled);
                     return Ok(());
@@ -912,7 +931,7 @@ impl AxiDraw {
                     // Check if we were cancelled while paused
                     if ctrl.is_cancelled() {
                         self.pen_up()?;
-                        self.move_to(Point::ZERO)?;
+                        self.travel_to(Point::ZERO)?;
                         self.disable_motors()?;
                         on_event(PlotEvent::Cancelled);
                         return Ok(());
@@ -952,13 +971,15 @@ impl AxiDraw {
 
             on_event(PlotEvent::StrokeStart { index, total });
 
-            // Move to stroke start (pen up) - uses effective start considering reversal
+            // Move to stroke start (pen up) - uses effective start considering reversal.
+            // Use motion-planned travel when enabled so the carriage settles before
+            // pen-down, avoiding residual jerk on short detail strokes.
             let start = opt_stroke.start();
             on_event(PlotEvent::MoveTo {
                 position: start,
                 pen_down: false,
             });
-            self.move_to(start)?;
+            self.travel_to(start)?;
 
             // Put pen down
             self.pen_down()?;
@@ -1018,13 +1039,13 @@ impl AxiDraw {
             on_event(PlotEvent::StrokeComplete { index, total });
         }
 
-        // Return home
+        // Return home (pen up) with motion-planned travel.
         log::debug!("Returning to home position...");
         on_event(PlotEvent::MoveTo {
             position: Point::ZERO,
             pen_down: false,
         });
-        self.move_to(Point::ZERO)?;
+        self.travel_to(Point::ZERO)?;
         self.disable_motors()?;
 
         let elapsed = plot_start.elapsed();

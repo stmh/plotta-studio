@@ -104,12 +104,35 @@ impl SmCommand {
             rate2 = self.steps_axis2.abs() as f64 / self.duration_ms as f64;
         }
 
-        // Check for underspeed (motor resonance) and zero out slow axes
-        if rate1 > 0.0 && rate1 < MIN_STEP_RATE {
-            self.steps_axis1 = 0;
+        // Check for underspeed (motor resonance) on the Cartesian axes.
+        //
+        // IMPORTANT: this check must be done in X/Y space, not on the CoreXY
+        // motor axes. Zeroing a single motor axis while the other retains
+        // steps causes the carriage to move diagonally by half a step in both
+        // X and Y (Δx = (Δa1+Δa2)/2, Δy = (Δa1-Δa2)/2), and also makes
+        // `xy_steps()` lose half a step to integer truncation. The net effect
+        // is a sub-mm positional skew on short detail strokes (e.g. dots on
+        // i's, t-crossbars).
+        //
+        // By construction `steps_axis1 ± steps_axis2` is even (we always
+        // build commands via `from_xy_steps`), so we can recover the original
+        // X/Y steps exactly here.
+        let steps_x = (self.steps_axis1 + self.steps_axis2) / 2;
+        let steps_y = (self.steps_axis1 - self.steps_axis2) / 2;
+        let rate_x = steps_x.abs() as f64 / self.duration_ms as f64;
+        let rate_y = steps_y.abs() as f64 / self.duration_ms as f64;
+
+        let mut new_x = steps_x;
+        let mut new_y = steps_y;
+        if rate_x > 0.0 && rate_x < MIN_STEP_RATE {
+            new_x = 0;
         }
-        if rate2 > 0.0 && rate2 < MIN_STEP_RATE {
-            self.steps_axis2 = 0;
+        if rate_y > 0.0 && rate_y < MIN_STEP_RATE {
+            new_y = 0;
+        }
+        if new_x != steps_x || new_y != steps_y {
+            self.steps_axis1 = new_x + new_y;
+            self.steps_axis2 = new_x - new_y;
         }
 
         // Return false if both axes are now zero
@@ -205,7 +228,18 @@ pub fn generate_sm_commands(
     let num_slices = (total_time_ms / TIME_SLICE_MS).max(1);
     let slice_duration_ms = TIME_SLICE_MS;
 
-    let mut commands = Vec::with_capacity(num_slices as usize);
+    // Exact integer-step target for the whole move. We force the planner's
+    // cumulative target on the LAST slice to equal these values, and emit a
+    // correction command at the end if validation dropped any steps, so that
+    // the SM-based motion lands on the same endpoint the LM-based `move_to`
+    // would produce (within 0.5 step). Without this, time-slice midpoint
+    // integration accumulates fractional errors and the carriage ends short
+    // of the requested endpoint — which manifests as every subsequent path
+    // being dislocated by the residual.
+    let total_target_x = (delta.x * steps_per_mm).round() as i32;
+    let total_target_y = (delta.y * steps_per_mm).round() as i32;
+
+    let mut commands = Vec::with_capacity(num_slices as usize + 1);
     let mut total_duration_ms = 0u32;
 
     // Track cumulative distance and steps for velocity profile interpolation
@@ -242,9 +276,17 @@ pub fn generate_sm_commands(
         let target_x = dir_x * new_cumulative;
         let target_y = dir_y * new_cumulative;
 
-        // Calculate target steps (total from start)
-        let target_steps_x = (target_x * steps_per_mm).round() as i32;
-        let target_steps_y = (target_y * steps_per_mm).round() as i32;
+        // Calculate target steps (total from start). On the final slice,
+        // snap to the exact integer-step total so the move ends precisely at
+        // `end`, regardless of midpoint-velocity integration error.
+        let (target_steps_x, target_steps_y) = if slice_idx == num_slices - 1 {
+            (total_target_x, total_target_y)
+        } else {
+            (
+                (target_x * steps_per_mm).round() as i32,
+                (target_y * steps_per_mm).round() as i32,
+            )
+        };
 
         // Steps for this slice = target - cumulative
         let slice_steps_x = target_steps_x - cumulative_steps_x;
@@ -270,6 +312,31 @@ pub fn generate_sm_commands(
         cumulative_distance = new_cumulative;
         cumulative_steps_x = target_steps_x;
         cumulative_steps_y = target_steps_y;
+    }
+
+    // Correction command: if validation dropped any slices' steps (e.g. an
+    // underspeed slice at the tail of a decel phase was zeroed out), append
+    // a final small SM command to carry the missing steps. This guarantees
+    // SM-based motion lands on the same integer-step endpoint as LM `move_to`
+    // would, which is critical for path-to-path positioning accuracy.
+    let missing_x = total_target_x - actual_total_steps_x;
+    let missing_y = total_target_y - actual_total_steps_y;
+    if missing_x != 0 || missing_y != 0 {
+        // Pick a duration that keeps the slowest non-zero axis above
+        // MIN_STEP_RATE. `validate_and_adjust` will further increase duration
+        // if either axis would exceed MAX_STEP_RATE.
+        let max_steps = missing_x.abs().max(missing_y.abs()) as f64;
+        // Aim for ~half of MAX_STEP_RATE for a comfortable rate.
+        let target_rate = MAX_STEP_RATE * 0.5;
+        let duration_ms = ((max_steps / target_rate).ceil() as u32).max(1);
+        let mut cmd = SmCommand::from_xy_steps(duration_ms, missing_x, missing_y);
+        if cmd.validate_and_adjust() {
+            let (actual_x, actual_y) = cmd.xy_steps();
+            actual_total_steps_x += actual_x;
+            actual_total_steps_y += actual_y;
+            total_duration_ms += cmd.duration_ms;
+            commands.push(cmd);
+        }
     }
 
     SmPlannedMove {
@@ -451,21 +518,40 @@ mod tests {
     }
 
     #[test]
-    fn test_sm_command_validate_underspeed() {
-        // Create command with very slow step rate (< 0.002 steps/ms)
-        // 1 step in 1000ms = 0.001 steps/ms < 0.002 min
-        let mut cmd = SmCommand::new(1000, 1, 100);
+    fn test_sm_command_validate_underspeed_xy_space() {
+        // Underspeed check operates in X/Y (Cartesian) space, not motor space.
+        // A pure-X move of 100 steps over 1000ms => rate_x = 0.1 (OK), rate_y = 0 (ignored).
+        // CoreXY encoding: axis1 = x+y = 100, axis2 = x-y = 100.
+        let mut cmd = SmCommand::from_xy_steps(1000, 100, 0);
         let valid = cmd.validate_and_adjust();
 
-        assert!(valid); // Still valid because axis2 has enough steps
-        assert_eq!(cmd.steps_axis1, 0); // Axis1 zeroed out due to underspeed
-        assert_eq!(cmd.steps_axis2, 100); // Axis2 unchanged
+        assert!(valid);
+        // Pure-X move should be preserved exactly (no asymmetric zeroing).
+        let (x, y) = cmd.xy_steps();
+        assert_eq!(x, 100);
+        assert_eq!(y, 0);
+    }
+
+    #[test]
+    fn test_sm_command_validate_y_underspeed_zeroed() {
+        // Y component is too slow (1 step in 1000ms = 0.001 < MIN_STEP_RATE),
+        // X is fine. Y should be zeroed in X/Y space, keeping motion straight along X.
+        let mut cmd = SmCommand::from_xy_steps(1000, 100, 1);
+        let valid = cmd.validate_and_adjust();
+
+        assert!(valid);
+        let (x, y) = cmd.xy_steps();
+        assert_eq!(x, 100);
+        assert_eq!(y, 0); // Y zeroed because of underspeed
+                          // Motor axes must remain symmetric (no diagonal skew).
+        assert_eq!(cmd.steps_axis1, 100);
+        assert_eq!(cmd.steps_axis2, 100);
     }
 
     #[test]
     fn test_sm_command_validate_both_underspeed() {
-        // Both axes too slow - should return false
-        let mut cmd = SmCommand::new(1000, 1, 1);
+        // Both X and Y too slow - should return false
+        let mut cmd = SmCommand::from_xy_steps(1000, 1, 1);
         let valid = cmd.validate_and_adjust();
 
         assert!(!valid); // Invalid - would result in no motion
@@ -721,6 +807,49 @@ mod tests {
                 expected_steps,
                 tolerance,
                 total_steps_axis1
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_sm_commands_exact_endpoint() {
+        // Regression: SM-based motion must land on the exact integer-step
+        // endpoint that LM `move_to` would produce (within 0.5 step), so that
+        // pen-up travel doesn't dislocate the next stroke. Previously,
+        // time-slice midpoint integration left the carriage short of the
+        // target by a fractional amount that accumulated across moves.
+        let steps_per_mm = 80.0;
+        // Try a variety of distances and directions, including ones that
+        // exercise both the multi-slice and trapezoidal-vs-triangular paths.
+        let test_cases: &[(f64, f64)] = &[
+            (5.0, 0.0),
+            (10.0, 0.0),
+            (50.0, 0.0),
+            (3.0, 4.0),
+            (7.3, 2.1),
+            (0.5, 0.0),
+            (1.7, -2.3),
+            (-12.4, 8.7),
+            (100.0, 50.0),
+        ];
+        for &(dx, dy) in test_cases {
+            let dist = (dx * dx + dy * dy).sqrt();
+            let profile = MotionProfile::calculate(0.0, 0.0, 75.0, dist, 1524.0); // pen-up profile
+            let start = Point::new(0.0, 0.0);
+            let end = Point::new(dx, dy);
+            let planned = generate_sm_commands(&profile, start, end, steps_per_mm);
+
+            let expected_x = (dx * steps_per_mm).round() as i32;
+            let expected_y = (dy * steps_per_mm).round() as i32;
+            assert_eq!(
+                planned.actual_steps_x, expected_x,
+                "endpoint X mismatch for delta=({}, {}): expected {} steps, got {}",
+                dx, dy, expected_x, planned.actual_steps_x
+            );
+            assert_eq!(
+                planned.actual_steps_y, expected_y,
+                "endpoint Y mismatch for delta=({}, {}): expected {} steps, got {}",
+                dx, dy, expected_y, planned.actual_steps_y
             );
         }
     }

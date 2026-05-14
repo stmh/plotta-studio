@@ -242,14 +242,14 @@ mod tests {
         };
         let time = estimate_plot_time(&strokes, &config);
 
-        // Should include drawing time + servo timing (rate-adjusted)
+        // Should include drawing time + servo timing (rate-adjusted) + settle delay
         // Drawing: 25mm / 25mm/s = 1000ms
         // Servo timing with both rates at 50:
-        //   pen_down (rate=50): 251ms
-        //   pen_up (rate=50): 251ms
-        // Total: ~1502ms
-        assert!(time.as_millis() >= 1460);
-        assert!(time.as_millis() <= 1540);
+        //   pen_down (rate=50): 251ms move + 50ms default settle delay = 301ms
+        //   pen_up   (rate=50): 251ms move + 0ms delay                = 251ms
+        // Total: ~1552ms
+        assert!(time.as_millis() >= 1510);
+        assert!(time.as_millis() <= 1590);
     }
 
     #[test]

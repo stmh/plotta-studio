@@ -809,6 +809,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-plotter-calibration"
+version = "0.1.0"
+dependencies = [
+ "drawing-text",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
 name = "example-svg-viewer"
 version = "0.1.0"
 dependencies = [

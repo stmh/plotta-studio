@@ -1,6 +1,8 @@
 //! Configuration for plotting
 
-use crate::motion::{MotionConfig, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_JUNCTION_DEVIATION};
+use crate::motion::{
+    MotionConfig, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_ACCEL_PEN_UP, DEFAULT_JUNCTION_DEVIATION,
+};
 
 /// Servo timing constants from Python AxiDraw driver
 /// These are used to calculate how long to wait for the servo to physically move.
@@ -104,6 +106,10 @@ pub struct PlotConfig {
     /// Maximum acceleration for pen-down moves (mm/s^2)
     /// Higher values allow faster direction changes but may cause harsher motor sounds.
     pub max_acceleration: f64,
+    /// Maximum acceleration for pen-up (travel) moves (mm/s^2)
+    /// Used when planning inter-stroke travel. Typically higher than
+    /// `max_acceleration` because the pen is not in contact with paper.
+    pub pen_up_acceleration: f64,
     /// Junction deviation for corner velocity calculation (mm)
     /// Controls the trade-off between speed and accuracy at corners.
     /// Smaller values = slower corners, larger = faster but less accurate.
@@ -132,11 +138,16 @@ impl Default for PlotConfig {
             // to prevent ghost lines from insufficient pen-up time
             pen_rate_raise: 50,
             pen_rate_lower: 50,
-            // No additional delay by default (servo timing is calculated dynamically)
-            pen_down_delay: 0,
+            // Default pen-down settle delay (ms). Gives the pen tip time to
+            // stop bouncing after the servo reaches the down position before
+            // motion begins. Without this, short detail strokes (i-dots,
+            // t-crossbars) can record servo/tip oscillation as positional
+            // skew. The Inkscape AxiDraw extension uses a similar settle.
+            pen_down_delay: 50,
             pen_up_delay: 0,
             // Motion planning defaults (matches Python AxiDraw driver)
             max_acceleration: DEFAULT_ACCEL_PEN_DOWN,
+            pen_up_acceleration: DEFAULT_ACCEL_PEN_UP,
             junction_deviation: DEFAULT_JUNCTION_DEVIATION,
             motion_planning_enabled: true,
             // Position verification disabled by default (diagnostic feature)
@@ -166,16 +177,27 @@ impl PlotConfig {
         self.pen_down_move_time() + self.pen_down_delay
     }
 
-    /// Create a MotionConfig from this PlotConfig
-    ///
-    /// Uses pen_down_speed as max_velocity since motion planning
-    /// is primarily for pen-down (drawing) moves.
+    /// Create a MotionConfig for pen-down (drawing) moves from this PlotConfig.
     pub fn motion_config(&self) -> MotionConfig {
         MotionConfig {
             max_velocity: self.pen_down_speed,
             max_acceleration: self.max_acceleration,
             junction_deviation: self.junction_deviation,
             steps_per_mm: 80.0, // AxiDraw constant
+        }
+    }
+
+    /// Create a MotionConfig for pen-up (travel) moves from this PlotConfig.
+    ///
+    /// Uses `pen_up_speed` and `pen_up_acceleration` so that inter-stroke
+    /// travel uses trapezoidal velocity profiles instead of constant velocity,
+    /// reducing touchdown jerk on the next stroke.
+    pub fn motion_config_pen_up(&self) -> MotionConfig {
+        MotionConfig {
+            max_velocity: self.pen_up_speed,
+            max_acceleration: self.pen_up_acceleration,
+            junction_deviation: self.junction_deviation,
+            steps_per_mm: 80.0,
         }
     }
 
@@ -251,9 +273,11 @@ mod tests {
         assert_eq!(config.pen_up_move_time(), 251);
         assert_eq!(config.pen_down_move_time(), 251);
 
-        // With default delay of 0, total time equals move time
+        // Pen-up has no extra delay by default: total == move time.
         assert_eq!(config.pen_up_total_time(), 251);
-        assert_eq!(config.pen_down_total_time(), 251);
+        // Pen-down has a default 50ms settle delay to prevent tip-bounce
+        // ghosting on short detail strokes (i-dots, t-crossbars).
+        assert_eq!(config.pen_down_total_time(), 301); // 251 + 50
     }
 
     #[test]

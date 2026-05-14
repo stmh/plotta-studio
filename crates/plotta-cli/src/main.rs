@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::{self, BufRead};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use plotta_cli::setup_diagram::{PlotterSetup, SetupDiagram};
@@ -244,6 +244,7 @@ fn build_config(
         pen_rate_lower: pen_rate_lower.unwrap_or(defaults.pen_rate_lower),
         // Motion planning settings (use defaults for now, can add CLI flags later)
         max_acceleration: defaults.max_acceleration,
+        pen_up_acceleration: defaults.pen_up_acceleration,
         junction_deviation: defaults.junction_deviation,
         motion_planning_enabled: defaults.motion_planning_enabled,
         // Position verification (diagnostic mode)
@@ -359,7 +360,7 @@ fn main() -> Result<()> {
 }
 
 /// Validate and load a drawing file with size limits
-fn load_drawing_with_validation(file: &PathBuf) -> Result<Drawing> {
+fn load_drawing_with_validation(file: &Path) -> Result<Drawing> {
     // Check file size before loading
     let metadata = fs::metadata(file)
         .with_context(|| format!("Failed to read file metadata: {}", file.display()))?;
@@ -416,7 +417,7 @@ fn create_render_context() -> Result<RenderContext> {
 
 /// Prepare a drawing file for plotting: load, validate, flatten, and optimize
 fn prepare_drawing_from_file(
-    file: &PathBuf,
+    file: &Path,
     config: &PlotConfig,
 ) -> Result<(Drawing, PreparedDrawing)> {
     let drawing = load_drawing_with_validation(file)?;
@@ -442,7 +443,7 @@ struct PrintStatsOptions {
 
 /// Print drawing statistics
 fn print_drawing_stats(
-    file: &PathBuf,
+    file: &Path,
     prepared: &PreparedDrawing,
     config: &PlotConfig,
     opts: &PrintStatsOptions,
@@ -643,7 +644,7 @@ fn cmd_raw(port: Option<&str>, command: &str) -> Result<()> {
 }
 
 /// Preview a drawing without plotting
-fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
+fn cmd_preview(file: &Path, config: PlotConfig) -> Result<()> {
     let (_drawing, prepared) = prepare_drawing_from_file(file, &config)?;
 
     print_drawing_stats(
@@ -661,8 +662,8 @@ fn cmd_preview(file: &PathBuf, config: PlotConfig) -> Result<()> {
 
 /// Record a drawing to SVG file (simulate plotting without hardware)
 fn cmd_record(
-    file: &PathBuf,
-    output: &PathBuf,
+    file: &Path,
+    output: &Path,
     config: PlotConfig,
     record_options: RecordOptions,
 ) -> Result<()> {
@@ -764,7 +765,7 @@ fn wait_for_enter() -> Result<()> {
 /// Plot a drawing with progress bar
 fn cmd_plot(
     port: Option<&str>,
-    file: &PathBuf,
+    file: &Path,
     config: PlotConfig,
     setup: PlotterSetup,
     skip_confirmation: bool,
