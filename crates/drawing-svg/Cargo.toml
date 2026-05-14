@@ -7,4 +7,4 @@ edition.workspace = true
 drawing-core = { workspace = true }
 drawing-plotter = { workspace = true }
 thiserror = { workspace = true }
-usvg = "0.45"
+usvg = "0.47"
