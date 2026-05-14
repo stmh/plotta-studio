@@ -35,7 +35,7 @@ impl Default for RotatedSquaresSketch {
 
 impl Sketch for RotatedSquaresSketch {
     fn setup(&mut self, ctx: &SketchContext) -> Drawing {
-        let mut drawing = Drawing::a4_portrait();
+        let mut drawing = Drawing::new(148.0, 210.0);
         self.generate(&mut drawing, ctx);
         drawing
     }
@@ -141,10 +141,13 @@ impl RotatedSquaresSketch {
             }
         }
 
-        // Add frame with title and signature
+        // Add frame with title and signature (8 mm sides, 16 mm bottom)
         let frame_options = FrameOptions::with_default_font(ctx.fonts)
             .expect("Default font not loaded")
-            .margin_bottom(15.0)
+            .margin_left(8.0)
+            .margin_top(8.0)
+            .margin_right(8.0)
+            .margin_bottom(16.0)
             .with_signature();
 
         drawing.add(draw_frame_with_title(

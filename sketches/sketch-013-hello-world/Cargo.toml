@@ -1,0 +1,14 @@
+[package]
+name = "sketch-013-hello-world"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+# Enable AxiDraw plotting (requires libudev on Linux)
+hardware = ["sketch-runner/hardware"]
+
+[dependencies]
+sketch-runner = { workspace = true }
+drawing-text = { workspace = true }
+drawing-utils = { workspace = true }
