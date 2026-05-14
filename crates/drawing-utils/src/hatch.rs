@@ -1,7 +1,7 @@
 //! Hatching utilities for filling shapes with parallel lines
 
 use drawing_core::{Color, Element, Group, Point};
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 /// Safety margin multiplier to ensure hatch lines cover rotated shapes
 const HATCH_EXTENT_MULTIPLIER: f64 = 1.5;
@@ -136,9 +136,9 @@ pub fn generate_hatch_lines(center: Point, radius: f64, options: &HatchOptions) 
     let extent = radius * HATCH_EXTENT_MULTIPLIER;
 
     // Create RNG based on seed option
-    let mut rng: Box<dyn rand::RngCore> = match options.seed {
+    let mut rng: Box<dyn Rng> = match options.seed {
         Some(seed) => Box::new(rand::rngs::StdRng::seed_from_u64(seed)),
-        None => Box::new(rand::thread_rng()),
+        None => Box::new(rand::rng()),
     };
 
     let has_jitter = options.position_jitter > 0.0
@@ -155,32 +155,32 @@ pub fn generate_hatch_lines(center: Point, radius: f64, options: &HatchOptions) 
 
             (
                 if pos_jitter > 0.0 {
-                    rng.gen_range(-pos_jitter..pos_jitter)
+                    rng.random_range(-pos_jitter..pos_jitter)
                 } else {
                     0.0
                 },
                 if end_jitter > 0.0 {
-                    rng.gen_range(-end_jitter..end_jitter)
+                    rng.random_range(-end_jitter..end_jitter)
                 } else {
                     0.0
                 },
                 if end_jitter > 0.0 {
-                    rng.gen_range(-end_jitter..end_jitter)
+                    rng.random_range(-end_jitter..end_jitter)
                 } else {
                     0.0
                 },
                 if end_jitter > 0.0 {
-                    rng.gen_range(-end_jitter..end_jitter)
+                    rng.random_range(-end_jitter..end_jitter)
                 } else {
                     0.0
                 },
                 if end_jitter > 0.0 {
-                    rng.gen_range(-end_jitter..end_jitter)
+                    rng.random_range(-end_jitter..end_jitter)
                 } else {
                     0.0
                 },
                 if ang_jitter > 0.0 {
-                    rng.gen_range(-ang_jitter..ang_jitter)
+                    rng.random_range(-ang_jitter..ang_jitter)
                 } else {
                     0.0
                 },
