@@ -1,0 +1,48 @@
+name: Release-please
+
+# Automates release-cutting using googleapis/release-please.
+#
+# Why release-please rather than release-plz:
+#   - release-plz runs `cargo package` against the previous-release
+#     worktree to detect changes. Our internal crate names
+#     (drawing-core, sketch-runner, etc.) may collide with unrelated
+#     crates on crates.io, breaking that verification step.
+#   - release-please does pure text manipulation of Cargo.toml +
+#     CHANGELOG.md. It never invokes cargo, so registry collisions
+#     are irrelevant.
+#
+# We do NOT publish to crates.io. Internal crates carry
+# `publish = false`. This workflow only:
+#   1. opens / updates a single release PR with version bump
+#      (workspace.package.version) and CHANGELOG entries derived from
+#      conventional-commit messages on main, and
+#   2. on merge of that PR, tags the commit as `vX.Y.Z` and creates
+#      the matching GitHub Release.
+
+on:
+  push:
+    branches:
+      - main
+
+# Don't race two PR-update runs against the same branch.
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release-please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # GITHUB_TOKEN is sufficient here because no downstream
+          # workflows depend on the tag-push event firing other jobs.
+          # If we ever add tag-triggered automation, switch to a
+          # fine-grained PAT (RELEASE_PLZ_TOKEN) like flowdrop-rs does.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

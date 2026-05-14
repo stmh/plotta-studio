@@ -2,6 +2,7 @@
 name = "sketch-runner"
 version.workspace = true
 edition.workspace = true
+publish = false
 
 [features]
 default = ["svg"]

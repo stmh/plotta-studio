@@ -2,6 +2,7 @@
 name = "example-hatched-circles"
 version.workspace = true
 edition.workspace = true
+publish = false
 
 [features]
 default = []

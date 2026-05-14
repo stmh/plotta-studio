@@ -2,6 +2,7 @@
 name = "drawing-plotter"
 version.workspace = true
 edition.workspace = true
+publish = false
 
 [features]
 default = ["hardware"]

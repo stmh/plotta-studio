@@ -2,6 +2,7 @@
 name = "plotta-cli"
 version.workspace = true
 edition.workspace = true
+publish = false
 license.workspace = true
 description = "CLI for plotter control"
 

@@ -2,6 +2,7 @@
 name = "vsf-convert"
 version.workspace = true
 edition.workspace = true
+publish = false
 description = "CLI tool to convert single-line fonts to VSF format"
 license.workspace = true
 

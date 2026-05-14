@@ -2,6 +2,7 @@
 name = "drawing-svg"
 version.workspace = true
 edition.workspace = true
+publish = false
 
 [dependencies]
 drawing-core = { workspace = true }

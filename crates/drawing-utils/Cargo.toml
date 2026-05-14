@@ -2,6 +2,7 @@
 name = "drawing-utils"
 version.workspace = true
 edition.workspace = true
+publish = false
 description = "Reusable utilities for plotta-studio drawings"
 
 [dependencies]
