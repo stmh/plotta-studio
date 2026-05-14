@@ -537,24 +537,22 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
-            WindowEvent::Resized(size) => {
-                if size.width > 0 && size.height > 0 {
-                    if let Some(state) = &mut self.render_state {
-                        state.surface_config.width = size.width;
-                        state.surface_config.height = size.height;
-                        state
-                            .surface
-                            .configure(&state.device, &state.surface_config);
-                    }
-
-                    if self.needs_initial_fit {
-                        self.view
-                            .fit_drawing(&self.drawing, size.width as f64, size.height as f64);
-                        self.needs_initial_fit = false;
-                    }
-
-                    needs_redraw = true;
+            WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
+                if let Some(state) = &mut self.render_state {
+                    state.surface_config.width = size.width;
+                    state.surface_config.height = size.height;
+                    state
+                        .surface
+                        .configure(&state.device, &state.surface_config);
                 }
+
+                if self.needs_initial_fit {
+                    self.view
+                        .fit_drawing(&self.drawing, size.width as f64, size.height as f64);
+                    self.needs_initial_fit = false;
+                }
+
+                needs_redraw = true;
             }
 
             WindowEvent::ModifiersChanged(modifiers) => {
