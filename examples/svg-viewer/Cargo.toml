@@ -1,5 +1,5 @@
 [package]
-name = "sketch-006-hamburg"
+name = "example-svg-viewer"
 version.workspace = true
 edition.workspace = true
 
@@ -11,4 +11,4 @@ hardware = ["sketch-runner/hardware"]
 [dependencies]
 sketch-runner = { workspace = true }
 drawing-svg = { workspace = true }
-drawing-utils = { workspace = true }
+drawing-text = { workspace = true }

@@ -1,5 +1,5 @@
 [package]
-name = "sketch-012-rotated-squares"
+name = "example-hello-world"
 version.workspace = true
 edition.workspace = true
 
@@ -10,5 +10,5 @@ hardware = ["sketch-runner/hardware"]
 
 [dependencies]
 sketch-runner = { workspace = true }
+drawing-text = { workspace = true }
 drawing-utils = { workspace = true }
-rand = "0.8"

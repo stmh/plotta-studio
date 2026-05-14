@@ -1,5 +1,5 @@
 [package]
-name = "sketch-003-text"
+name = "example-dvd-screensaver"
 version.workspace = true
 edition.workspace = true
 
@@ -10,4 +10,3 @@ hardware = ["sketch-runner/hardware"]
 
 [dependencies]
 sketch-runner = { workspace = true }
-drawing-text = { workspace = true }

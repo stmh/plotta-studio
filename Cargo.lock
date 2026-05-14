@@ -723,6 +723,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-clip-demo"
+version = "0.1.0"
+dependencies = [
+ "drawing-text",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
+name = "example-dvd-screensaver"
+version = "0.1.0"
+dependencies = [
+ "sketch-runner",
+]
+
+[[package]]
+name = "example-hatched-circles"
+version = "0.1.0"
+dependencies = [
+ "drawing-text",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
+name = "example-hello-world"
+version = "0.1.0"
+dependencies = [
+ "drawing-text",
+ "drawing-utils",
+ "sketch-runner",
+]
+
+[[package]]
+name = "example-svg-viewer"
+version = "0.1.0"
+dependencies = [
+ "drawing-svg",
+ "drawing-text",
+ "sketch-runner",
+]
+
+[[package]]
+name = "example-text"
+version = "0.1.0"
+dependencies = [
+ "drawing-text",
+ "sketch-runner",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2482,116 +2533,6 @@ name = "siphasher"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
-
-[[package]]
-name = "sketch-001-radial"
-version = "0.1.0"
-dependencies = [
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-002-dvd-screensaver"
-version = "0.1.0"
-dependencies = [
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-003-text"
-version = "0.1.0"
-dependencies = [
- "drawing-text",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-004-hatched-circles"
-version = "0.1.0"
-dependencies = [
- "drawing-text",
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-005-svg-viewer"
-version = "0.1.0"
-dependencies = [
- "drawing-svg",
- "drawing-text",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-006-hamburg"
-version = "0.1.0"
-dependencies = [
- "drawing-svg",
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-007-1000-lines"
-version = "0.1.0"
-dependencies = [
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-008-wool-ball"
-version = "0.1.0"
-dependencies = [
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-009-altoetting"
-version = "0.1.0"
-dependencies = [
- "drawing-svg",
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-010-schnellstrasse"
-version = "0.1.0"
-dependencies = [
- "drawing-svg",
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-011-clip-demo"
-version = "0.1.0"
-dependencies = [
- "drawing-text",
- "drawing-utils",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-012-rotated-squares"
-version = "0.1.0"
-dependencies = [
- "drawing-utils",
- "rand",
- "sketch-runner",
-]
-
-[[package]]
-name = "sketch-013-hello-world"
-version = "0.1.0"
-dependencies = [
- "drawing-text",
- "drawing-utils",
- "sketch-runner",
-]
 
 [[package]]
 name = "sketch-runner"

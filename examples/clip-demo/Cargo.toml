@@ -1,5 +1,5 @@
 [package]
-name = "sketch-013-hello-world"
+name = "example-clip-demo"
 version.workspace = true
 edition.workspace = true
 
