@@ -96,12 +96,22 @@ pub trait Sketch {
     /// Built-in keys that can be overridden:
     /// - `E`: Export to SVG
     /// - `P`: Plot to AxiDraw
-    /// - `S`: Save to drawing.json
+    /// - `S`: Save drawing JSON
     /// - `R`: Reset view
     /// - `Space`: Fit drawing to window
     /// - `Escape`: Quit
     fn key_pressed(&mut self, _key: &Key, _drawing: &mut Drawing, _ctx: &SketchContext) -> bool {
         false
+    }
+
+    /// Optional: base filename (without extension) used by the built-in
+    /// `S` (JSON) and `E` (SVG) handlers.
+    ///
+    /// Return `None` (default) to use the runner's title-derived name
+    /// (`title.to_lowercase().replace(' ', "-")`). Override to add e.g. a
+    /// seed suffix so each export is uniquely named and reproducible.
+    fn base_filename(&self) -> Option<String> {
+        None
     }
 
     /// Optional: handle mouse press
@@ -304,6 +314,12 @@ impl<S: Sketch> AppState<S> {
             #[cfg(feature = "hardware")]
             plot_handle: None,
         }
+    }
+
+    fn base_filename(&self) -> String {
+        self.sketch
+            .base_filename()
+            .unwrap_or_else(|| self.config.title.to_lowercase().replace(' ', "-"))
     }
 
     fn refresh_strokes(&mut self) {
@@ -673,7 +689,8 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
 
                         Key::Character(c) if c.as_str() == "s" => {
                             // Save drawing
-                            let path = std::path::Path::new("drawing.json");
+                            let filename = format!("{}.json", self.base_filename());
+                            let path = std::path::Path::new(&filename);
                             match self.drawing.save(path) {
                                 Ok(_) => log::info!("Saved to {}", path.display()),
                                 Err(e) => log::error!("Failed to save: {e}"),
@@ -689,10 +706,7 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                         #[cfg(feature = "svg")]
                         Key::Character(c) if c.as_str() == "e" => {
                             // Export SVG
-                            let filename = format!(
-                                "{}.svg",
-                                self.config.title.to_lowercase().replace(' ', "-")
-                            );
+                            let filename = format!("{}.svg", self.base_filename());
                             match drawing_svg::export_svg(
                                 &self.drawing,
                                 &filename,
