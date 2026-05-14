@@ -21,4 +21,4 @@ anyhow = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
-crossterm = "0.28"
+crossterm = "0.29"

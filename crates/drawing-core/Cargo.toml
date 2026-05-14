@@ -8,4 +8,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 kurbo = { version = "0.11", features = ["serde"] }
 log = { workspace = true }
-geo = "0.32"
+geo = "0.33"
