@@ -29,17 +29,22 @@ pub trait Signature: Send + Sync {
 /// square X-shaped crossed strokes. Used in examples and as a sensible
 /// default when no personal signature is provided.
 ///
-/// Each X glyph is square (full height by full height) with a small gap
-/// between glyphs, giving an overall aspect ratio of roughly 3.4.
+/// Each X glyph is square at half the requested target height (the
+/// placeholder is intentionally subtle so it does not visually dominate
+/// the corner of a drawing). Overall aspect ratio is roughly 3.4 of the
+/// rendered height (≈1.7 of the requested target_height).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlaceholderSignature;
 
 impl Signature for PlaceholderSignature {
     fn render(&self, target_height: f64) -> (Element, f64) {
-        // Each X is square at the full target height; spacing is 20% of height.
-        let glyph_w = target_height;
-        let glyph_h = target_height;
-        let spacing = target_height * 0.2;
+        // Render at half the requested height so the demo signature is
+        // visually unobtrusive. Each X is square; spacing is 20% of the
+        // rendered glyph height.
+        let effective_h = target_height * 0.5;
+        let glyph_w = effective_h;
+        let glyph_h = effective_h;
+        let spacing = effective_h * 0.2;
 
         let mut group = Group::new();
         for i in 0..3 {
@@ -67,10 +72,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn placeholder_renders_at_requested_height() {
-        let (_, w) = PlaceholderSignature.render(5.0);
-        // 3 glyphs × 5 wide + 2 gaps × 1 = 17
-        assert!((w - 17.0).abs() < 1e-9);
+    fn placeholder_renders_at_half_requested_height() {
+        // target_height 10 → effective 5; 3 glyphs × 5 + 2 gaps × 1 = 17
+        let (_, w) = PlaceholderSignature.render(10.0);
+        assert!((w - 17.0).abs() < 1e-9, "got {w}");
     }
 
     #[test]
