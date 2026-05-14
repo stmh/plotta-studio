@@ -76,13 +76,24 @@ pub fn remove_duplicates(points: &[Point], tolerance: f64) -> Vec<Point> {
 
 /// Clean up a path by removing duplicates and collinear points.
 ///
-/// First removes points that are too close together, then removes
-/// points that lie on straight lines between their neighbors.
+/// First removes points that are too close together at a tight tolerance
+/// (to eliminate degenerate vertices without merging real detail), then
+/// removes points that lie on straight lines between their neighbors at
+/// a tolerance an order of magnitude *tighter* than the flattening
+/// tolerance.
+///
+/// The simplification tolerance has to be smaller than the flattening
+/// tolerance: a curve flattened to deviation `T` typically has local
+/// per-vertex perpendicular distances on the order of `T`, so using
+/// `tolerance` here for `simplify_points` would undo the flattening
+/// (collapsing smooth curves back into a few long line segments and
+/// visible corners). `tolerance * 0.1` preserves curve fidelity while
+/// still removing genuinely collinear redundant points.
 pub fn cleanup_points(points: Vec<Point>, tolerance: f64) -> Vec<Point> {
-    // First remove duplicate points (using a tighter tolerance)
+    // Remove near-duplicate points (very tight tolerance).
     let points = remove_duplicates(&points, tolerance * 0.1);
-    // Then remove collinear points
-    simplify_points(&points, tolerance)
+    // Remove genuinely collinear points without eating curve detail.
+    simplify_points(&points, tolerance * 0.1)
 }
 
 #[cfg(test)]
