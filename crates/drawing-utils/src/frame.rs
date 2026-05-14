@@ -221,20 +221,17 @@ pub fn draw_frame_with_title(drawing: &Drawing, title: &str, options: &FrameOpti
             .stroke_color(options.color),
     );
 
-    // Add signature if attached
+    // Add signature if attached. The signature renders itself at the
+    // requested height and reports its final width so we can right-align it.
     if let Some(signature) = &options.signature {
-        let (nat_w, nat_h) = signature.natural_size();
-        let scale = options.signature_height / nat_h;
-        let scaled_width = nat_w * scale;
+        let (sig_element, sig_width) = signature.render(options.signature_height);
 
         // Position in bottom right corner, below the frame line
-        let sig_x = drawing.width - options.margin_right - scaled_width - options.signature_margin;
+        let sig_x = drawing.width - options.margin_right - sig_width - options.signature_margin;
         let sig_y = drawing.height - options.margin_bottom + options.title_offset;
 
         group.push(
-            signature
-                .render()
-                .scale(scale, scale)
+            sig_element
                 .translate(sig_x, sig_y)
                 .stroke_width(options.stroke_width)
                 .stroke_color(options.color)

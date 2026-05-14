@@ -1,52 +1,45 @@
 //! Signature trait for adorning drawings.
 //!
-//! A [`Signature`] is any rendererable mark that can be placed in the corner
-//! of a framed drawing. Implementations supply the actual paths/shapes and
-//! report a natural size so the frame can scale them to a configured height.
+//! A [`Signature`] is any renderable mark that can be placed in the corner
+//! of a framed drawing. The implementation owns both the geometry **and**
+//! the sizing logic: given a requested target height in drawing units, it
+//! returns a rendered [`Element`] and the resulting width. The frame does
+//! not apply any further scaling.
 //!
-//! This crate ships a [`PlaceholderSignature`] ("xxx") suitable for demos.
-//! Personal signatures live outside the library — implement [`Signature`]
-//! in your own crate (e.g. an `art-utils` crate alongside your sketches).
+//! This crate ships [`PlaceholderSignature`] ("xxx") for demos. Personal
+//! signatures live outside the library — implement [`Signature`] in your
+//! own crate (e.g. an `art-utils` crate alongside your sketches).
 
 use drawing_core::{Element, Group, Path};
 
 /// A signature mark renderable as a drawing element.
 ///
-/// Implementations should render their content in a coordinate system whose
-/// natural extent is reported by [`Signature::natural_size`]. The frame
-/// rendering code scales the returned element uniformly so the rendered
-/// height matches the configured signature height; the origin of the
-/// returned element is expected to be at the top-left of the signature
-/// bounding box (i.e. the signature should already be normalized).
+/// The signature controls its own aspect ratio: the frame only specifies a
+/// target height; the signature returns whatever width its glyphs need.
+/// The returned element must be normalized so its bounding-box origin sits
+/// at `(0, 0)` and its height equals the requested `target_height`.
 pub trait Signature: Send + Sync {
-    /// Render the signature with its bounding-box origin at (0, 0).
+    /// Render the signature at the given height (in drawing units).
     ///
-    /// Returned coordinates are in the implementation's own natural units;
-    /// the frame will apply a uniform scale to convert to drawing units.
-    fn render(&self) -> Element;
-
-    /// Natural width and height of the signature, in its own coordinate units.
-    ///
-    /// Used by the frame layout to compute the scale factor and to position
-    /// the signature relative to the right edge of the frame.
-    fn natural_size(&self) -> (f64, f64);
+    /// Returns the element (origin at (0, 0)) and the rendered width.
+    fn render(&self, target_height: f64) -> (Element, f64);
 }
 
 /// A trivial placeholder signature drawing the letters "xxx" as a row of
-/// hand-drawn-style crossed strokes. Used in examples and as a sensible
+/// square X-shaped crossed strokes. Used in examples and as a sensible
 /// default when no personal signature is provided.
 ///
-/// Natural size: 34 × 10 units.
+/// Each X glyph is square (full height by full height) with a small gap
+/// between glyphs, giving an overall aspect ratio of roughly 3.4.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlaceholderSignature;
 
 impl Signature for PlaceholderSignature {
-    fn render(&self) -> Element {
-        // Three "x" marks side by side. Each glyph is 10 wide × 10 tall,
-        // with 2 units of spacing between them.
-        let glyph_w = 10.0;
-        let glyph_h = 10.0;
-        let spacing = 2.0;
+    fn render(&self, target_height: f64) -> (Element, f64) {
+        // Each X is square at the full target height; spacing is 20% of height.
+        let glyph_w = target_height;
+        let glyph_h = target_height;
+        let spacing = target_height * 0.2;
 
         let mut group = Group::new();
         for i in 0..3 {
@@ -64,12 +57,8 @@ impl Signature for PlaceholderSignature {
                     .line_to((x, glyph_h)),
             ));
         }
-        Element::group(group)
-    }
-
-    fn natural_size(&self) -> (f64, f64) {
-        // 3 glyphs × 10 wide + 2 gaps × 2 = 34
-        (34.0, 10.0)
+        let total_w = 3.0 * glyph_w + 2.0 * spacing;
+        (Element::group(group), total_w)
     }
 }
 
@@ -78,19 +67,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn placeholder_renders_as_group() {
-        let sig = PlaceholderSignature;
-        match sig.render().shape {
-            drawing_core::Shape::Group(_) => {}
-            _ => panic!("Expected Group shape"),
-        }
+    fn placeholder_renders_at_requested_height() {
+        let (_, w) = PlaceholderSignature.render(5.0);
+        // 3 glyphs × 5 wide + 2 gaps × 1 = 17
+        assert!((w - 17.0).abs() < 1e-9);
     }
 
     #[test]
-    fn placeholder_has_positive_size() {
-        let (w, h) = PlaceholderSignature.natural_size();
-        assert!(w > 0.0);
-        assert!(h > 0.0);
+    fn placeholder_renders_as_group() {
+        let (el, _) = PlaceholderSignature.render(7.0);
+        match el.shape {
+            drawing_core::Shape::Group(_) => {}
+            _ => panic!("Expected Group shape"),
+        }
     }
 
     #[test]
