@@ -1,9 +1,11 @@
 //! Frame and title utilities for drawings
 
+use std::sync::Arc;
+
 use drawing_core::{Color, Drawing, Element, FontRef, Group, TextAlign, TextOptions};
 use drawing_text::FontManager;
 
-use crate::signature::{signature_bounds, signature_normalized};
+use crate::signature::Signature;
 
 /// Options for drawing a frame with title
 #[derive(Clone)]
@@ -28,8 +30,12 @@ pub struct FrameOptions {
     pub title_offset: f64,
     /// Horizontal offset of title from left of frame
     pub title_margin: f64,
-    /// Whether to include a signature in the bottom right corner
-    pub with_signature: bool,
+    /// Optional signature placed in the bottom right corner.
+    ///
+    /// Provide an implementation of [`Signature`] via [`FrameOptions::with_signature`].
+    /// The signature is rendered at the configured `signature_height` (width
+    /// scales proportionally based on the signature's natural aspect ratio).
+    pub signature: Option<Arc<dyn Signature>>,
     /// Height of the signature in drawing units (width scales proportionally)
     pub signature_height: f64,
     /// Horizontal offset of signature from right edge of frame
@@ -50,7 +56,7 @@ impl FrameOptions {
             font_size: 4.5,
             title_offset: 2.0,
             title_margin: 0.0,
-            with_signature: false,
+            signature: None,
             signature_height: 7.0,
             signature_margin: 0.0,
         }
@@ -119,9 +125,14 @@ impl FrameOptions {
         self
     }
 
-    /// Enable signature in the bottom right corner
-    pub fn with_signature(mut self) -> Self {
-        self.with_signature = true;
+    /// Attach a signature to be rendered in the bottom right corner.
+    ///
+    /// Accepts any implementation of [`Signature`]. Use [`PlaceholderSignature`]
+    /// for demos, or provide your own implementation.
+    ///
+    /// [`PlaceholderSignature`]: crate::PlaceholderSignature
+    pub fn with_signature<S: Signature + 'static>(mut self, signature: S) -> Self {
+        self.signature = Some(Arc::new(signature));
         self
     }
 
@@ -210,18 +221,19 @@ pub fn draw_frame_with_title(drawing: &Drawing, title: &str, options: &FrameOpti
             .stroke_color(options.color),
     );
 
-    // Add signature if enabled
-    if options.with_signature {
-        let (_, _, sig_width, sig_height) = signature_bounds();
-        let scale = options.signature_height / sig_height;
-        let scaled_width = sig_width * scale;
+    // Add signature if attached
+    if let Some(signature) = &options.signature {
+        let (nat_w, nat_h) = signature.natural_size();
+        let scale = options.signature_height / nat_h;
+        let scaled_width = nat_w * scale;
 
         // Position in bottom right corner, below the frame line
         let sig_x = drawing.width - options.margin_right - scaled_width - options.signature_margin;
         let sig_y = drawing.height - options.margin_bottom + options.title_offset;
 
         group.push(
-            signature_normalized()
+            signature
+                .render()
                 .scale(scale, scale)
                 .translate(sig_x, sig_y)
                 .stroke_width(options.stroke_width)

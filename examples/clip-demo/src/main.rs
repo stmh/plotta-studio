@@ -19,7 +19,10 @@
 //! - Left/Right: Adjust circle radius
 //! - Escape: Quit
 
-use drawing_utils::{draw_frame_with_title, generate_hatch_lines_rect, FrameOptions, HatchOptions};
+use drawing_utils::{
+    draw_frame_with_title, generate_hatch_lines_rect, FrameOptions, HatchOptions,
+    PlaceholderSignature,
+};
 use sketch_runner::*;
 use std::f64::consts::PI;
 
@@ -158,7 +161,7 @@ impl ClipDemoSketch {
         // Add frame with title and signature
         let frame_options = FrameOptions::with_default_font(ctx.fonts)
             .expect("Default font not loaded")
-            .with_signature();
+            .with_signature(PlaceholderSignature);
         drawing.add(draw_frame_with_title(
             drawing,
             "Three Moons Rising",

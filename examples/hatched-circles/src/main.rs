@@ -15,7 +15,9 @@
 //! - Left/Right: Adjust circle radius
 //! - Escape: Quit
 
-use drawing_utils::{draw_frame_with_title, generate_hatch_lines, FrameOptions, HatchOptions};
+use drawing_utils::{
+    draw_frame_with_title, generate_hatch_lines, FrameOptions, HatchOptions, PlaceholderSignature,
+};
 use sketch_runner::*;
 use std::f64::consts::PI;
 
@@ -141,7 +143,7 @@ impl HatchedCirclesSketch {
         // Add frame with title and signature using default font
         let frame_options = FrameOptions::with_default_font(ctx.fonts)
             .expect("Default font not loaded")
-            .with_signature();
+            .with_signature(PlaceholderSignature);
         drawing.add(draw_frame_with_title(
             drawing,
             "Hatched Circles",

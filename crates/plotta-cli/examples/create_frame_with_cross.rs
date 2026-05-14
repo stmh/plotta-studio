@@ -8,7 +8,7 @@ use std::f64::consts::PI;
 
 use drawing_core::{Drawing, Element, Group, Point};
 use drawing_text::FontManager;
-use drawing_utils::{draw_frame_with_title, FrameOptions};
+use drawing_utils::{draw_frame_with_title, FrameOptions, PlaceholderSignature};
 
 fn main() {
     // Create a 100x100mm (10x10cm) drawing
@@ -29,7 +29,7 @@ fn main() {
         .margin(5.0)
         .margin_bottom(10.0)
         .stroke_width(0.4)
-        .with_signature()
+        .with_signature(PlaceholderSignature)
         .signature_height(5.0);
 
     // Add frame with title

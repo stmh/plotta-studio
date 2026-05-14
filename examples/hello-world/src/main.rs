@@ -10,7 +10,7 @@
 //! - Escape: Quit
 
 use drawing_text::{TextAlign, TextOptions, TextRenderer, DEFAULT_FONT_NAME};
-use drawing_utils::{draw_frame_with_title, FrameOptions};
+use drawing_utils::{draw_frame_with_title, FrameOptions, PlaceholderSignature};
 use sketch_runner::*;
 
 struct HelloWorldSketch;
@@ -63,7 +63,7 @@ impl HelloWorldSketch {
             .margin_top(8.0)
             .margin_right(8.0)
             .margin_bottom(16.0)
-            .with_signature();
+            .with_signature(PlaceholderSignature);
 
         drawing.add(draw_frame_with_title(
             drawing,
