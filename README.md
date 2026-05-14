@@ -2,43 +2,45 @@
 
 A Rust workspace for generative drawings and pen plotter output.
 
+Plotta Studio provides reusable libraries — primitives & scene graph,
+single-line fonts, SVG import/export, hatching, AxiDraw control — plus
+a small CLI and a handful of example sketches that exercise each
+library.
+
 ## Quick Start
 
 ```bash
-# Run an example sketch
-cargo run -p sketch-001-radial
+# Hello-world: centered single-line text
+cargo run -p example-hello-world
 
-# Run the text rendering demo
-cargo run -p sketch-003-text
+# Bouncing "DVD" logo
+cargo run -p example-dvd-screensaver
 
-# Run the hatched circles demo (shows clipping)
-cargo run -p sketch-004-hatched-circles
+# Single-line font showcase (Hershey, VSF, SVG fonts)
+cargo run -p example-text
 
-# Run the SVG viewer
-cargo run -p sketch-005-svg-viewer
+# Hatching + clip groups
+cargo run -p example-hatched-circles
 
-# Run the Hamburg city map demo
-cargo run -p sketch-006-hamburg
+# Inverted clipping
+cargo run -p example-clip-demo
 
-# Run the 1000 lines pattern
-cargo run -p sketch-007-1000-lines
-
-# Run the wool ball demo
-cargo run -p sketch-008-wool-ball
+# SVG import / viewer
+cargo run -p example-svg-viewer
 ```
 
 ## Controls
 
-| Key/Action | Effect |
-|------------|--------|
-| Middle mouse drag | Pan |
-| Option + left mouse drag | Pan (macOS trackpad alternative) |
-| Scroll wheel | Zoom (toward cursor) |
-| Space | Fit drawing to window |
-| R | Reset view to 1:1 |
-| S | Save to drawing.json |
-| E | Export to SVG |
-| Escape | Quit |
+| Key/Action               | Effect                              |
+|--------------------------|-------------------------------------|
+| Middle mouse drag        | Pan                                 |
+| Option + left mouse drag | Pan (macOS trackpad alternative)    |
+| Scroll wheel             | Zoom (toward cursor)                |
+| Space                    | Fit drawing to window               |
+| R                        | Reset view to 1:1                   |
+| S                        | Save to `drawing.json`              |
+| E                        | Export to SVG                       |
+| Escape                   | Quit                                |
 
 ## Architecture
 
@@ -49,23 +51,25 @@ plotta-studio/
 │   ├── drawing-text/      # Single-line font support (Hershey, VSF, SVG fonts)
 │   ├── drawing-svg/       # SVG import/export
 │   ├── drawing-plotter/   # AxiDraw plotter control & path optimization
-│   ├── drawing-utils/     # Hatching, frames, and other utilities
-│   └── sketch-runner/     # Window, rendering, input handling
+│   ├── drawing-utils/     # Hatching, frames, signature trait
+│   ├── sketch-runner/     # Window, rendering, input handling
+│   ├── plotta-cli/        # Command-line tool for plotting
+│   └── vsf-convert/       # VSF font conversion utility
 ├── fonts/
 │   ├── hershey/           # Classic Hershey stroke fonts
 │   ├── svg/               # SVG single-line fonts
 │   └── vsf/               # Vector Stroke Font files
-├── sketches/
-│   ├── sketch-001-radial/
-│   ├── sketch-002-dvd-screensaver/
-│   ├── sketch-003-text/
-│   ├── sketch-004-hatched-circles/
-│   ├── sketch-005-svg-viewer/
-│   ├── sketch-006-hamburg/
-│   ├── sketch-007-1000-lines/
-│   └── sketch-008-wool-ball/
-└── plotta-cli                 # Command-line tool for plotting
+└── examples/
+    ├── hello-world/
+    ├── dvd-screensaver/
+    ├── text/
+    ├── hatched-circles/
+    ├── clip-demo/
+    └── svg-viewer/
 ```
+
+All workspace crates carry `publish = false` — Plotta Studio is not
+distributed via crates.io.
 
 ## Creating a Sketch
 
@@ -77,21 +81,20 @@ struct MySketch;
 impl Sketch for MySketch {
     fn setup(&mut self, ctx: &SketchContext) -> Drawing {
         let mut drawing = Drawing::a4_landscape();
-        
-        // Add elements
+
         drawing.add(Element::circle((100.0, 100.0), 50.0));
         drawing.add(
             Element::rect_centered(drawing.center(), 100.0, 80.0)
                 .rotate_deg(45.0)
-                .stroke_width(2.0)
+                .stroke_width(2.0),
         );
-        
+
         drawing
     }
 
     fn update(&mut self, drawing: &mut Drawing, ctx: &UpdateContext) -> bool {
-        // Called each frame if animate=true
-        // Return true if drawing changed
+        // Called each frame if animate=true.
+        // Return true if the drawing changed.
         false
     }
 
@@ -107,19 +110,19 @@ fn main() {
 
 ## Primitives
 
-- `Element::line(from, to)` - Line segment
-- `Element::circle(center, radius)` - Circle
-- `Element::ellipse(center, rx, ry)` - Ellipse
-- `Element::rect(x, y, w, h)` - Rectangle
-- `Element::rect_centered(center, w, h)` - Centered rectangle
-- `Element::arc(center, radius, start, end)` - Arc
-- `Element::polygon(center, radius, sides)` - Regular polygon
-- `Element::polyline(points)` - Open polyline
-- `Element::polygon_from_points(points)` - Closed polygon
-- `Element::path(path)` - Bezier path
-- `Element::group(group)` - Nested group
-- `Element::clip(shape)` - Clip group (clips children to shape)
-- `Element::text(text, font)` - Text shape
+- `Element::line(from, to)` — line segment
+- `Element::circle(center, radius)` — circle
+- `Element::ellipse(center, rx, ry)` — ellipse
+- `Element::rect(x, y, w, h)` — rectangle
+- `Element::rect_centered(center, w, h)` — centered rectangle
+- `Element::arc(center, radius, start, end)` — arc
+- `Element::polygon(center, radius, sides)` — regular polygon
+- `Element::polyline(points)` — open polyline
+- `Element::polygon_from_points(points)` — closed polygon
+- `Element::path(path)` — Bezier path
+- `Element::group(group)` — nested group
+- `Element::clip(shape)` — clip group (clips children to shape)
+- `Element::text(text, font)` — text shape
 
 ## Transforms
 
@@ -129,7 +132,7 @@ All transforms are chainable:
 Element::circle(Point::ZERO, 50.0)
     .translate(100.0, 100.0)
     .rotate_deg(45.0)
-    .rotate_around(angle, center)  // Rotate around a specific point
+    .rotate_around(angle, center)   // rotate around a specific point
     .scale(2.0, 1.5)
     .stroke_width(2.0)
     .stroke_color(Color::RED)
@@ -147,7 +150,7 @@ group.push(Element::rect_centered(Point::ZERO, 30.0, 30.0));
 drawing.add(
     Element::group(group)
         .translate(200.0, 200.0)
-        .rotate_deg(30.0)
+        .rotate_deg(30.0),
 );
 ```
 
@@ -156,7 +159,6 @@ drawing.add(
 Clip groups constrain children to a closed shape:
 
 ```rust
-// Create hatch lines clipped to a circle
 let hatch_lines = generate_hatch_lines(center, radius, &HatchOptions::default());
 let hatched_circle = Element::clip(Element::circle(center, radius))
     .add(hatch_lines);
@@ -176,74 +178,71 @@ Supports:
 let path = Path::new()
     .move_to((0.0, 0.0))
     .line_to((50.0, 0.0))
-    .quad_to((75.0, 25.0), (75.0, 50.0))  // Quadratic bezier
-    .cubic_to((75.0, 75.0), (50.0, 100.0), (0.0, 100.0))  // Cubic bezier
+    .quad_to((75.0, 25.0), (75.0, 50.0))                  // quadratic
+    .cubic_to((75.0, 75.0), (50.0, 100.0), (0.0, 100.0))  // cubic
     .close();
 
 drawing.add(Element::path(path));
 ```
 
+Curves are flattened adaptively (default tolerance 0.05 mm) before
+rendering or plotting.
+
 ## Single-Line Fonts
 
-Plotta Studio includes comprehensive support for single-line (stroke) fonts, ideal for pen plotters:
+Plotta Studio includes single-line (stroke) font support — ideal for
+pen plotters.
 
-### Font Formats
+### Formats
 
-- **Hershey fonts** - Classic public domain stroke fonts (8 variants included)
-- **VSF (Vector Stroke Font)** - Modern JSON format with bezier support
-- **SVG fonts** - SVG-based single-line fonts
+- **Hershey** — classic public-domain stroke fonts (8 variants bundled)
+- **VSF (Vector Stroke Font)** — JSON format with Bezier support
+- **SVG fonts** — SVG-based single-line fonts
 
-### Built-in Hershey Fonts
+### Built-in Hershey fonts
 
-- Simplex, Duplex, Triplex (Roman)
-- Script Simplex, Script Complex (Cursive)
-- Gothic German, Gothic German Bold, Gothic Italian (Fraktur)
+Simplex · Duplex · Triplex (Roman) · Script Simplex · Script Complex
+(cursive) · Gothic German · Gothic German Bold · Gothic Italian
+(Fraktur).
 
-### Text Rendering
+### Rendering
 
 ```rust
 use drawing_text::{FontManager, Hershey, TextRenderer, TextOptions, TextAlign};
 
-// Load fonts
 let manager = FontManager::new();
 manager.load_hershey(Hershey::Simplex)?;
+// manager.load_from_str(svg_content, FontFormat::SvgFont)?;
+// manager.load_file("font.vsf", FontFormat::Vsf)?;
 
-// Or load from string/file
-manager.load_from_str(svg_content, FontFormat::SvgFont)?;
-manager.load_file("font.vsf", FontFormat::Vsf)?;
-
-// Render text
 let font = manager.get("Hershey Simplex").unwrap();
 let renderer = TextRenderer::new();
-let options = TextOptions::new(12.0)  // 12mm height
+let options = TextOptions::new(12.0)            // 12 mm cap height
     .at((100.0, 100.0))
     .align(TextAlign::Center)
     .letter_spacing(0.1);
 
 let layout = renderer.layout("Hello, World!", font, &options);
-let strokes = layout.to_strokes(Style::default(), 0.5);
-
-for stroke in strokes {
+for stroke in layout.to_strokes(Style::default(), 0.5) {
     drawing.add(Element::from_stroke(stroke));
 }
 ```
 
-### Text Element (Scene Graph)
+### Text in the scene graph
 
 ```rust
-// Using Text shape directly in the scene graph
 let text = Text::new("Hello", font.clone())
     .size(24.0)
     .at((100.0, 100.0))
     .align(TextAlign::Center)
-    .with_debug(true);  // Show baselines, bounding boxes
+    .with_debug(true);   // show baselines, bounding boxes
 
 drawing.add(Element::text(text));
 ```
 
 ## Drawing Utilities
 
-The `drawing-utils` crate provides reusable drawing helpers:
+The `drawing-utils` crate provides reusable helpers.
 
 ### Hatching
 
@@ -251,87 +250,97 @@ The `drawing-utils` crate provides reusable drawing helpers:
 use drawing_utils::{generate_hatch_lines, HatchOptions};
 
 let options = HatchOptions::new()
-    .spacing(2.0)      // 2mm between lines
-    .angle_deg(45.0)   // 45 degree rotation
+    .spacing(2.0)        // 2 mm between lines
+    .angle_deg(45.0)
     .stroke_width(0.3);
 
-// Generate hatch lines for a circular area
 let hatch = generate_hatch_lines(center, radius, &options);
-
-// Clip to desired shape
-let hatched = Element::clip(Element::circle(center, radius))
-    .add(hatch);
+let hatched = Element::clip(Element::circle(center, radius)).add(hatch);
 ```
 
-### Frames
+### Frames & Signatures
 
 ```rust
-use drawing_utils::{draw_frame, draw_frame_with_title, FrameOptions};
+use drawing_utils::{draw_frame, draw_frame_with_title, FrameOptions, PlaceholderSignature};
 
-// Simple frame
+// Plain frame
 drawing.add(draw_frame(&drawing, &FrameOptions::default()));
 
-// Frame with title (requires a font)
-drawing.add(draw_frame_with_title(
-    &drawing,
-    "My Drawing",
-    &FrameOptions::new(font),
-));
+// Frame + title + signature
+let opts = FrameOptions::with_default_font(ctx.fonts)
+    .expect("default font not loaded")
+    .margin_bottom(16.0)
+    .with_signature(PlaceholderSignature);   // any Signature impl
+
+drawing.add(draw_frame_with_title(&drawing, "My Drawing", &opts));
 ```
+
+The signature corner is driven by the `Signature` trait:
+
+```rust
+pub trait Signature: Send + Sync {
+    /// Render the signature at the requested target height.
+    /// Returns the element and its final width in drawing units.
+    fn render(&self, target_height: f64) -> (Element, f64);
+}
+```
+
+Implementing your own signature is a matter of providing a `render`
+that emits an `Element` (typically a `Group` of `Path`s) sized to the
+requested height. The frame positions the result — no extra scaling
+is applied — so the implementation has full control over aspect ratio
+and curve fidelity. `PlaceholderSignature` (three small "x" glyphs) is
+bundled as a demo.
 
 ## SVG Import
 
 ```rust
 use drawing_svg::{import_svg, import_svg_with_options, ImportOptions, FillBehavior};
 
-// Basic import
 let result = import_svg("input.svg")?;
 let drawing = result.drawing;
 
-// Import with options
 let options = ImportOptions {
-    fill_behavior: FillBehavior::ConvertToOutline,  // or Ignore
+    fill_behavior: FillBehavior::ConvertToOutline,   // or Ignore
     default_stroke_width: 1.0,
     default_stroke_color: Color::BLACK,
     import_clip_paths: true,
 };
 let result = import_svg_with_options("input.svg", &options)?;
 
-// Check for warnings about unsupported elements
 for warning in result.warnings {
     println!("Warning: {:?}", warning);
 }
 ```
 
-Note: SVG import is lossy - only path/line data is preserved. Complex SVG features (gradients, filters, text) are ignored.
+SVG import is lossy: only path / line data is preserved. Gradients,
+filters, raster fills and unsupported text are dropped (with warnings).
 
 ## Export
 
 ```rust
-// JSON (preserves full scene graph)
+// JSON — preserves the full scene graph
 drawing.save("output.json")?;
 
-// SVG (flattened strokes, plotter-ready)
+// SVG — flattened strokes, plotter-ready
 drawing_svg::export_svg(&drawing, "output.svg", &ctx.render)?;
 ```
 
 ## Path Optimization
 
-The plotter module includes advanced stroke optimization for efficient plotting:
+The plotter module includes stroke optimization for efficient plotting:
 
-- **R\*-tree spatial indexing** - O(n log n) nearest-neighbor queries for fast optimization
-- **Stroke reversal** - Automatically reverses strokes when it reduces travel distance
-- **Greedy nearest-neighbor** - Minimizes pen-up travel between strokes
+- **R\*-tree spatial indexing** — O(n log n) nearest-neighbor queries
+- **Stroke reversal** — reverses a stroke when it reduces travel
+- **Greedy nearest-neighbor** — minimizes pen-up travel between strokes
 
-For large drawings (100k+ strokes), optimization completes in under a second.
+For drawings with 100 k+ strokes, optimization typically completes in
+under a second.
 
 ```rust
 use drawing_plotter::{optimize_strokes_with_reversal, total_travel_distance_optimized};
 
-// Optimize stroke order with reversal support
 let optimized = optimize_strokes_with_reversal(&strokes, true);
-
-// Calculate distances
 let total = total_travel_distance_optimized(&optimized);
 ```
 
@@ -340,16 +349,13 @@ let total = total_travel_distance_optimized(&optimized);
 ```rust
 use drawing_plotter::{AxiDraw, PlotConfig, plot_in_background};
 
-// Auto-connect to plotter
 let mut plotter = AxiDraw::auto_connect()?;
-
-// Configure plotting
 let config = PlotConfig::default();
 
-// Plot synchronously
+// Synchronous plot
 plotter.plot(&drawing, &config)?;
 
-// Or plot in background with events
+// Background plot with events
 let handle = plot_in_background(drawing, config, None)?;
 while handle.is_running() {
     for event in handle.drain_events() {
@@ -362,19 +368,19 @@ handle.join()?;
 ## Paper Sizes
 
 ```rust
-Drawing::a4_landscape()  // 297 x 210 mm
-Drawing::a4_portrait()   // 210 x 297 mm
-Drawing::a3_landscape()  // 420 x 297 mm
-Drawing::a3_portrait()   // 297 x 420 mm
-Drawing::new(w, h)       // Custom size
+Drawing::a4_landscape()   // 297 x 210 mm
+Drawing::a4_portrait()    // 210 x 297 mm
+Drawing::a3_landscape()   // 420 x 297 mm
+Drawing::a3_portrait()    // 297 x 420 mm
+Drawing::new(w, h)        // Custom
 ```
 
 ## Command-Line Tool
 
-The `plotta-cli` tool provides command-line control for plotting:
+The `plotta-cli` binary controls a connected AxiDraw:
 
 ```bash
-# Preview a drawing (shows stats and estimated time)
+# Preview a drawing (stats, estimated time)
 cargo run -p plotta-cli -- preview drawing.json
 
 # Plot a drawing
@@ -383,16 +389,39 @@ cargo run -p plotta-cli -- plot drawing.json
 # Move pen to position
 cargo run -p plotta-cli -- move 100 50
 
-# Pen up/down control
+# Pen up/down
 cargo run -p plotta-cli -- pen up
 cargo run -p plotta-cli -- pen down
 
-# Home the plotter
+# Home / status
 cargo run -p plotta-cli -- home
-
-# Check plotter status
 cargo run -p plotta-cli -- status
 ```
+
+## Development
+
+### Build & test
+
+```bash
+cargo check --all-targets
+cargo test
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
+```
+
+### Conventional Commits & Releases
+
+Commits on `main` follow [Conventional Commits](https://www.conventionalcommits.org/):
+`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, …
+
+Releases are cut automatically by [release-please](https://github.com/googleapis/release-please):
+
+1. Every push to `main` opens or updates a single release PR that bumps
+   `[workspace.package].version` and appends a `CHANGELOG.md` entry.
+2. Merging that PR tags the merge commit as `vX.Y.Z` and creates the
+   matching GitHub Release.
+
+No `cargo publish` is performed — all workspace crates are private.
 
 ## Roadmap
 
@@ -404,16 +433,17 @@ cargo run -p plotta-cli -- status
 - [x] SVG export
 - [x] Path optimization with R\*-tree spatial indexing
 - [x] Stroke reversal optimization
-- [x] Single-line font support (Hershey, VSF, SVG fonts)
-- [x] Text rendering with alignment and spacing
-- [x] ClipGroup for clipping elements to shapes
+- [x] Single-line font support (Hershey, VSF, SVG)
+- [x] Text rendering with alignment & spacing
+- [x] `ClipGroup` for clipping elements to shapes
 - [x] Hatching utilities
 - [x] AxiDraw plotter control with motion planning
 - [x] SVG import
-- [x] Command-line tool (plotta-cli)
+- [x] Command-line tool (`plotta-cli`)
+- [x] `Signature` trait for pluggable corner signatures
+- [x] Automated releases via release-please
 - [ ] 2-opt path optimization
 - [ ] GUI for parameters (egui)
-- [ ] Sketch templates with cargo-generate
 
 ## License
 
