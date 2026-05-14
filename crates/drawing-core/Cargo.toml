@@ -6,6 +6,6 @@ edition.workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-kurbo = { version = "0.11", features = ["serde"] }
+kurbo = { version = "0.13", features = ["serde"] }
 log = { workspace = true }
 geo = "0.33"

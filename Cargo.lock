@@ -656,7 +656,7 @@ name = "drawing-core"
 version = "0.1.0"
 dependencies = [
  "geo",
- "kurbo 0.11.3",
+ "kurbo 0.13.1",
  "log",
  "serde",
  "serde_json",
@@ -688,7 +688,7 @@ name = "drawing-text"
 version = "0.1.0"
 dependencies = [
  "drawing-core",
- "kurbo 0.11.3",
+ "kurbo 0.13.1",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",
@@ -1438,7 +1438,6 @@ checksum = "c62026ae44756f8a599ba21140f350303d4f08dcdcc71b5ad9c9bb8128c13c62"
 dependencies = [
  "arrayvec",
  "euclid",
- "serde",
  "smallvec",
 ]
 
@@ -1451,6 +1450,7 @@ dependencies = [
  "arrayvec",
  "euclid",
  "polycool",
+ "serde",
  "smallvec",
 ]
 

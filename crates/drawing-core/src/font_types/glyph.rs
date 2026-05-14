@@ -131,8 +131,7 @@ impl Contour {
         let bezpath = self.to_path().to_bezpath();
         let mut points = Vec::new();
 
-        #[allow(deprecated)]
-        bezpath.flatten(tolerance, |el| match el {
+        kurbo::flatten(&bezpath, tolerance, |el| match el {
             kurbo::PathEl::MoveTo(p) | kurbo::PathEl::LineTo(p) => {
                 points.push(p);
             }
