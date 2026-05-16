@@ -1,0 +1,15 @@
+[package]
+name = "drawing-viewer"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[features]
+default = []
+hardware = ["sketch-runner/hardware"]
+
+[dependencies]
+sketch-runner = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
