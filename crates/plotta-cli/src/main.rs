@@ -120,6 +120,22 @@ enum Commands {
         /// Enable position verification (diagnostic mode, adds latency)
         #[arg(long)]
         verify_position: bool,
+
+        /// Disable merging of adjacent strokes whose endpoints meet
+        #[arg(long)]
+        no_merge_strokes: bool,
+
+        /// Tolerance (mm) for exact stroke merging (default: 0.05)
+        #[arg(long)]
+        merge_tolerance: Option<f64>,
+
+        /// Disable bridging of close strokes (gaps up to factor*line_width)
+        #[arg(long)]
+        no_connect_close_strokes: bool,
+
+        /// Fraction of stroke width used as bridging threshold (default: 0.5)
+        #[arg(long)]
+        connect_distance_factor: Option<f64>,
     },
 
     /// Show drawing stats without plotting
@@ -162,6 +178,22 @@ enum Commands {
         /// Enable position verification flag (accepted for API consistency, no effect in preview)
         #[arg(long)]
         verify_position: bool,
+
+        /// Disable merging of adjacent strokes whose endpoints meet
+        #[arg(long)]
+        no_merge_strokes: bool,
+
+        /// Tolerance (mm) for exact stroke merging (default: 0.05)
+        #[arg(long)]
+        merge_tolerance: Option<f64>,
+
+        /// Disable bridging of close strokes (gaps up to factor*line_width)
+        #[arg(long)]
+        no_connect_close_strokes: bool,
+
+        /// Fraction of stroke width used as bridging threshold (default: 0.5)
+        #[arg(long)]
+        connect_distance_factor: Option<f64>,
     },
 
     /// Record plot to SVG file (simulate without hardware)
@@ -216,6 +248,22 @@ enum Commands {
         /// Pen lower rate (1-100, default 50, lower=slower)
         #[arg(long)]
         pen_rate_lower: Option<u8>,
+
+        /// Disable merging of adjacent strokes whose endpoints meet
+        #[arg(long)]
+        no_merge_strokes: bool,
+
+        /// Tolerance (mm) for exact stroke merging (default: 0.05)
+        #[arg(long)]
+        merge_tolerance: Option<f64>,
+
+        /// Disable bridging of close strokes (gaps up to factor*line_width)
+        #[arg(long)]
+        no_connect_close_strokes: bool,
+
+        /// Fraction of stroke width used as bridging threshold (default: 0.5)
+        #[arg(long)]
+        connect_distance_factor: Option<f64>,
     },
 }
 
@@ -231,6 +279,10 @@ fn build_config(
     pen_rate_raise: Option<u8>,
     pen_rate_lower: Option<u8>,
     verify_position: bool,
+    no_merge_strokes: bool,
+    merge_tolerance: Option<f64>,
+    no_connect_close_strokes: bool,
+    connect_distance_factor: Option<f64>,
 ) -> PlotConfig {
     let defaults = PlotConfig::default();
     PlotConfig {
@@ -249,6 +301,12 @@ fn build_config(
         motion_planning_enabled: defaults.motion_planning_enabled,
         // Position verification (diagnostic mode)
         verify_position,
+        // Stroke merging — flags disable, options override tolerance/factor
+        merge_strokes: !no_merge_strokes,
+        merge_tolerance: merge_tolerance.unwrap_or(defaults.merge_tolerance),
+        connect_close_strokes: !no_connect_close_strokes,
+        connect_distance_factor: connect_distance_factor
+            .unwrap_or(defaults.connect_distance_factor),
     }
 }
 
@@ -280,6 +338,10 @@ fn main() -> Result<()> {
             pen_rate_raise,
             pen_rate_lower,
             verify_position,
+            no_merge_strokes,
+            merge_tolerance,
+            no_connect_close_strokes,
+            connect_distance_factor,
         } => {
             let config = build_config(
                 draw_speed,
@@ -291,6 +353,10 @@ fn main() -> Result<()> {
                 pen_rate_raise,
                 pen_rate_lower,
                 verify_position,
+                no_merge_strokes,
+                merge_tolerance,
+                no_connect_close_strokes,
+                connect_distance_factor,
             );
             let setup = plotter_setup
                 .parse::<PlotterSetup>()
@@ -308,6 +374,10 @@ fn main() -> Result<()> {
             pen_rate_raise,
             pen_rate_lower,
             verify_position,
+            no_merge_strokes,
+            merge_tolerance,
+            no_connect_close_strokes,
+            connect_distance_factor,
         } => {
             let config = build_config(
                 draw_speed,
@@ -319,6 +389,10 @@ fn main() -> Result<()> {
                 pen_rate_raise,
                 pen_rate_lower,
                 verify_position,
+                no_merge_strokes,
+                merge_tolerance,
+                no_connect_close_strokes,
+                connect_distance_factor,
             );
             cmd_preview(&file, config)
         }
@@ -336,6 +410,10 @@ fn main() -> Result<()> {
             pen_up_pos,
             pen_rate_raise,
             pen_rate_lower,
+            no_merge_strokes,
+            merge_tolerance,
+            no_connect_close_strokes,
+            connect_distance_factor,
         } => {
             let config = build_config(
                 draw_speed,
@@ -347,6 +425,10 @@ fn main() -> Result<()> {
                 pen_rate_raise,
                 pen_rate_lower,
                 false, // verify_position not applicable for Record
+                no_merge_strokes,
+                merge_tolerance,
+                no_connect_close_strokes,
+                connect_distance_factor,
             );
             let record_options = RecordOptions {
                 show_travel,
@@ -453,8 +535,8 @@ fn print_drawing_stats(
     println!("Drawing: {}", file.display());
     println!("  Size: {:.0} x {:.0} mm", prepared.width, prepared.height);
     println!(
-        "  Strokes: {} ({} reversed for shorter travel)",
-        stats.stroke_count, stats.reversed_strokes
+        "  Strokes: {} ({} reversed, {} merged)",
+        stats.stroke_count, stats.reversed_strokes, stats.merged_strokes
     );
     println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
     println!("  Travel distance: {:.1} mm", stats.travel_distance);
@@ -687,8 +769,8 @@ fn cmd_record(
     println!("Recorded to: {}", output.display());
     println!("  Size: {:.0} x {:.0} mm", prepared.width, prepared.height);
     println!(
-        "  Strokes: {} ({} reversed for shorter travel)",
-        stats.stroke_count, stats.reversed_strokes
+        "  Strokes: {} ({} reversed, {} merged)",
+        stats.stroke_count, stats.reversed_strokes, stats.merged_strokes
     );
     println!("  Pen-down distance: {:.1} mm", stats.pen_down_distance);
     println!("  Travel distance: {:.1} mm", stats.travel_distance);
