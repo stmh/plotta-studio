@@ -27,7 +27,28 @@ cargo run -p example-clip-demo
 
 # SVG import / viewer
 cargo run -p example-svg-viewer
+
+# Open one or more saved drawings and step through them
+cargo run -p drawing-viewer -- drawing.json other.json
 ```
+
+### `drawing-viewer`
+
+A small utility for inspecting saved `Drawing` JSON files in the same
+pan/zoom window that the sketches use. Pass one or more files (shell
+globs are fine):
+
+```bash
+cargo run -p drawing-viewer -- drawings/*.json
+```
+
+The standard pan/zoom/fit/save/export keys (Space, R, S, E) all work,
+plus:
+
+| Key            | Effect                |
+|----------------|-----------------------|
+| Left / Right   | Previous / next file  |
+| Home / End     | First / last file     |
 
 ## Controls
 
@@ -54,6 +75,7 @@ plotta-studio/
 │   ├── drawing-utils/     # Hatching, frames, signature trait
 │   ├── sketch-runner/     # Window, rendering, input handling
 │   ├── plotta-cli/        # Command-line tool for plotting
+│   ├── drawing-viewer/    # JSON drawing viewer (step through saved files)
 │   └── vsf-convert/       # VSF font conversion utility
 ├── fonts/
 │   ├── hershey/           # Classic Hershey stroke fonts
@@ -333,15 +355,39 @@ The plotter module includes stroke optimization for efficient plotting:
 - **R\*-tree spatial indexing** — O(n log n) nearest-neighbor queries
 - **Stroke reversal** — reverses a stroke when it reduces travel
 - **Greedy nearest-neighbor** — minimizes pen-up travel between strokes
+- **Adjacent-stroke merging** — concatenates strokes whose endpoints
+  meet (within `merge_tolerance`, default `0.05` mm), eliminating one
+  pen-up / pen-down cycle per merge
+- **Close-stroke bridging** — connects strokes whose endpoints are
+  within `connect_distance_factor * stroke_width` (default `0.5`); the
+  pen draws a short bridge segment that's optically hidden by its own
+  width
+
+The merge and bridge passes only fire between strokes whose styles
+match (stroke width, color, `scale_stroke`), and never extend closed
+strokes. Both are on by default; toggle via `PlotConfig`:
+
+```rust
+use drawing_plotter::PlotConfig;
+
+let config = PlotConfig::default()
+    .without_stroke_merging()           // disable exact merge
+    .with_close_stroke_bridging(0.3);   // tighter bridging (30% of pen width)
+```
 
 For drawings with 100 k+ strokes, optimization typically completes in
 under a second.
 
 ```rust
-use drawing_plotter::{optimize_strokes_with_reversal, total_travel_distance_optimized};
+use drawing_plotter::{
+    optimize_strokes_with_reversal, merge_adjacent_strokes,
+    total_travel_distance_optimized,
+};
 
 let optimized = optimize_strokes_with_reversal(&strokes, true);
-let total = total_travel_distance_optimized(&optimized);
+let merged = merge_adjacent_strokes(&optimized, 0.05, 0.5);
+let total = total_travel_distance_optimized(&merged.strokes);
+println!("{} strokes merged", merged.merged_count);
 ```
 
 ## AxiDraw Plotter Control
@@ -398,6 +444,34 @@ cargo run -p plotta-cli -- home
 cargo run -p plotta-cli -- status
 ```
 
+### Optimization flags
+
+`plot`, `preview`, and `record` accept the same set of optimization
+flags. Stroke merging and close-stroke bridging are on by default:
+
+```bash
+# See stats with default optimizations applied
+plotta preview drawing.json
+
+# Tighter bridging (30% of line width) and a wider exact-merge tolerance
+plotta plot drawing.json \
+    --merge-tolerance 0.1 \
+    --connect-distance-factor 0.3
+
+# Turn the bridging off entirely (keep only exact merging)
+plotta plot drawing.json --no-connect-close-strokes
+
+# Disable both — useful to compare raw stroke counts
+plotta preview drawing.json --no-merge-strokes --no-connect-close-strokes
+```
+
+The stats banner reports both the merged count and the number of
+strokes reversed for shorter travel:
+
+```
+Strokes: 4231 (1284 reversed, 612 merged)
+```
+
 ## Development
 
 ### Build & test
@@ -433,6 +507,8 @@ No `cargo publish` is performed — all workspace crates are private.
 - [x] SVG export
 - [x] Path optimization with R\*-tree spatial indexing
 - [x] Stroke reversal optimization
+- [x] Adjacent-stroke merging and close-stroke bridging
+- [x] JSON `drawing-viewer` tool
 - [x] Single-line font support (Hershey, VSF, SVG)
 - [x] Text rendering with alignment & spacing
 - [x] `ClipGroup` for clipping elements to shapes
