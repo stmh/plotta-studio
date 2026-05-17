@@ -124,6 +124,24 @@ pub struct PlotConfig {
     /// any discrepancy between tracked and actual position.
     /// Warning: Adds ~10ms latency per stroke. Use for diagnosing drift issues only.
     pub verify_position: bool,
+
+    /// Merge adjacent strokes whose endpoints are within `merge_tolerance`.
+    /// Reduces pen up/down cycles when consecutive optimized strokes meet at
+    /// (or very near) the same point. Enabled by default.
+    pub merge_strokes: bool,
+    /// Distance tolerance (mm) for considering two stroke endpoints to be the
+    /// same point during stroke merging. Defaults to 0.05mm (matches the curve
+    /// flattening tolerance).
+    pub merge_tolerance: f64,
+
+    /// Also connect adjacent strokes whose endpoints are within
+    /// `connect_distance_factor * stroke_width` of each other. The short gap
+    /// gets bridged by an extra pen-down segment that the pen's own width hides
+    /// visually. Enabled by default.
+    pub connect_close_strokes: bool,
+    /// Fraction of the stroke width to use as the connect threshold. Defaults
+    /// to `0.5` — a gap up to half the pen width gets bridged.
+    pub connect_distance_factor: f64,
 }
 
 impl Default for PlotConfig {
@@ -152,6 +170,12 @@ impl Default for PlotConfig {
             motion_planning_enabled: true,
             // Position verification disabled by default (diagnostic feature)
             verify_position: false,
+            // Stroke merging on by default - cheap, and reduces pen wear.
+            merge_strokes: true,
+            merge_tolerance: 0.05,
+            // Bridge gaps up to half a pen width by default.
+            connect_close_strokes: true,
+            connect_distance_factor: 0.5,
         }
     }
 }
@@ -211,6 +235,33 @@ impl PlotConfig {
     /// Disable motion planning (use constant velocity)
     pub fn without_motion_planning(mut self) -> Self {
         self.motion_planning_enabled = false;
+        self
+    }
+
+    /// Enable stroke merging with a custom tolerance (mm).
+    pub fn with_stroke_merging(mut self, tolerance: f64) -> Self {
+        self.merge_strokes = true;
+        self.merge_tolerance = tolerance;
+        self
+    }
+
+    /// Disable stroke merging.
+    pub fn without_stroke_merging(mut self) -> Self {
+        self.merge_strokes = false;
+        self
+    }
+
+    /// Enable bridging of close strokes with a custom width factor.
+    /// Gaps up to `factor * stroke_width` get bridged.
+    pub fn with_close_stroke_bridging(mut self, factor: f64) -> Self {
+        self.connect_close_strokes = true;
+        self.connect_distance_factor = factor;
+        self
+    }
+
+    /// Disable bridging of close strokes.
+    pub fn without_close_stroke_bridging(mut self) -> Self {
+        self.connect_close_strokes = false;
         self
     }
 }

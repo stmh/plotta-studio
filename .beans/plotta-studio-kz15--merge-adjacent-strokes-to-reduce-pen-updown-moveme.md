@@ -1,11 +1,11 @@
 ---
 # plotta-studio-kz15
 title: Merge adjacent strokes to reduce pen up/down movements
-status: todo
+status: completed
 type: feature
 priority: normal
 created_at: 2025-12-31T16:17:12Z
-updated_at: 2025-12-31T16:17:19Z
+updated_at: 2026-05-17T15:56:23Z
 parent: plotta-studio-opt1
 ---
 
@@ -88,3 +88,21 @@ Merge should be called after optimization to combine sequential strokes that end
 | Config      | Always `PlotConfig::default()`   | Configurable via CLI           |
 
 After this change, both will use `PreparedDrawing` + `plot_prepared_in_background()`.
+
+## Summary of Changes
+
+Implemented the core stroke-merging optimization (enabled by default).
+
+### Code
+- **optimize.rs**: added `MergeResult` struct and `merge_adjacent_strokes(strokes, tolerance) -> MergeResult`. Merges only when styles match (stroke_width within 1e-6, exact color/scale_stroke match), neither stroke is closed, and endpoints are within tolerance. Reversal is baked into the points order of the merged stroke. Coincident junction points are deduped.
+- **config.rs**: added `merge_strokes: bool` (default `true`) and `merge_tolerance: f64` (default `0.05` mm). Builder methods `with_stroke_merging(tol)` and `without_stroke_merging()`.
+- **stats.rs**: added `merged_strokes: usize` to `DrawingStats`. `stroke_count` now reflects the post-merge count (which is what gets plotted).
+- **prepared.rs**: `PreparedDrawing::new` calls `merge_adjacent_strokes` after the optimizer when enabled; reversed-stroke count is captured before merging (merge bakes reversal into points order).
+- **plotta-cli**: passes through the new defaults in `build_config` and surfaces the merged count in the stats banner (`Strokes: N (R reversed, M merged)`).
+- **lib.rs**: re-exports `MergeResult` and `merge_adjacent_strokes`.
+
+### Tests
+9 new unit tests covering: empty input, single stroke, coincident endpoints, within-tolerance gap, outside-tolerance gap, respect for `reversed` flag, style mismatch, closed-stroke skip, chained merges, and pen-down distance preservation. All 285 workspace tests pass; clippy clean.
+
+### Scope deferred (not in this change)
+The original bean also bundled "unify sketch-runner with plotta-cli by going through PreparedDrawing" and the related AxiDraw API cleanup. The user's request was scoped to the merge optimization itself, so the sketch-runner path still flattens/optimizes inline (it now picks up merging automatically via PlotConfig::default()). Worth a follow-up bean if we want to delete `plot_in_background` and require PlotConfig everywhere.

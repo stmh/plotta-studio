@@ -87,9 +87,9 @@ pub use motion::{
     DEFAULT_JUNCTION_DEVIATION,
 };
 pub use optimize::{
-    optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
+    merge_adjacent_strokes, optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
     pen_down_distance_optimized, total_travel_distance, total_travel_distance_optimized,
-    travel_distance_optimized, OwnedOptimizedStroke,
+    travel_distance_optimized, MergeResult, OwnedOptimizedStroke,
 };
 pub use prepared::PreparedDrawing;
 pub use stats::{estimate_plot_time, estimate_plot_time_optimized, DrawingStats};

@@ -21,6 +21,9 @@ pub struct DrawingStats {
     pub estimated_time: Duration,
     /// Number of strokes that will be drawn in reverse
     pub reversed_strokes: usize,
+    /// Number of strokes folded into a previous stroke by the adjacent-stroke
+    /// merge optimization. Each merge saves one pen-up + pen-down cycle.
+    pub merged_strokes: usize,
 }
 
 impl DrawingStats {
@@ -41,6 +44,7 @@ impl DrawingStats {
             travel_distance: travel,
             estimated_time: time,
             reversed_strokes: reversed_count,
+            merged_strokes: 0,
         }
     }
 
@@ -290,6 +294,7 @@ mod tests {
             travel_distance: 0.0,
             estimated_time: Duration::from_secs(45),
             reversed_strokes: 0,
+            merged_strokes: 0,
         };
         assert_eq!(stats.format_time(), "~45s");
     }
@@ -302,6 +307,7 @@ mod tests {
             travel_distance: 0.0,
             estimated_time: Duration::from_secs(185), // 3m 5s
             reversed_strokes: 0,
+            merged_strokes: 0,
         };
         assert_eq!(stats.format_time(), "~3m 5s");
     }
@@ -313,6 +319,7 @@ mod tests {
             pen_down_distance: 0.0,
             travel_distance: 0.0,
             reversed_strokes: 0,
+            merged_strokes: 0,
             estimated_time: Duration::from_secs(3720), // 1h 2m
         };
         assert_eq!(stats.format_time(), "~1h 2m");

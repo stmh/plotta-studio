@@ -389,6 +389,145 @@ pub fn travel_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
     total - pen_down
 }
 
+/// Result of merging adjacent strokes.
+#[derive(Debug, Clone)]
+pub struct MergeResult {
+    /// The merged strokes
+    pub strokes: Vec<OwnedOptimizedStroke>,
+    /// Number of strokes that were merged into a previous stroke.
+    /// (Original count - merged count = number of merges performed.)
+    pub merged_count: usize,
+}
+
+/// Returns true if two resolved styles match closely enough to be merged.
+///
+/// Stroke widths are compared with a small epsilon; colors and `scale_stroke`
+/// must match exactly.
+fn styles_match(a: &ResolvedStyle, b: &ResolvedStyle) -> bool {
+    const STROKE_WIDTH_EPSILON: f64 = 1e-6;
+    (a.stroke_width - b.stroke_width).abs() < STROKE_WIDTH_EPSILON
+        && a.stroke_color == b.stroke_color
+        && a.scale_stroke == b.scale_stroke
+}
+
+/// Merge adjacent strokes whose endpoints are close enough to be drawn as one.
+///
+/// Two tolerance modes are combined per stroke pair:
+/// - `fixed_tolerance` (mm): an absolute distance threshold — typical use is the
+///   curve flattening tolerance, so strokes that meet at "the same" point get joined.
+/// - `width_factor`: a fraction of the stroke width (e.g. `0.5`) — strokes whose
+///   endpoints are within `stroke_width * width_factor` get bridged by a short pen-down
+///   segment that's optically hidden by the pen's own width.
+///
+/// The effective decision threshold per pair is `max(fixed_tolerance, width * width_factor)`.
+/// Pass `width_factor = 0.0` to get exact-only merging; pass `fixed_tolerance = 0.0`
+/// to get width-based merging only.
+///
+/// Closed strokes are never merged (their start and end coincide by construction;
+/// extending them would change their topology). Empty strokes are passed through
+/// unchanged. Styles must match (within rounding for widths, exact for color and
+/// `scale_stroke`).
+///
+/// Returns the merged stroke list together with the number of merges performed.
+pub fn merge_adjacent_strokes(
+    strokes: &[OwnedOptimizedStroke],
+    fixed_tolerance: f64,
+    width_factor: f64,
+) -> MergeResult {
+    if strokes.is_empty() {
+        return MergeResult {
+            strokes: Vec::new(),
+            merged_count: 0,
+        };
+    }
+
+    let fixed_tol_sq = fixed_tolerance * fixed_tolerance;
+    let mut out: Vec<OwnedOptimizedStroke> = Vec::with_capacity(strokes.len());
+    let mut merged_count = 0;
+
+    for stroke in strokes {
+        if stroke.points.is_empty() {
+            out.push(stroke.clone());
+            continue;
+        }
+
+        // Materialize the incoming stroke in draw order so we can append directly.
+        let incoming_points: Vec<Point> = stroke.points_iter().collect();
+
+        let (can_merge, gap_sq) = match out.last() {
+            Some(prev) => {
+                if prev.closed
+                    || stroke.closed
+                    || prev.points.is_empty()
+                    || !styles_match(&prev.style, &stroke.style)
+                {
+                    (false, 0.0)
+                } else {
+                    let prev_end = if prev.reversed {
+                        prev.points.first().copied().unwrap_or(Point::ZERO)
+                    } else {
+                        prev.points.last().copied().unwrap_or(Point::ZERO)
+                    };
+                    let dx = prev_end.x - incoming_points[0].x;
+                    let dy = prev_end.y - incoming_points[0].y;
+                    let gap_sq = dx * dx + dy * dy;
+                    let width_tol = prev.style.stroke_width * width_factor;
+                    let decision_tol = fixed_tolerance.max(width_tol);
+                    let decision_tol_sq = decision_tol * decision_tol;
+                    (gap_sq <= decision_tol_sq, gap_sq)
+                }
+            }
+            None => (false, 0.0),
+        };
+
+        if can_merge {
+            // Normalize the previous stroke into a forward-oriented points vec so we
+            // can append the next stroke's points to it.
+            let prev = out.last_mut().unwrap();
+            if prev.reversed {
+                prev.points.reverse();
+                prev.reversed = false;
+            }
+
+            // Only dedupe the junction point when the endpoints are *coincident*
+            // (within the fixed tolerance). For width-based bridging the gap is real
+            // and we want both endpoints kept so the pen traces the bridge segment;
+            // the pen's own width then hides the gap visually.
+            let skip_first = gap_sq <= fixed_tol_sq;
+
+            if skip_first {
+                prev.points.extend(incoming_points.into_iter().skip(1));
+            } else {
+                prev.points.extend(incoming_points);
+            }
+            merged_count += 1;
+        } else {
+            // Push a normalized copy: the reversal is now baked into the points order
+            // so downstream code doesn't need to reason about it.
+            out.push(OwnedOptimizedStroke {
+                points: incoming_points,
+                style: stroke.style,
+                closed: stroke.closed,
+                reversed: false,
+            });
+        }
+    }
+
+    log::debug!(
+        "Stroke merge: {} -> {} strokes ({} merges, fixed_tol={}mm, width_factor={})",
+        strokes.len(),
+        out.len(),
+        merged_count,
+        fixed_tolerance,
+        width_factor
+    );
+
+    MergeResult {
+        strokes: out,
+        merged_count,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -888,5 +1027,345 @@ mod tests {
             pen_down_distance_optimized(&optimized),
             original_distance
         ));
+    }
+
+    // ========================================================================
+    // merge_adjacent_strokes tests
+    // ========================================================================
+
+    fn opt_stroke(
+        points: Vec<Point>,
+        style: ResolvedStyle,
+        reversed: bool,
+    ) -> OwnedOptimizedStroke {
+        OwnedOptimizedStroke {
+            points,
+            style,
+            closed: false,
+            reversed,
+        }
+    }
+
+    #[test]
+    fn test_merge_empty() {
+        let result = merge_adjacent_strokes(&[], 0.05, 0.0);
+        assert!(result.strokes.is_empty());
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_merge_single_stroke() {
+        let strokes = vec![opt_stroke(
+            vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+            ResolvedStyle::default(),
+            false,
+        )];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_merge_coincident_endpoints() {
+        // End of A == start of B; both same style.
+        let style = ResolvedStyle::default();
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.0, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 1);
+        // The duplicated junction point should be deduped.
+        assert_eq!(result.strokes[0].points.len(), 3);
+        assert_eq!(result.strokes[0].points[0], Point::new(0.0, 0.0));
+        assert_eq!(result.strokes[0].points[2], Point::new(20.0, 0.0));
+    }
+
+    #[test]
+    fn test_merge_within_tolerance() {
+        // Tiny gap (0.01mm) below tolerance (0.05mm) -- should merge.
+        let style = ResolvedStyle::default();
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.01, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 1);
+    }
+
+    #[test]
+    fn test_merge_outside_tolerance() {
+        // 1mm gap is much larger than 0.05mm tolerance -- no merge.
+        let style = ResolvedStyle::default();
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(11.0, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 2);
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_merge_respects_reversed_flag() {
+        // Second stroke is marked reversed -- merging must use its effective start
+        // (which is its last raw point).
+        let style = ResolvedStyle::default();
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            // Drawn as 10,0 -> 20,0 because reversed.
+            opt_stroke(
+                vec![Point::new(20.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                true,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 1);
+        // Merged stroke is forward-oriented with reversal baked in.
+        assert!(!result.strokes[0].reversed);
+        assert_eq!(
+            result.strokes[0].points,
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),
+                Point::new(20.0, 0.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_merge_different_styles_dont_merge() {
+        let style_a = ResolvedStyle::default();
+        let style_b = ResolvedStyle::default().with_stroke_width(2.0);
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style_a,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.0, 0.0), Point::new(20.0, 0.0)],
+                style_b,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 2);
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_merge_closed_strokes_dont_merge() {
+        let style = ResolvedStyle::default();
+        let mut a = opt_stroke(
+            vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+            style,
+            false,
+        );
+        a.closed = true;
+        let b = opt_stroke(
+            vec![Point::new(10.0, 0.0), Point::new(20.0, 0.0)],
+            style,
+            false,
+        );
+        let result = merge_adjacent_strokes(&[a, b], 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 2);
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_merge_chain_of_three() {
+        let style = ResolvedStyle::default();
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.0, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(20.0, 0.0), Point::new(30.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 2);
+        assert_eq!(result.strokes[0].points.len(), 4);
+    }
+
+    #[test]
+    fn test_merge_preserves_pen_down_distance() {
+        let style = ResolvedStyle::default();
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.0, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let before = pen_down_distance_optimized(&strokes);
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.0);
+        let after = pen_down_distance_optimized(&result.strokes);
+        assert!(approx_eq(before, after));
+    }
+
+    // ========================================================================
+    // Width-based bridging tests
+    // ========================================================================
+
+    #[test]
+    fn test_width_factor_bridges_gap_below_half_width() {
+        // 1mm wide pen, gap 0.4mm = 40% of width. With factor 0.5 the threshold is
+        // 0.5mm so this should merge.
+        let style = ResolvedStyle::default().with_stroke_width(1.0);
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.4, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.0, 0.5);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 1);
+        // The bridge segment must be preserved (both endpoints kept), so the merged
+        // stroke draws 0,0 -> 10,0 -> 10.4,0 -> 20,0.
+        assert_eq!(result.strokes[0].points.len(), 4);
+        assert_eq!(result.strokes[0].points[1], Point::new(10.0, 0.0));
+        assert_eq!(result.strokes[0].points[2], Point::new(10.4, 0.0));
+    }
+
+    #[test]
+    fn test_width_factor_skips_gap_above_half_width() {
+        // 1mm wide pen, gap 0.6mm = 60% of width -> beyond 0.5 factor, no merge.
+        let style = ResolvedStyle::default().with_stroke_width(1.0);
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.6, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.0, 0.5);
+        assert_eq!(result.strokes.len(), 2);
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_width_factor_scales_with_stroke_width() {
+        // Thin pen (0.2mm): factor 0.5 -> 0.1mm threshold. A 0.3mm gap should NOT merge.
+        let style = ResolvedStyle::default().with_stroke_width(0.2);
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.3, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.0, 0.5);
+        assert_eq!(result.strokes.len(), 2);
+        assert_eq!(result.merged_count, 0);
+    }
+
+    #[test]
+    fn test_combined_tolerances_takes_max() {
+        // Fixed tol 0.05, width factor 0.5 on 0.2mm pen -> threshold = max(0.05, 0.1) = 0.1.
+        // A 0.08mm gap should merge thanks to the width-based threshold.
+        let style = ResolvedStyle::default().with_stroke_width(0.2);
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.08, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.5);
+        assert_eq!(result.strokes.len(), 1);
+        assert_eq!(result.merged_count, 1);
+    }
+
+    #[test]
+    fn test_width_bridge_keeps_both_endpoints() {
+        // Regression guard: with a width-based merge, the junction-dedup must NOT
+        // drop a point — otherwise the bridge segment disappears and the pen jumps
+        // from one stroke into the middle of the next without drawing the bridge.
+        let style = ResolvedStyle::default().with_stroke_width(1.0);
+        let strokes = vec![
+            opt_stroke(
+                vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+                style,
+                false,
+            ),
+            opt_stroke(
+                vec![Point::new(10.3, 0.0), Point::new(20.0, 0.0)],
+                style,
+                false,
+            ),
+        ];
+        let result = merge_adjacent_strokes(&strokes, 0.05, 0.5);
+        assert_eq!(result.strokes[0].points.len(), 4);
     }
 }

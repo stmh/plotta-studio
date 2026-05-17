@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use crate::config::PlotConfig;
 use crate::optimize::{
-    optimize_strokes_with_reversal, pen_down_distance_optimized, travel_distance_optimized,
-    OwnedOptimizedStroke,
+    merge_adjacent_strokes, optimize_strokes_with_reversal, pen_down_distance_optimized,
+    travel_distance_optimized, OwnedOptimizedStroke,
 };
 use crate::stats::{estimate_plot_time_optimized, DrawingStats};
 
@@ -65,27 +65,59 @@ impl PreparedDrawing {
             optimize_start.elapsed().as_secs_f64()
         );
 
+        // Count reversals BEFORE merging - merging bakes reversal into points order.
+        let reversed_count = optimized.iter().filter(|s| s.reversed).count();
+
+        let fixed_tol = if config.merge_strokes {
+            config.merge_tolerance
+        } else {
+            0.0
+        };
+        let width_factor = if config.connect_close_strokes {
+            config.connect_distance_factor
+        } else {
+            0.0
+        };
+
+        let (optimized, merged_count) = if fixed_tol > 0.0 || width_factor > 0.0 {
+            let merge_start = std::time::Instant::now();
+            let result = merge_adjacent_strokes(&optimized, fixed_tol, width_factor);
+            log::info!(
+                "Merged {} adjacent strokes in {:.2}s ({} -> {} strokes; fixed_tol={}mm, width_factor={})",
+                result.merged_count,
+                merge_start.elapsed().as_secs_f64(),
+                strokes.len(),
+                result.strokes.len(),
+                fixed_tol,
+                width_factor,
+            );
+            (result.strokes, result.merged_count)
+        } else {
+            (optimized, 0)
+        };
+
         // Calculate stats from already-optimized strokes
         log::debug!("Preparing drawing: calculating statistics...");
-        let reversed_count = optimized.iter().filter(|s| s.reversed).count();
         let pen_down = pen_down_distance_optimized(&optimized);
         let travel = travel_distance_optimized(&optimized);
         let estimated_time = estimate_plot_time_optimized(&optimized, config);
 
         let stats = DrawingStats {
-            stroke_count: strokes.len(),
+            stroke_count: optimized.len(),
             pen_down_distance: pen_down,
             travel_distance: travel,
             estimated_time,
             reversed_strokes: reversed_count,
+            merged_strokes: merged_count,
         };
 
         log::debug!(
-            "Prepared: {} strokes, pen_down={:.1}mm, travel={:.1}mm, {} reversed",
+            "Prepared: {} strokes, pen_down={:.1}mm, travel={:.1}mm, {} reversed, {} merged",
             stats.stroke_count,
             stats.pen_down_distance,
             stats.travel_distance,
-            stats.reversed_strokes
+            stats.reversed_strokes,
+            stats.merged_strokes
         );
 
         Self {
