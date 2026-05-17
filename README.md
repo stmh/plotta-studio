@@ -423,25 +423,36 @@ Drawing::new(w, h)        // Custom
 
 ## Command-Line Tool
 
-The `plotta-cli` binary controls a connected AxiDraw:
+The `plotta-cli` crate builds a binary called `plotta` that controls a
+connected AxiDraw:
+
+```bash
+# Install it to ~/.cargo/bin once
+cargo install --path crates/plotta-cli
+
+# Or run it from the workspace via cargo
+cargo run -p plotta-cli -- preview drawing.json
+```
+
+Once `plotta` is on your PATH:
 
 ```bash
 # Preview a drawing (stats, estimated time)
-cargo run -p plotta-cli -- preview drawing.json
+plotta preview drawing.json
 
 # Plot a drawing
-cargo run -p plotta-cli -- plot drawing.json
+plotta plot drawing.json
 
 # Move pen to position
-cargo run -p plotta-cli -- move 100 50
+plotta move 100 50
 
 # Pen up/down
-cargo run -p plotta-cli -- pen up
-cargo run -p plotta-cli -- pen down
+plotta pen up
+plotta pen down
 
 # Home / status
-cargo run -p plotta-cli -- home
-cargo run -p plotta-cli -- status
+plotta home
+plotta status
 ```
 
 ### Optimization flags
