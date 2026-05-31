@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/stmh/plotta-studio/compare/v0.3.0...v0.3.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **drawing-core:** clip lines to boundary instead of dropping them ([e3ddf00](https://github.com/stmh/plotta-studio/commit/e3ddf00e89c9c2287945e0ebcf3c11d4c05f05b0)), closes [#19](https://github.com/stmh/plotta-studio/issues/19)
+
 ## [0.3.0](https://github.com/stmh/plotta-studio/compare/v0.2.0...v0.3.0) (2026-05-31)
 
 
