@@ -306,7 +306,14 @@ fn clip_linestring_to_region(
                 }
                 current_segment.push(*current);
             } else if !current_segment.is_empty() {
-                // Leaving clip region
+                // Leaving clip region. We're inside-then-outside but no interior
+                // crossing was recorded, which means the exit happened within
+                // tolerance of `current` (the boundary intersection's `t` was so
+                // close to an endpoint that it was filtered as a grazing touch).
+                // Close the segment on `current` so the inside portion is kept
+                // and ends at the boundary, instead of dropping the whole line
+                // when only the start point remains. See issue #19.
+                current_segment.push(*current);
                 if current_segment.len() >= 2 {
                     result_lines.push(LineString::new(current_segment.clone()));
                 }
@@ -927,6 +934,50 @@ mod tests {
             max_x,
             min_y,
             max_y
+        );
+    }
+
+    #[test]
+    fn test_clip_line_endpoint_just_outside_is_clipped_not_dropped() {
+        // Regression test for issue #19:
+        // A line whose start is inside and whose end is a hair *outside* the clip
+        // boundary (here ~3e-14 below it, the kind of error produced by
+        // `y0 + n * (size / n)`) must be clipped to the boundary, not dropped.
+        // The exit crossing sits within the endpoint-tolerance of the segment,
+        // so the naive path discarded it and deleted the whole line.
+        let ctx = test_ctx();
+
+        let clip_rect = Element::rect(0.0, 0.0, 100.0, 100.0);
+
+        // End point a tiny bit below the bottom edge (y = 100).
+        let just_outside = 100.0 + 3e-14;
+        let line = Element::polyline(vec![Point::new(50.0, 75.0), Point::new(50.0, just_outside)]);
+
+        let clipped = Element::clip(clip_rect).add(line);
+        let strokes = clipped.flatten(&ctx);
+
+        assert_eq!(
+            strokes.len(),
+            1,
+            "Line straddling the boundary by a rounding error should survive, got {}",
+            strokes.len()
+        );
+        // The surviving stroke should still span from the interior start down to
+        // (essentially) the boundary.
+        let stroke = &strokes[0];
+        let ymin = stroke
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f64::INFINITY, f64::min);
+        let ymax = stroke
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            ymin <= 75.0 + 1e-6 && ymax >= 100.0 - 1e-6,
+            "Clipped line should span interior..boundary (got {ymin}..{ymax})"
         );
     }
 
