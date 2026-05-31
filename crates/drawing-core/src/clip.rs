@@ -186,6 +186,18 @@ fn union_polygons(polygons: &[Polygon<f64>]) -> MultiPolygon<f64> {
     result
 }
 
+/// Test whether a point lies within the (closed) clip region.
+///
+/// The clip region is treated as a *closed* set: points lying exactly on the
+/// polygon boundary count as inside. `geo`'s `Contains` is strict (boundary
+/// points return `false`), which causes strokes whose endpoints sit on the clip
+/// edge to be silently dropped (see issue #19). `Intersects` includes the
+/// boundary, giving the closed-region semantics we want.
+fn point_in_closed_region(clip_region: &MultiPolygon<f64>, point: &geo::Point<f64>) -> bool {
+    use geo::Intersects;
+    clip_region.intersects(point)
+}
+
 /// Clip a linestring to a multi-polygon region
 ///
 /// If `invert` is true, keeps content outside the clip region instead of inside.
@@ -194,7 +206,7 @@ fn clip_linestring_to_region(
     clip_region: &MultiPolygon<f64>,
     invert: bool,
 ) -> MultiLineString<f64> {
-    use geo::{Contains, Line as GeoLine, LineIntersection};
+    use geo::{Line as GeoLine, LineIntersection};
 
     let mut result_lines: Vec<LineString<f64>> = vec![];
     let mut current_segment: Vec<Coord<f64>> = vec![];
@@ -219,7 +231,7 @@ fn clip_linestring_to_region(
         let current = coords[i];
         let current_point = geo::Point::new(current.x, current.y);
         // When inverted, we want to keep what's outside, so we flip the inside check
-        let current_inside = clip_region.contains(&current_point) != invert;
+        let current_inside = point_in_closed_region(clip_region, &current_point) != invert;
 
         if i == 0 {
             // First point
@@ -231,7 +243,7 @@ fn clip_linestring_to_region(
 
         let prev = coords[i - 1];
         let prev_point = geo::Point::new(prev.x, prev.y);
-        let prev_inside = clip_region.contains(&prev_point) != invert;
+        let prev_inside = point_in_closed_region(clip_region, &prev_point) != invert;
 
         let segment = GeoLine::new(*prev, *current);
 
@@ -812,6 +824,109 @@ mod tests {
             strokes.len() >= 4,
             "Expected at least 4 segments (one per edge), got {}",
             strokes.len()
+        );
+    }
+
+    #[test]
+    fn test_clip_full_height_lines_on_boundary_survive() {
+        // Regression test for issue #19:
+        // Vertical lines whose endpoints lie exactly on the clip rect's top/bottom
+        // edges must be preserved in full, not silently dropped.
+        let ctx = test_ctx();
+
+        // Clip region: the bounding square (0,0)-(100,100).
+        let clip_rect = Element::rect(0.0, 0.0, 100.0, 100.0);
+
+        // Four full-height vertical lines spanning the entire clip height.
+        // Their endpoints sit exactly on the top (y=0) and bottom (y=100) edges.
+        let xs = [20.0, 40.0, 60.0, 80.0];
+        let mut group = Group::new();
+        for x in xs {
+            group = group.add(Element::polyline(vec![
+                Point::new(x, 0.0),
+                Point::new(x, 100.0),
+            ]));
+        }
+
+        let clipped = Element::clip(clip_rect).add(Element::group(group));
+        let strokes = clipped.flatten(&ctx);
+
+        // Every vertical line should survive intact.
+        assert_eq!(
+            strokes.len(),
+            xs.len(),
+            "All {} full-height lines should survive clipping, got {}",
+            xs.len(),
+            strokes.len()
+        );
+
+        // Each surviving stroke must still span the full height of the clip rect.
+        for stroke in &strokes {
+            let min_y = stroke
+                .points
+                .iter()
+                .map(|p| p.y)
+                .fold(f64::INFINITY, f64::min);
+            let max_y = stroke
+                .points
+                .iter()
+                .map(|p| p.y)
+                .fold(f64::NEG_INFINITY, f64::max);
+            assert!(
+                min_y <= 0.0 + 1e-6 && max_y >= 100.0 - 1e-6,
+                "Clipped line should span full height (got {}..{})",
+                min_y,
+                max_y
+            );
+        }
+    }
+
+    #[test]
+    fn test_clip_rect_outline_on_boundary_survives() {
+        // Regression test for issue #19:
+        // A closed rectangle outline drawn exactly on the clip boundary must be preserved.
+        let ctx = test_ctx();
+
+        let clip_rect = Element::rect(0.0, 0.0, 100.0, 100.0);
+        // Same rectangle as a child - its outline lies exactly on the clip boundary.
+        let outline = Element::rect(0.0, 0.0, 100.0, 100.0);
+
+        let clipped = Element::clip(clip_rect).add(outline);
+        let strokes = clipped.flatten(&ctx);
+
+        assert!(
+            !strokes.is_empty(),
+            "Rectangle outline on the clip boundary should be preserved, but it vanished"
+        );
+
+        // The full perimeter should be present (bounding box matches the rect).
+        let min_x = strokes
+            .iter()
+            .flat_map(|s| s.points.iter())
+            .map(|p| p.x)
+            .fold(f64::INFINITY, f64::min);
+        let max_x = strokes
+            .iter()
+            .flat_map(|s| s.points.iter())
+            .map(|p| p.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let min_y = strokes
+            .iter()
+            .flat_map(|s| s.points.iter())
+            .map(|p| p.y)
+            .fold(f64::INFINITY, f64::min);
+        let max_y = strokes
+            .iter()
+            .flat_map(|s| s.points.iter())
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            min_x <= 1e-6 && min_y <= 1e-6 && max_x >= 100.0 - 1e-6 && max_y >= 100.0 - 1e-6,
+            "Outline should cover the full rect perimeter (got x {}..{}, y {}..{})",
+            min_x,
+            max_x,
+            min_y,
+            max_y
         );
     }
 
