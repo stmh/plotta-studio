@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/stmh/plotta-studio/compare/v0.2.0...v0.3.0) (2026-05-31)
+
+
+### Features
+
+* **drawing-plotter:** merge adjacent strokes and bridge close-stroke gaps ([11cd62b](https://github.com/stmh/plotta-studio/commit/11cd62b3cc9693bcb157fb2b53436c029274ea9c))
+* **drawing-viewer:** add JSON viewer crate with cycling between files ([0c65a4c](https://github.com/stmh/plotta-studio/commit/0c65a4c7b7152cdba38408cdb124ee45a858db6d))
+* **plotta-cli:** expose stroke-merge optimization flags ([d05ec2e](https://github.com/stmh/plotta-studio/commit/d05ec2e12b09ada95523f479c23ca0f2ad2af074))
+* **sketch-runner:** add Sketch::base_filename for custom export names ([fb3d257](https://github.com/stmh/plotta-studio/commit/fb3d257a412c1b3cfe83b8e816a3198b52a123d2))
+
+
+### Bug Fixes
+
+* **drawing-core:** keep strokes touching the clip boundary ([4e3c2cb](https://github.com/stmh/plotta-studio/commit/4e3c2cb52859b4de3dfdda0d97ada76f6955bc4c)), closes [#19](https://github.com/stmh/plotta-studio/issues/19)
+
 ## [0.2.0](https://github.com/stmh/plotta-studio/compare/v0.1.0...v0.2.0) (2026-05-14)
 
 
