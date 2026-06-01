@@ -250,6 +250,35 @@ struct RenderState {
     queue: wgpu::Queue,
     renderer: Renderer,
     surface_config: wgpu::SurfaceConfiguration,
+    /// Intermediate texture Vello renders into; blitted to the surface afterwards.
+    ///
+    /// Vello renders via a compute shader and cannot write to the surface texture
+    /// directly, so we render to this texture and then blit it to the surface.
+    target_view: wgpu::TextureView,
+    /// Blits `target_view` to the surface texture.
+    blitter: wgpu::util::TextureBlitter,
+}
+
+/// Create the intermediate texture (and its view) that Vello renders into.
+///
+/// Must use `Rgba8Unorm` with storage + texture binding usage, matching Vello's
+/// requirements for `render_to_texture`.
+fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("vello_render_target"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        view_formats: &[],
+    });
+    texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 // ============================================================================
@@ -412,17 +441,27 @@ impl<S: Sketch> AppState<S> {
 
         let after_strokes = std::time::Instant::now();
 
-        // Render
-        let surface_texture = state.surface.get_current_texture().unwrap();
+        // Acquire the surface texture. On transient failures (timeout, occluded,
+        // outdated) just skip this frame; a redraw will be requested again.
+        let surface_texture = match state.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            other => {
+                log::debug!("Skipping frame, surface texture unavailable: {:?}", other);
+                return;
+            }
+        };
 
         let before_gpu = std::time::Instant::now();
+
+        // Vello renders into an intermediate texture...
         state
             .renderer
-            .render_to_surface(
+            .render_to_texture(
                 &state.device,
                 &state.queue,
                 &scene,
-                &surface_texture,
+                &state.target_view,
                 &RenderParams {
                     base_color: vello::peniko::Color::WHITE,
                     width: state.surface_config.width,
@@ -431,6 +470,23 @@ impl<S: Sketch> AppState<S> {
                 },
             )
             .unwrap();
+
+        // ...which we then blit onto the surface texture.
+        let surface_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = state
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("surface_blit"),
+            });
+        state.blitter.copy(
+            &state.device,
+            &mut encoder,
+            &state.target_view,
+            &surface_view,
+        );
+        state.queue.submit([encoder.finish()]);
         let after_gpu = std::time::Instant::now();
 
         surface_texture.present();
@@ -477,14 +533,11 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
         }))
         .expect("Failed to find adapter");
 
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                ..Default::default()
-            },
-            None,
-        ))
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            ..Default::default()
+        }))
         .expect("Failed to create device");
 
         let size = window.inner_size();
@@ -524,13 +577,16 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
         let renderer = Renderer::new(
             &device,
             RendererOptions {
-                surface_format: Some(surface_format),
                 use_cpu: false,
                 antialiasing_support: vello::AaSupport::all(),
                 num_init_threads: None,
+                pipeline_cache: None,
             },
         )
         .expect("Failed to create renderer");
+
+        let target_view = create_target_view(&device, surface_config.width, surface_config.height);
+        let blitter = wgpu::util::TextureBlitter::new(&device, surface_format);
 
         self.render_state = Some(RenderState {
             window,
@@ -539,6 +595,8 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
             queue,
             renderer,
             surface_config,
+            target_view,
+            blitter,
         });
     }
 
@@ -560,6 +618,8 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
                     state
                         .surface
                         .configure(&state.device, &state.surface_config);
+                    // Resize the intermediate render target to match.
+                    state.target_view = create_target_view(&state.device, size.width, size.height);
                 }
 
                 if self.needs_initial_fit {
