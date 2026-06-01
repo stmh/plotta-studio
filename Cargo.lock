@@ -652,7 +652,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
 name = "drawing-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "geo",
  "kurbo 0.13.1",
@@ -663,18 +663,18 @@ dependencies = [
 
 [[package]]
 name = "drawing-plotter"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-core",
  "log",
- "rstar",
+ "rstar 0.13.0",
  "serialport",
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "drawing-svg"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-core",
  "drawing-plotter",
@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-text"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-core",
  "kurbo 0.13.1",
@@ -697,7 +697,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-utils"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-core",
  "drawing-text",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-viewer"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -785,7 +785,7 @@ dependencies = [
 
 [[package]]
 name = "example-clip-demo"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -794,14 +794,14 @@ dependencies = [
 
 [[package]]
 name = "example-dvd-screensaver"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "sketch-runner",
 ]
 
 [[package]]
 name = "example-hatched-circles"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "example-hello-world"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "example-plotter-calibration"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "example-svg-viewer"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-svg",
  "drawing-text",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "example-text"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-text",
  "sketch-runner",
@@ -1002,7 +1002,7 @@ dependencies = [
  "rand",
  "rand_pcg",
  "robust",
- "rstar",
+ "rstar 0.12.2",
  "sif-itree",
  "spade",
 ]
@@ -1016,7 +1016,7 @@ dependencies = [
  "approx",
  "num-traits",
  "rayon",
- "rstar",
+ "rstar 0.12.2",
  "serde",
  "spade",
 ]
@@ -2092,7 +2092,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plotta-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2398,6 +2398,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rstar"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5912b862fa5ffb462607bfd1e35036c458c537921f508c8235a83d5f3987edfe"
+dependencies = [
+ "heapless",
+ "num-traits",
+ "smallvec",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2646,7 +2657,7 @@ checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
 name = "sketch-runner"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "drawing-core",
  "drawing-plotter",
@@ -3124,7 +3135,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsf-convert"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "base64",

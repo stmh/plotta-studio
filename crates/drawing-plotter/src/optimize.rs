@@ -223,7 +223,7 @@ fn optimize_strokes_internal(strokes: &[Stroke], allow_reversal: bool) -> Vec<Op
     while visited.len() < total_strokes {
         // Find nearest unvisited endpoint
         let nearest = tree
-            .nearest_neighbor_iter(&current_pos)
+            .nearest_neighbor_iter(current_pos)
             .find(|entry| !visited.contains(&entry.data.0));
 
         let Some(nearest) = nearest else {
