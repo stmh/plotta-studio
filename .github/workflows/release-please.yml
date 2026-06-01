@@ -37,7 +37,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           # GITHUB_TOKEN is sufficient here because no downstream
           # workflows depend on the tag-push event firing other jobs.
