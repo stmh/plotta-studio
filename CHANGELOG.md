@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/stmh/plotta-studio/compare/v0.3.1...v0.3.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* **sketch-runner:** adapt rendering to vello 0.9 / wgpu 29 API ([1f64e68](https://github.com/stmh/plotta-studio/commit/1f64e68e12305711c31eb6806ddfd7d77aef0ef0))
+
 ## [0.3.1](https://github.com/stmh/plotta-studio/compare/v0.3.0...v0.3.1) (2026-05-31)
 
 
