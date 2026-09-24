@@ -14,7 +14,7 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install libudev (required for serialport crate)
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
@@ -27,7 +27,7 @@ jobs:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install libudev (required for serialport crate)
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
@@ -40,7 +40,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -51,7 +51,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install libudev (required for serialport crate)
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
