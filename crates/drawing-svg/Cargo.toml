@@ -2,10 +2,11 @@
 name = "drawing-svg"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]
 drawing-core = { workspace = true }
 drawing-plotter = { workspace = true }
 thiserror = { workspace = true }
-usvg = "0.47"
+usvg = "0.50"

@@ -2,6 +2,7 @@
 name = "drawing-plotter"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
 publish = false
 
 [features]
@@ -16,4 +17,4 @@ log = { workspace = true }
 rstar = { workspace = true }
 
 # Serial communication for AxiDraw (optional, requires system libraries)
-serialport = { version = "4.3", optional = true }
+serialport = { version = "4.10", optional = true }

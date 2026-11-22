@@ -489,7 +489,7 @@ impl<S: Sketch> AppState<S> {
         state.queue.submit([encoder.finish()]);
         let after_gpu = std::time::Instant::now();
 
-        surface_texture.present();
+        state.queue.present(surface_texture);
 
         let total = render_start.elapsed();
         log::info!(
@@ -568,6 +568,7 @@ impl<S: Sketch> ApplicationHandler for AppState<S> {
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::AutoVsync,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,

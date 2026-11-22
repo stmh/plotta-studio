@@ -2,6 +2,7 @@
 name = "plotta-cli"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
 publish = false
 license.workspace = true
 description = "CLI for plotter control"
@@ -14,7 +15,6 @@ path = "src/main.rs"
 drawing-core = { workspace = true }
 drawing-text = { path = "../drawing-text" }
 drawing-svg = { workspace = true }
-drawing-utils = { path = "../drawing-utils" }
 drawing-plotter = { workspace = true, features = ["hardware"] }
 clap = { workspace = true }
 indicatif = { workspace = true }
@@ -23,3 +23,6 @@ serde_json = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 crossterm = "0.29"
+
+[dev-dependencies]
+drawing-utils = { path = "../drawing-utils" }
