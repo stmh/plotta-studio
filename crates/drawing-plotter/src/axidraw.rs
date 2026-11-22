@@ -778,6 +778,9 @@ impl AxiDraw {
     // ========================================================================
 
     /// Plot a drawing
+    ///
+    /// Strokes are flattened, ordered and merged per `config` exactly like
+    /// [`PreparedDrawing::new`].
     pub fn plot(
         &mut self,
         drawing: &Drawing,
@@ -785,15 +788,8 @@ impl AxiDraw {
         ctx: &RenderContext,
     ) -> Result<(), PlotterError> {
         self.set_config(config.clone())?;
-
-        // Flatten drawing to strokes
-        let strokes = drawing.flatten(ctx);
-
-        // Optimize stroke order with reversal support
-        let optimized = optimize_strokes_with_reversal(&strokes, true);
-
-        // Plot each stroke
-        self.plot_optimized_strokes(&optimized)
+        let prepared = PreparedDrawing::new(drawing, config, ctx);
+        self.plot_optimized_strokes(&prepared.optimized)
     }
 
     /// Plot a sequence of optimized strokes (with reversal support)
@@ -1097,6 +1093,9 @@ impl AxiDraw {
     }
 
     /// Plot a drawing with event callbacks
+    ///
+    /// Strokes are flattened, ordered and merged per `config` exactly like
+    /// [`PreparedDrawing::new`].
     pub fn plot_with_events<F>(
         &mut self,
         drawing: &Drawing,
@@ -1108,9 +1107,8 @@ impl AxiDraw {
         F: FnMut(PlotEvent),
     {
         self.set_config(config.clone())?;
-        let strokes = drawing.flatten(ctx);
-        let optimized = optimize_strokes_with_reversal(&strokes, true);
-        self.plot_optimized_strokes_with_events(&optimized, on_event)
+        let prepared = PreparedDrawing::new(drawing, config, ctx);
+        self.plot_optimized_strokes_with_events(&prepared.optimized, on_event)
     }
 }
 
@@ -1180,27 +1178,12 @@ pub fn plot_in_background(
                 }
             };
 
+            // Flatten, order and merge strokes per config (logs its own timings)
+            let optimized = PreparedDrawing::new(&drawing, &config, &ctx).optimized;
+
             // Apply the config to the plotter (also configures servo positions)
             log::debug!("Applying plot configuration...");
             plotter.set_config(config)?;
-
-            log::debug!("Flattening drawing to strokes...");
-            let flatten_start = std::time::Instant::now();
-            let strokes = drawing.flatten(&ctx);
-            log::info!(
-                "Flattened drawing to {} strokes in {:.2}s",
-                strokes.len(),
-                flatten_start.elapsed().as_secs_f64()
-            );
-
-            log::debug!("Optimizing stroke order...");
-            let optimize_start = std::time::Instant::now();
-            let optimized = optimize_strokes_with_reversal(&strokes, true);
-            log::info!(
-                "Optimized {} strokes in {:.2}s",
-                optimized.len(),
-                optimize_start.elapsed().as_secs_f64()
-            );
 
             log::info!("Starting to plot {} strokes...", optimized.len());
             plotter.plot_optimized_strokes_with_pause(
@@ -1848,5 +1831,26 @@ mod fake_port_tests {
             events.last()
         );
         assert!(!events.iter().any(|e| matches!(e, PlotEvent::Completed)));
+    }
+
+    #[test]
+    fn plot_drawing_merges_touching_strokes() {
+        let (mut plotter, port) = fake_plotter();
+        let mut drawing = Drawing::new(10.0, 10.0);
+        drawing.add(drawing_core::Element::line((0.0, 0.0), (1.0, 0.0)));
+        drawing.add(drawing_core::Element::line((1.0, 0.0), (2.0, 0.0)));
+        let config = plotter.config.clone();
+        assert!(config.merge_strokes);
+
+        plotter
+            .plot(&drawing, &config, &RenderContext::empty())
+            .unwrap();
+
+        let written = String::from_utf8(port.written.lock().unwrap().clone()).unwrap();
+        assert_eq!(
+            written.matches("SP,0,").count(),
+            1,
+            "touching strokes should be drawn with a single pen-down"
+        );
     }
 }
