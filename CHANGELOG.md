@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.2](https://github.com/stmh/plotta-studio/compare/v0.3.1...v0.3.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **cli:** correct pen raise rate default in help text ([1ab0b5c](https://github.com/stmh/plotta-studio/commit/1ab0b5ca31c3d700a008dc28b98ccd057cdaa752)), closes [#79](https://github.com/stmh/plotta-studio/issues/79)
+* **cli:** drain final plot events after the plot thread exits ([8aeaaba](https://github.com/stmh/plotta-studio/commit/8aeaaba27c4cfc14de52d9f43ca43074cf4b5cfb)), closes [#70](https://github.com/stmh/plotta-studio/issues/70)
+* **cli:** drop double tilde from initial remaining time ([23e1976](https://github.com/stmh/plotta-studio/commit/23e197649b323f72d3e0cb0f2f2a573c9ddb1a6f)), closes [#80](https://github.com/stmh/plotta-studio/issues/80)
+* **cli:** name both stroke counts when the stroke limit is exceeded ([602a172](https://github.com/stmh/plotta-studio/commit/602a172461cc12685553af14e0d6bb60bcf20c6e)), closes [#76](https://github.com/stmh/plotta-studio/issues/76)
+* **clip:** draw content unclipped for inverted clip without closed region ([c96d24f](https://github.com/stmh/plotta-studio/commit/c96d24ff9c7d4b3480f746598c2e08e01811d449)), closes [#69](https://github.com/stmh/plotta-studio/issues/69)
+* **clip:** keep the inside part of strokes starting a rounding error outside ([0481fd1](https://github.com/stmh/plotta-studio/commit/0481fd1dd0771328d982366f3caa6666c2521c45)), closes [#68](https://github.com/stmh/plotta-studio/issues/68)
+* **cli:** require a terminal before plot spawns the plot thread ([8906f8b](https://github.com/stmh/plotta-studio/commit/8906f8b2f474f64ffe9c03155ec45adbcf83f3c1)), closes [#71](https://github.com/stmh/plotta-studio/issues/71)
+* **cli:** validate --port path in plot before connecting ([0420812](https://github.com/stmh/plotta-studio/commit/0420812f88a5256c333031580f69e96052fb96c7)), closes [#75](https://github.com/stmh/plotta-studio/issues/75)
+* **motion:** carry step rounding across segments of a planned stroke ([77e72c8](https://github.com/stmh/plotta-studio/commit/77e72c8ee39644fe38a12fbe403929735fd4848f)), closes [#67](https://github.com/stmh/plotta-studio/issues/67)
+* **motion:** limit segment entry speed by previous segment's reachable exit ([0b1aa6b](https://github.com/stmh/plotta-studio/commit/0b1aa6bb0ef4464b52b5765bfc8fef131189dc94)), closes [#66](https://github.com/stmh/plotta-studio/issues/66)
+* **plotter:** export generate_stroke_sm_commands ([05cabdd](https://github.com/stmh/plotta-studio/commit/05cabdd5f28f7a07838c266d6d848ec2fc9aae93))
+* **plotter:** merge strokes in plot, plot_with_events and plot_in_background ([80eeda6](https://github.com/stmh/plotta-studio/commit/80eeda607cc6a59bc4754768f5b8853c4b74fae6)), closes [#77](https://github.com/stmh/plotta-studio/issues/77)
+* **plotter:** report Cancelled when cancel arrives during the last stroke ([64f3227](https://github.com/stmh/plotta-studio/commit/64f3227effe3aaed30390ad03e96479912bbddc1)), closes [#72](https://github.com/stmh/plotta-studio/issues/72)
+* **sketch-runner:** adapt rendering to vello 0.9 / wgpu 29 API ([1f64e68](https://github.com/stmh/plotta-studio/commit/1f64e68e12305711c31eb6806ddfd7d77aef0ef0))
+* **stats:** include the final travel home in distance and time estimates ([52cc4a9](https://github.com/stmh/plotta-studio/commit/52cc4a9ad662a1c5435ab0c3e4bc6b71b29953c0)), closes [#85](https://github.com/stmh/plotta-studio/issues/85)
+* **svg:** warn when &lt;text&gt; elements are dropped on import ([3907d45](https://github.com/stmh/plotta-studio/commit/3907d45b63ba8419c12d9e7b5d2cc36c9236d26c)), closes [#74](https://github.com/stmh/plotta-studio/issues/74)
+* **svg:** warn when gradient or pattern strokes fall back to the default colour ([b16364e](https://github.com/stmh/plotta-studio/commit/b16364e87f74b86b9b98b87ddfb521b3f2faa1be)), closes [#73](https://github.com/stmh/plotta-studio/issues/73)
+* **text:** reject Hershey directory loads up front ([c06fd1b](https://github.com/stmh/plotta-studio/commit/c06fd1b1ba7dafce861ea83a7b11eb7baab386a3)), closes [#78](https://github.com/stmh/plotta-studio/issues/78)
+* **text:** warn about a missing space glyph once per font ([ab55edb](https://github.com/stmh/plotta-studio/commit/ab55edb873e7adb76d994ed38c2e210aa50aa7df)), closes [#82](https://github.com/stmh/plotta-studio/issues/82)
+* **vsf-convert:** name the file when minf input can't be read ([e116076](https://github.com/stmh/plotta-studio/commit/e116076a748325277c1b340b1cc81cd721a54403)), closes [#84](https://github.com/stmh/plotta-studio/issues/84)
+
 ## [0.3.1](https://github.com/stmh/plotta-studio/compare/v0.3.0...v0.3.1) (2026-05-31)
 
 
