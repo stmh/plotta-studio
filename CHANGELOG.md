@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.3](https://github.com/stmh/plotta-studio/compare/v0.3.2...v0.3.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **motion:** apply per-segment speed limit at straight junctions ([23a2441](https://github.com/stmh/plotta-studio/commit/23a2441f3be66e183627fa0dabafd5fd8155fa5c)), closes [#92](https://github.com/stmh/plotta-studio/issues/92)
+* **motion:** report the adjusted duration of single SM moves ([68f002d](https://github.com/stmh/plotta-studio/commit/68f002d6d02cd5715b0ce4099b33dc2d19d7bf9c)), closes [#91](https://github.com/stmh/plotta-studio/issues/91)
+* **plotter:** cap the constant-velocity LM step rate at 25 kHz ([89a2373](https://github.com/stmh/plotta-studio/commit/89a237344b542ab608536e39952d6582dd380ac4)), closes [#88](https://github.com/stmh/plotta-studio/issues/88)
+* **plotter:** plan closing edges, validate speeds, cap LM rate, lift pen on error ([89a2373](https://github.com/stmh/plotta-studio/commit/89a237344b542ab608536e39952d6582dd380ac4))
+* **plotter:** plan the closing edge of closed strokes ([89a2373](https://github.com/stmh/plotta-studio/commit/89a237344b542ab608536e39952d6582dd380ac4)), closes [#86](https://github.com/stmh/plotta-studio/issues/86)
+* **plotter:** raise the pen and release motors when plotting fails ([89a2373](https://github.com/stmh/plotta-studio/commit/89a237344b542ab608536e39952d6582dd380ac4)), closes [#89](https://github.com/stmh/plotta-studio/issues/89)
+* **plotter:** reject zero or negative speeds and accelerations ([89a2373](https://github.com/stmh/plotta-studio/commit/89a237344b542ab608536e39952d6582dd380ac4)), closes [#87](https://github.com/stmh/plotta-studio/issues/87)
+* **stats:** estimate closed strokes and travel like the plotter ([977615b](https://github.com/stmh/plotta-studio/commit/977615b9900ed8b31729daa16609d9d2b1e6482e)), closes [#90](https://github.com/stmh/plotta-studio/issues/90)
+
 ## [0.3.2](https://github.com/stmh/plotta-studio/compare/v0.3.1...v0.3.2) (2026-11-22)
 
 
