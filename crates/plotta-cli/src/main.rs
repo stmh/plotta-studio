@@ -929,9 +929,9 @@ fn cmd_plot(
     let estimated_total = stats.estimated_time;
     let total_strokes = stats.stroke_count;
 
-    let mut was_cancelled = false;
-    let result = (|| -> Result<()> {
-        while handle.is_running() {
+    let outcome = pump_plot_events(
+        || handle.is_running(),
+        || {
             // Check for key input
             match check_for_key() {
                 KeyInput::Space => {
@@ -948,87 +948,83 @@ fn cmd_plot(
                 }
                 KeyInput::None => {}
             }
+            handle.drain_events()
+        },
+        |event| {
+            match event {
+                PlotEvent::Started { total_strokes: n } => {
+                    progress.set_length(*n as u64);
+                }
+                PlotEvent::StrokeComplete { index, .. } => {
+                    let completed = index + 1;
+                    progress.set_position(completed as u64);
 
-            // Process plot events
-            for event in handle.drain_events() {
-                match event {
-                    PlotEvent::Started { total_strokes: n } => {
-                        progress.set_length(n as u64);
-                    }
-                    PlotEvent::StrokeComplete { index, .. } => {
-                        let completed = index + 1;
-                        progress.set_position(completed as u64);
+                    // Calculate remaining time based on progress
+                    if completed > 0 && total_strokes > 0 {
+                        let elapsed = start_time.elapsed();
+                        let progress_ratio = completed as f64 / total_strokes as f64;
 
-                        // Calculate remaining time based on progress
-                        if completed > 0 && total_strokes > 0 {
-                            let elapsed = start_time.elapsed();
-                            let progress_ratio = completed as f64 / total_strokes as f64;
+                        // Use weighted average of elapsed-based and estimate-based remaining time
+                        let remaining = if progress_ratio > 0.05 {
+                            // After 5% progress, use actual elapsed time to estimate remaining
+                            let estimated_total_from_elapsed =
+                                Duration::from_secs_f64(elapsed.as_secs_f64() / progress_ratio);
+                            let remaining_from_elapsed =
+                                estimated_total_from_elapsed.saturating_sub(elapsed);
 
-                            // Use weighted average of elapsed-based and estimate-based remaining time
-                            let remaining = if progress_ratio > 0.05 {
-                                // After 5% progress, use actual elapsed time to estimate remaining
-                                let estimated_total_from_elapsed =
-                                    Duration::from_secs_f64(elapsed.as_secs_f64() / progress_ratio);
-                                let remaining_from_elapsed =
-                                    estimated_total_from_elapsed.saturating_sub(elapsed);
-
-                                // Blend with original estimate (more weight to elapsed as we progress)
-                                let weight = progress_ratio.min(0.8);
-                                let remaining_from_estimate =
-                                    estimated_total.saturating_sub(Duration::from_secs_f64(
-                                        estimated_total.as_secs_f64() * progress_ratio,
-                                    ));
-
-                                Duration::from_secs_f64(
-                                    remaining_from_elapsed.as_secs_f64() * weight
-                                        + remaining_from_estimate.as_secs_f64() * (1.0 - weight),
-                                )
-                            } else {
-                                // Early on, use original estimate
+                            // Blend with original estimate (more weight to elapsed as we progress)
+                            let weight = progress_ratio.min(0.8);
+                            let remaining_from_estimate =
                                 estimated_total.saturating_sub(Duration::from_secs_f64(
                                     estimated_total.as_secs_f64() * progress_ratio,
-                                ))
-                            };
+                                ));
 
-                            progress
-                                .set_prefix(format!("~{} remaining", format_duration(remaining)));
-                        }
+                            Duration::from_secs_f64(
+                                remaining_from_elapsed.as_secs_f64() * weight
+                                    + remaining_from_estimate.as_secs_f64() * (1.0 - weight),
+                            )
+                        } else {
+                            // Early on, use original estimate
+                            estimated_total.saturating_sub(Duration::from_secs_f64(
+                                estimated_total.as_secs_f64() * progress_ratio,
+                            ))
+                        };
+
+                        progress.set_prefix(format!("~{} remaining", format_duration(remaining)));
                     }
-                    PlotEvent::Paused => {
-                        progress.set_message("PAUSED");
-                    }
-                    PlotEvent::Resumed => {
-                        progress.set_message("Plotting");
-                    }
-                    PlotEvent::Completed => {
-                        let elapsed = start_time.elapsed();
-                        progress.set_prefix(format!("completed in {}", format_duration(elapsed)));
-                        progress.finish_with_message("Done");
-                    }
-                    PlotEvent::Cancelled => {
-                        was_cancelled = true;
-                        progress.finish_with_message("Cancelled");
-                    }
-                    PlotEvent::Error(msg) => {
-                        progress.abandon_with_message(format!("Error: {}", msg));
-                        return Err(anyhow::anyhow!("Plotting failed: {}", msg));
-                    }
-                    _ => {}
                 }
+                PlotEvent::Paused => {
+                    progress.set_message("PAUSED");
+                }
+                PlotEvent::Resumed => {
+                    progress.set_message("Plotting");
+                }
+                PlotEvent::Completed => {
+                    let elapsed = start_time.elapsed();
+                    progress.set_prefix(format!("completed in {}", format_duration(elapsed)));
+                    progress.finish_with_message("Done");
+                }
+                PlotEvent::Cancelled => {
+                    progress.finish_with_message("Cancelled");
+                }
+                PlotEvent::Error(msg) => {
+                    progress.abandon_with_message(format!("Error: {}", msg));
+                }
+                _ => {}
             }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        Ok(())
-    })();
+        },
+    );
 
     // Always restore terminal state
     terminal::disable_raw_mode()?;
 
-    result?;
+    if let PlotOutcome::Failed(msg) = outcome {
+        anyhow::bail!("Plotting failed: {}", msg);
+    }
     handle.join()?;
 
     let total_elapsed = start_time.elapsed();
-    if was_cancelled {
+    if outcome == PlotOutcome::Cancelled {
         println!(
             "\nPlotting cancelled after {}. Pen raised and returned home.",
             format_duration(total_elapsed)
@@ -1041,4 +1037,77 @@ fn cmd_plot(
     }
 
     Ok(())
+}
+
+/// How a plot ended, as reported by its final event.
+#[derive(Debug, PartialEq)]
+enum PlotOutcome {
+    /// No terminal event was seen
+    Unfinished,
+    Completed,
+    Cancelled,
+    Failed(String),
+}
+
+/// Poll the plot thread's events until it finishes.
+///
+/// `tick` handles keyboard input and returns the pending events; `on_event`
+/// updates the progress display. Returns on the first error event, otherwise
+/// once the thread has stopped and every event it sent has been processed.
+fn pump_plot_events(
+    mut is_running: impl FnMut() -> bool,
+    mut tick: impl FnMut() -> Vec<PlotEvent>,
+    mut on_event: impl FnMut(&PlotEvent),
+) -> PlotOutcome {
+    let mut outcome = PlotOutcome::Unfinished;
+    loop {
+        // Sample before draining: once the thread is seen finished, this drain
+        // still picks up the Completed/Cancelled/Error it sent right before exiting.
+        let running = is_running();
+        for event in tick() {
+            on_event(&event);
+            match event {
+                PlotEvent::Completed => outcome = PlotOutcome::Completed,
+                PlotEvent::Cancelled => outcome = PlotOutcome::Cancelled,
+                PlotEvent::Error(msg) => return PlotOutcome::Failed(msg),
+                _ => {}
+            }
+        }
+        if !running {
+            return outcome;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The thread has already exited, but its final events are still queued.
+    fn pump_finished_thread(events: Vec<PlotEvent>) -> PlotOutcome {
+        let mut pending = Some(events);
+        pump_plot_events(|| false, || pending.take().unwrap_or_default(), |_| {})
+    }
+
+    #[test]
+    fn pump_reports_cancel_sent_just_before_thread_exit() {
+        let outcome = pump_finished_thread(vec![
+            PlotEvent::StrokeComplete { index: 0, total: 2 },
+            PlotEvent::Cancelled,
+        ]);
+        assert_eq!(outcome, PlotOutcome::Cancelled);
+    }
+
+    #[test]
+    fn pump_reports_error_sent_just_before_thread_exit() {
+        let outcome = pump_finished_thread(vec![PlotEvent::Error("Connection error".into())]);
+        assert_eq!(outcome, PlotOutcome::Failed("Connection error".into()));
+    }
+
+    #[test]
+    fn pump_reports_completion_sent_just_before_thread_exit() {
+        let outcome = pump_finished_thread(vec![PlotEvent::Completed]);
+        assert_eq!(outcome, PlotOutcome::Completed);
+    }
 }
