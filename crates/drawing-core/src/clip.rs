@@ -249,6 +249,10 @@ fn clip_linestring_to_region(
 
         // Find intersections with boundary
         let mut intersections: Vec<(f64, Coord<f64>)> = vec![];
+        // Crossings within tolerance of an endpoint are filtered out below;
+        // remember which endpoint they touched (issues #19, #68).
+        let mut touches_prev = false;
+        let mut touches_current = false;
         for boundary in &boundary_lines {
             if let Some(intersection) =
                 geo::algorithm::line_intersection::line_intersection(segment, *boundary)
@@ -281,6 +285,10 @@ fn clip_linestring_to_region(
                                     y: intersection.y,
                                 },
                             ));
+                        } else if t <= 1e-10 {
+                            touches_prev = true;
+                        } else {
+                            touches_current = true;
                         }
                     }
                     LineIntersection::Collinear { .. } => {
@@ -301,19 +309,22 @@ fn clip_linestring_to_region(
         if intersections.is_empty() {
             // No intersection - simple case
             if current_inside {
-                if current_segment.is_empty() && prev_inside {
+                // Entering with no interior crossing: if the entry happened
+                // within tolerance of `prev`, `prev` is a rounding error outside
+                // the boundary, so start the segment there (issue #68).
+                if current_segment.is_empty() && (prev_inside || touches_prev) {
                     current_segment.push(*prev);
                 }
                 current_segment.push(*current);
             } else if !current_segment.is_empty() {
-                // Leaving clip region. We're inside-then-outside but no interior
-                // crossing was recorded, which means the exit happened within
-                // tolerance of `current` (the boundary intersection's `t` was so
-                // close to an endpoint that it was filtered as a grazing touch).
-                // Close the segment on `current` so the inside portion is kept
-                // and ends at the boundary, instead of dropping the whole line
-                // when only the start point remains. See issue #19.
-                current_segment.push(*current);
+                // Leaving with no interior crossing. If the exit happened within
+                // tolerance of `current`, `current` is a rounding error outside
+                // the boundary, so close the segment on it instead of dropping
+                // the line (issue #19). Otherwise the exit is at `prev`, which
+                // is already the segment's last point.
+                if touches_current {
+                    current_segment.push(*current);
+                }
                 if current_segment.len() >= 2 {
                     result_lines.push(LineString::new(current_segment.clone()));
                 }
@@ -979,6 +990,73 @@ mod tests {
             ymin <= 75.0 + 1e-6 && ymax >= 100.0 - 1e-6,
             "Clipped line should span interior..boundary (got {ymin}..{ymax})"
         );
+    }
+
+    #[test]
+    fn test_clip_line_start_just_outside_is_clipped_not_dropped() {
+        // Regression test for issue #68: mirror of the #19 case above. A line
+        // that *starts* a rounding error outside the boundary and runs inward
+        // must keep its inside part, regardless of drawing direction.
+        let ctx = test_ctx();
+        let just_outside = 100.0 + 3e-14;
+
+        for (start, end) in [
+            (Point::new(50.0, just_outside), Point::new(50.0, 75.0)),
+            (Point::new(50.0, 75.0), Point::new(50.0, just_outside)),
+        ] {
+            let clipped = Element::clip(Element::rect(0.0, 0.0, 100.0, 100.0))
+                .add(Element::polyline(vec![start, end]));
+            let strokes = clipped.flatten(&ctx);
+
+            assert_eq!(strokes.len(), 1, "{start:?} -> {end:?}: got {strokes:?}");
+            let pts = &strokes[0].points;
+            assert_eq!(pts.len(), 2, "{start:?} -> {end:?}: got {pts:?}");
+            assert!(
+                pts[0].distance(start) < 1e-6,
+                "{start:?} -> {end:?}: got {pts:?}"
+            );
+            assert!(
+                pts[1].distance(end) < 1e-6,
+                "{start:?} -> {end:?}: got {pts:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_clip_line_leaving_from_boundary_point_is_not_extended() {
+        // Issue #68 counterpart: a polyline that runs inside, reaches the
+        // boundary exactly at a vertex and then leaves must stop at the
+        // boundary. The crossing sits at t = 0 of the outgoing segment, so it
+        // must not be treated like the #19 "end a hair outside" case.
+        let ctx = test_ctx();
+        let line = Element::polyline(vec![
+            Point::new(50.0, 50.0),
+            Point::new(50.0, 100.0),
+            Point::new(50.0, 150.0),
+        ]);
+        let strokes = Element::clip(Element::rect(0.0, 0.0, 100.0, 100.0))
+            .add(line)
+            .flatten(&ctx);
+        let ymax = strokes
+            .iter()
+            .flat_map(|s| s.points.iter())
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(ymax <= 100.0 + 1e-6, "got {strokes:?}");
+        let line = Element::polyline(vec![
+            Point::new(50.0, 150.0),
+            Point::new(50.0, 100.0),
+            Point::new(50.0, 50.0),
+        ]);
+        let strokes = Element::clip(Element::rect(0.0, 0.0, 100.0, 100.0))
+            .add(line)
+            .flatten(&ctx);
+        let ymax = strokes
+            .iter()
+            .flat_map(|s| s.points.iter())
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(ymax <= 100.0 + 1e-6, "got {strokes:?}");
     }
 
     #[test]
