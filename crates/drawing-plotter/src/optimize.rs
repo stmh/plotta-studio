@@ -97,6 +97,15 @@ impl OwnedOptimizedStroke {
         }
     }
 
+    /// Points in drawing order, ending back at the start for a closed stroke.
+    pub fn drawn_points(&self) -> Vec<Point> {
+        let mut points: Vec<Point> = self.points_iter().collect();
+        if self.closed && points.len() > 2 {
+            points.push(points[0]);
+        }
+        points
+    }
+
     /// Iterate over points in the correct order
     pub fn points_iter(&self) -> impl Iterator<Item = Point> + '_ {
         let len = self.points.len();

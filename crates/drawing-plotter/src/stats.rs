@@ -1,7 +1,7 @@
 //! Drawing statistics for preview and time estimation
 
 use crate::config::PlotConfig;
-use crate::motion::{MotionConfig, MotionPlanner, MotionProfile};
+use crate::motion::{MotionPlanner, MotionProfile};
 use crate::optimize::{
     optimize_strokes_with_reversal, pen_down_distance_optimized, travel_distance_optimized,
 };
@@ -117,14 +117,8 @@ fn estimate_time_with_motion_planning(
     strokes: &[OwnedOptimizedStroke],
     config: &PlotConfig,
 ) -> (f64, f64) {
-    let motion_config = MotionConfig {
-        max_velocity: config.pen_down_speed,
-        max_acceleration: config.max_acceleration,
-        junction_deviation: config.junction_deviation,
-        steps_per_mm: 80.0, // Standard AxiDraw steps/mm
-    };
-
-    let planner = MotionPlanner::new(motion_config);
+    let planner = MotionPlanner::new(config.motion_config());
+    let travel = config.motion_config_pen_up();
     let mut total_pen_down_time = 0.0;
     let mut total_travel_time = 0.0;
 
@@ -136,9 +130,9 @@ fn estimate_time_with_motion_planning(
             MotionProfile::calculate(
                 0.0,
                 0.0,
-                config.pen_up_speed,
+                travel.max_velocity,
                 distance,
-                config.max_acceleration,
+                travel.max_acceleration,
             )
             .total_time()
                 * 1000.0
@@ -148,7 +142,7 @@ fn estimate_time_with_motion_planning(
     };
 
     for stroke in strokes {
-        let points: Vec<Point> = stroke.points_iter().collect();
+        let points = stroke.drawn_points();
         if points.is_empty() {
             continue;
         }
@@ -365,5 +359,48 @@ mod tests {
             estimated_time: Duration::from_secs(3720), // 1h 2m
         };
         assert_eq!(stats.format_time(), "~1h 2m");
+    }
+
+    fn square(closed: bool) -> OwnedOptimizedStroke {
+        OwnedOptimizedStroke {
+            points: vec![
+                Point::new(10.0, 10.0),
+                Point::new(30.0, 10.0),
+                Point::new(30.0, 30.0),
+                Point::new(10.0, 30.0),
+            ],
+            style: ResolvedStyle::default(),
+            closed,
+            reversed: false,
+        }
+    }
+
+    #[test]
+    fn test_motion_estimate_counts_closing_edge() {
+        let config = PlotConfig::default();
+        assert!(config.motion_planning_enabled);
+        // A closed square must take as long as the same path drawn open back to its start.
+        let mut explicit = square(false);
+        explicit.points.push(explicit.points[0]);
+        let explicit = estimate_plot_time_optimized(&[explicit], &config);
+        let closed = estimate_plot_time_optimized(&[square(true)], &config);
+        assert_eq!(closed, explicit);
+    }
+
+    #[test]
+    fn test_motion_estimate_travel_uses_pen_up_acceleration() {
+        let slow = PlotConfig {
+            pen_up_acceleration: 100.0,
+            ..PlotConfig::default()
+        };
+        let fast = PlotConfig {
+            pen_up_acceleration: 10_000.0,
+            ..PlotConfig::default()
+        };
+        let strokes = [square(false)];
+        assert!(
+            estimate_plot_time_optimized(&strokes, &fast)
+                < estimate_plot_time_optimized(&strokes, &slow)
+        );
     }
 }
