@@ -72,10 +72,14 @@ pub fn calculate_junction_velocity(
     config: &MotionConfig,
 ) -> f64 {
     let angle = current.angle_to(next);
+    let limit = config
+        .max_velocity
+        .min(current.max_velocity)
+        .min(next.max_velocity);
 
     // For very small angles (nearly straight), allow max velocity
     if angle < 0.01 {
-        return config.max_velocity;
+        return limit;
     }
 
     // For angles approaching 180 degrees (reversal), velocity should be very low
@@ -100,7 +104,7 @@ pub fn calculate_junction_velocity(
     // Avoid division by zero when cos_half approaches 1 (very small angles)
     let denominator = 1.0 - cos_half;
     if denominator < 0.0001 {
-        return config.max_velocity;
+        return limit;
     }
 
     // Junction deviation formula from GRBL/Python driver
@@ -112,10 +116,7 @@ pub fn calculate_junction_velocity(
     let v_junction = (config.max_acceleration * rfactor).sqrt();
 
     // Clamp to max velocity and the minimum of both segments' max velocities
-    v_junction
-        .min(config.max_velocity)
-        .min(current.max_velocity)
-        .min(next.max_velocity)
+    v_junction.min(limit)
 }
 
 /// Calculate the maximum velocity achievable over a distance given start velocity and acceleration
@@ -258,5 +259,18 @@ mod tests {
         // s = (100^2 - 0) / (2 * 500) = 10000 / 1000 = 10mm
         let d = distance_to_velocity(0.0, 100.0, 500.0);
         assert!((d - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_junction_velocity_straight_respects_segment_limit() {
+        let config = MotionConfig::default();
+        assert!(config.max_velocity > 10.0);
+        let a = MotionSegment::new(Point::new(0.0, 0.0), Point::new(10.0, 0.0), 10.0);
+        let b = MotionSegment::new(Point::new(10.0, 0.0), Point::new(20.0, 0.0), 10.0);
+        let v = calculate_junction_velocity(&a, &b, &config);
+        assert!(
+            v <= 10.0,
+            "straight junction must respect segment limit, got {v}"
+        );
     }
 }
