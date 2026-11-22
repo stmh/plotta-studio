@@ -759,14 +759,14 @@ impl AxiDraw {
         // Generate and execute motion profiles for each segment
         let profiles = planner.generate_profiles(&segments);
 
-        for (segment, profile) in segments.iter().zip(profiles.iter()) {
-            // Generate SM commands using time-slice interpolation
-            let planned = crate::motion::generate_sm_commands(
-                profile,
-                segment.start,
-                segment.end,
-                motion_config.steps_per_mm,
-            );
+        // Generate SM commands from the tracked position so rounding errors
+        // don't accumulate across segments
+        for planned in crate::motion::generate_stroke_sm_commands(
+            &segments,
+            &profiles,
+            self.current_pos,
+            motion_config.steps_per_mm,
+        ) {
             self.execute_sm_planned_move(&planned)?;
         }
 

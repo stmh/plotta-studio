@@ -4,6 +4,7 @@ use drawing_core::Point;
 
 use super::config::{BUFFER_LEAD_MS, MAX_STEP_RATE, MIN_STEP_RATE, TIME_SLICE_MS};
 use super::profile::MotionProfile;
+use super::segment::MotionSegment;
 
 /// An SM (Stepper Move) command for the EBB
 ///
@@ -347,6 +348,31 @@ pub fn generate_sm_commands(
         actual_steps_x: actual_total_steps_x,
         actual_steps_y: actual_total_steps_y,
     }
+}
+
+/// Generate SM commands for every segment of a planned stroke
+///
+/// `start` is the carriage position (in whole steps) at the start of the
+/// stroke. Each segment's steps are computed from the position actually
+/// reached so far to the segment's planned end, so rounding errors do not
+/// accumulate across segments: the carriage stays within half a step of the
+/// planned geometry over the whole stroke.
+pub fn generate_stroke_sm_commands(
+    segments: &[MotionSegment],
+    profiles: &[MotionProfile],
+    start: Point,
+    steps_per_mm: f64,
+) -> Vec<SmPlannedMove> {
+    let mut pos = start;
+    segments
+        .iter()
+        .zip(profiles)
+        .map(|(segment, profile)| {
+            let planned = generate_sm_commands(profile, pos, segment.end, steps_per_mm);
+            pos = planned.actual_end(steps_per_mm);
+            planned
+        })
+        .collect()
 }
 
 /// Generate a single SM command for very short moves
@@ -807,6 +833,27 @@ mod tests {
                 expected_steps,
                 tolerance,
                 total_steps_axis1
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_stroke_sm_commands_no_cumulative_rounding() {
+        // Issue #67: 1000 segments whose length is a fractional number of
+        // steps must not round each segment independently.
+        let planner = crate::motion::MotionPlanner::with_defaults();
+        for (seg_len, expected) in [(0.019, 1520), (0.006, 480)] {
+            let points: Vec<Point> = (0..=1000)
+                .map(|i| Point::new(i as f64 * seg_len, 0.0))
+                .collect();
+            let segments = planner.plan(&points);
+            let profiles = planner.generate_profiles(&segments);
+
+            let planned = generate_stroke_sm_commands(&segments, &profiles, points[0], 80.0);
+            let sent: i32 = planned.iter().map(|p| p.actual_steps_x).sum();
+            assert!(
+                (sent - expected).abs() <= 1,
+                "{seg_len} mm segments: expected ~{expected} steps, sent {sent}"
             );
         }
     }

@@ -61,7 +61,7 @@ pub use segment::{calculate_junction_velocity, MotionSegment};
 pub use profile::{MotionPlanner, MotionProfile};
 
 // Re-export SM command types (recommended)
-pub use sm_command::{generate_sm_commands, SmCommand, SmPlannedMove};
+pub use sm_command::{generate_sm_commands, generate_stroke_sm_commands, SmCommand, SmPlannedMove};
 
 // Re-export LM command types (legacy)
 pub use lm_command::{acceleration_to_accel_param, velocity_to_rate, LmCommand, PlannedMove};
