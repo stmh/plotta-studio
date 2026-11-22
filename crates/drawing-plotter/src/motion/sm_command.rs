@@ -414,8 +414,8 @@ fn generate_single_sm_command(
         let (actual_x, actual_y) = cmd.xy_steps();
 
         SmPlannedMove {
+            total_duration_ms: cmd.duration_ms,
             commands: vec![cmd],
-            total_duration_ms: duration_ms,
             start,
             end,
             actual_steps_x: actual_x,
@@ -927,5 +927,19 @@ mod tests {
             "v(end) should be ~0, got {}",
             v_end
         );
+    }
+
+    #[test]
+    fn test_single_sm_command_reports_adjusted_duration() {
+        // 1 mm in about 1 ms: 80 steps/ms is over MAX_STEP_RATE, so the command is stretched.
+        let profile = MotionProfile::calculate(0.0, 0.0, 1000.0, 1.0, 1e7);
+        let planned =
+            generate_single_sm_command(&profile, Point::new(0.0, 0.0), Point::new(1.0, 0.0), 80.0);
+        assert_eq!(planned.commands.len(), 1);
+        assert!(
+            planned.commands[0].duration_ms > 1,
+            "command should be stretched"
+        );
+        assert_eq!(planned.total_duration_ms, planned.commands[0].duration_ms);
     }
 }
