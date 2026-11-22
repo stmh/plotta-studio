@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.4](https://github.com/stmh/plotta-studio/compare/v0.3.3...v0.3.4) (2026-11-22)
+
+
+### Bug Fixes
+
+* **plotter:** emit pen-down progress events as each planned segment is sent ([854cce6](https://github.com/stmh/plotta-studio/commit/854cce6e9da69baa3cb51e153ad7e5baea913f3b)), closes [#93](https://github.com/stmh/plotta-studio/issues/93)
+* **plotter:** use a single steps_per_mm source ([e8831b8](https://github.com/stmh/plotta-studio/commit/e8831b8cfa8d6f9070fb9eddff706e85072eb3be)), closes [#94](https://github.com/stmh/plotta-studio/issues/94)
+* **release:** match Cargo.lock packages by their parsed name value ([050147f](https://github.com/stmh/plotta-studio/commit/050147f255758aced45aed7836755d5b9f0930f9))
+
 ## [0.3.3](https://github.com/stmh/plotta-studio/compare/v0.3.2...v0.3.3) (2026-11-22)
 
 

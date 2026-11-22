@@ -651,7 +651,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
 name = "drawing-core"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "geo",
  "kurbo",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-plotter"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-core",
  "log",
@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-svg"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-core",
  "drawing-plotter",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-text"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-core",
  "kurbo",
@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-utils"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-core",
  "drawing-text",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "drawing-viewer"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -784,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "example-clip-demo"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -793,14 +793,14 @@ dependencies = [
 
 [[package]]
 name = "example-dvd-screensaver"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "sketch-runner",
 ]
 
 [[package]]
 name = "example-hatched-circles"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "example-hello-world"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "example-plotter-calibration"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-text",
  "drawing-utils",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "example-svg-viewer"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-svg",
  "drawing-text",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "example-text"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-text",
  "sketch-runner",
@@ -2111,7 +2111,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plotta-cli"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -2665,7 +2665,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "sketch-runner"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "drawing-core",
  "drawing-plotter",
@@ -3136,7 +3136,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsf-convert"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "base64",
