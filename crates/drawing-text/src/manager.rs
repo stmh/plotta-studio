@@ -189,7 +189,11 @@ impl FontManager {
         }
 
         let extension = match format {
-            FontFormat::Hershey => "jhf",
+            FontFormat::Hershey => {
+                return Err(FontError::UnsupportedFormat(
+                    "Use load_hershey() for Hershey fonts".to_string(),
+                ));
+            }
             FontFormat::Vsf => "vsf",
             FontFormat::SvgFont => "svg",
             FontFormat::Ufo => {
@@ -317,6 +321,15 @@ mod tests {
 
         let result = manager.load_file("some/path.jhf", FontFormat::Hershey);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_directory_hershey_not_supported() {
+        let (_registry, manager) = create_manager();
+
+        // A directory without `.jhf` files must be rejected too, not return Ok(0).
+        let result = manager.load_directory("../../fonts/vsf", FontFormat::Hershey);
+        assert!(matches!(result, Err(FontError::UnsupportedFormat(_))));
     }
 
     #[test]
