@@ -46,3 +46,21 @@ fn plot_rejects_invalid_port_path_before_connecting() {
         "stderr: {stderr}"
     );
 }
+
+#[test]
+fn plot_without_terminal_fails_before_connecting() {
+    let file = sample_drawing("no-tty");
+    let out = run_plotta(&[
+        "plot",
+        file.to_str().unwrap(),
+        "--yes",
+        "--port",
+        "/dev/plotta-test-missing",
+    ]);
+    let _ = std::fs::remove_file(&file);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success());
+    assert!(stderr.contains("terminal"), "stderr: {stderr}");
+    assert!(!stderr.contains("Connection error"), "stderr: {stderr}");
+}

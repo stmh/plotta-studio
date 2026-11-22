@@ -1,7 +1,7 @@
 //! Plotta CLI - Command-line interface for plotter control
 
 use std::fs;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -858,6 +858,13 @@ fn cmd_plot(
 
     let (drawing, prepared) = prepare_drawing_from_file(file, &config)?;
 
+    // Pause/resume/cancel needs keyboard input; refuse before anything reaches the plotter.
+    if !io::stdin().is_terminal() {
+        anyhow::bail!(
+            "plot needs an interactive terminal for keyboard control (SPACE to pause, Q to cancel); stdin is not a terminal"
+        );
+    }
+
     // Clone stats before moving prepared to the background thread
     let stats = prepared.stats.clone();
 
@@ -896,8 +903,17 @@ fn cmd_plot(
     println!("Press SPACE to pause/resume, Q to cancel");
     println!();
 
+    // Enable raw mode for keyboard input before the plot thread touches the device
+    terminal::enable_raw_mode().context("Failed to enable raw terminal mode")?;
+
     // Use plot_prepared_in_background - no re-flatten or re-optimize needed!
-    let handle = plot_prepared_in_background(prepared, config, port.map(String::from))?;
+    let handle = match plot_prepared_in_background(prepared, config, port.map(String::from)) {
+        Ok(handle) => handle,
+        Err(e) => {
+            terminal::disable_raw_mode()?;
+            return Err(e.into());
+        }
+    };
 
     let progress = ProgressBar::new(stats.stroke_count as u64);
     progress.set_style(
@@ -908,9 +924,6 @@ fn cmd_plot(
     );
     progress.set_message("Plotting");
     progress.set_prefix(format!("{} remaining", stats.format_time()));
-
-    // Enable raw mode for keyboard input
-    terminal::enable_raw_mode()?;
 
     let start_time = Instant::now();
     let estimated_total = stats.estimated_time;
