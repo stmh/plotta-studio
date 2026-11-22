@@ -19,82 +19,82 @@
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='drawing-core')].version"
+          "jsonpath": "$.package[?(@.name.value=='drawing-core')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='drawing-plotter')].version"
+          "jsonpath": "$.package[?(@.name.value=='drawing-plotter')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='drawing-svg')].version"
+          "jsonpath": "$.package[?(@.name.value=='drawing-svg')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='drawing-text')].version"
+          "jsonpath": "$.package[?(@.name.value=='drawing-text')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='drawing-utils')].version"
+          "jsonpath": "$.package[?(@.name.value=='drawing-utils')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='drawing-viewer')].version"
+          "jsonpath": "$.package[?(@.name.value=='drawing-viewer')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-clip-demo')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-clip-demo')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-dvd-screensaver')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-dvd-screensaver')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-hatched-circles')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-hatched-circles')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-hello-world')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-hello-world')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-plotter-calibration')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-plotter-calibration')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-svg-viewer')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-svg-viewer')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='example-text')].version"
+          "jsonpath": "$.package[?(@.name.value=='example-text')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='plotta-cli')].version"
+          "jsonpath": "$.package[?(@.name.value=='plotta-cli')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='sketch-runner')].version"
+          "jsonpath": "$.package[?(@.name.value=='sketch-runner')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='vsf-convert')].version"
+          "jsonpath": "$.package[?(@.name.value=='vsf-convert')].version"
         }
       ]
     }
