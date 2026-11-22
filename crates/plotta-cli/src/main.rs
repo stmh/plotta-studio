@@ -477,10 +477,21 @@ fn load_drawing_with_validation(file: &Path) -> Result<Drawing> {
     Ok(drawing)
 }
 
-/// Validate stroke count after flattening
-fn validate_stroke_count(stroke_count: usize) -> Result<()> {
-    if stroke_count > MAX_STROKES {
-        anyhow::bail!("Too many strokes: {} (max {})", stroke_count, MAX_STROKES);
+/// Validate the stroke count produced by flattening.
+///
+/// The limit bounds the memory and time spent on flattened strokes, so it is
+/// checked against the flattened (pre-merge) count, which is what preparation
+/// holds and optimizes. The statistics report the smaller post-merge count, so
+/// the error names both.
+fn validate_stroke_count(prepared: &PreparedDrawing, max: usize) -> Result<()> {
+    let flattened = prepared.stroke_count();
+    if flattened > max {
+        anyhow::bail!(
+            "Too many strokes after flattening: {} (max {}; {} after merging)",
+            flattened,
+            max,
+            prepared.stats.stroke_count
+        );
     }
     Ok(())
 }
@@ -513,7 +524,7 @@ fn prepare_drawing_from_file(
         prepare_start.elapsed().as_secs_f64()
     );
 
-    validate_stroke_count(prepared.stroke_count())?;
+    validate_stroke_count(&prepared, MAX_STROKES)?;
     Ok((drawing, prepared))
 }
 
@@ -1083,6 +1094,30 @@ fn pump_plot_events(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use drawing_core::{Element, Point};
+
+    #[test]
+    fn stroke_limit_error_names_flattened_and_merged_counts() {
+        // Three lines, two of which touch: 3 strokes after flattening, 2 after merging.
+        let mut drawing = Drawing::new(100.0, 100.0);
+        drawing.add(Element::line(Point::new(0.0, 0.0), Point::new(10.0, 0.0)));
+        drawing.add(Element::line(Point::new(10.0, 0.0), Point::new(20.0, 0.0)));
+        drawing.add(Element::line(
+            Point::new(50.0, 50.0),
+            Point::new(60.0, 60.0),
+        ));
+        let prepared =
+            PreparedDrawing::new(&drawing, &PlotConfig::default(), &RenderContext::empty());
+        assert_eq!(prepared.stroke_count(), 3);
+        assert_eq!(prepared.stats.stroke_count, 2);
+
+        assert!(validate_stroke_count(&prepared, 3).is_ok());
+        let err = validate_stroke_count(&prepared, 2).unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "Too many strokes after flattening: 3 (max 2; 2 after merging)"
+        );
+    }
 
     /// The thread has already exited, but its final events are still queued.
     fn pump_finished_thread(events: Vec<PlotEvent>) -> PlotOutcome {
