@@ -181,10 +181,14 @@ impl MotionPlanner {
 
         // Forward pass: compute max entry velocity based on accelerating from previous junction
         for i in 0..segments.len() {
-            let max_entry = junction_velocities[i];
+            // Entry velocity is limited by the junction velocity and by the
+            // exit velocity the previous segment can actually reach
+            let mut max_entry = junction_velocities[i];
+            if i > 0 {
+                max_entry = max_entry.min(segments[i - 1].exit_velocity);
+            }
             let max_exit = junction_velocities[i + 1];
 
-            // Entry velocity is limited by junction velocity
             segments[i].entry_velocity = max_entry;
 
             // Exit velocity is limited by what we can accelerate to
@@ -313,5 +317,35 @@ mod tests {
 
         // Junction velocities should match
         assert!((segments[0].exit_velocity - segments[1].entry_velocity).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_motion_planner_short_segments_respect_acceleration() {
+        // Issue #66: 0.1 mm collinear segments from rest. Segment 0 can only
+        // reach sqrt(2 * 1016 * 0.1) = 14.25 mm/s, so segment 1 must not enter
+        // faster than that.
+        let planner = MotionPlanner::with_defaults();
+        let a = planner.config().max_acceleration;
+        let points: Vec<Point> = (0..=40).map(|i| Point::new(i as f64 * 0.1, 0.0)).collect();
+
+        let segments = planner.plan(&points);
+        assert_eq!(segments.len(), 40);
+        assert!((segments[0].exit_velocity - 14.25).abs() < 0.01);
+
+        let eps = 1e-6;
+        for (i, seg) in segments.iter().enumerate() {
+            let (vi2, vo2) = (seg.entry_velocity.powi(2), seg.exit_velocity.powi(2));
+            let reach = 2.0 * a * seg.length;
+            assert!(vo2 <= vi2 + reach + eps, "segment {i} accelerates too hard");
+            assert!(vi2 <= vo2 + reach + eps, "segment {i} decelerates too hard");
+            if i > 0 {
+                assert!(
+                    vi2 <= segments[i - 1].exit_velocity.powi(2) + eps,
+                    "segment {i} entry {} exceeds previous exit {}",
+                    seg.entry_velocity,
+                    segments[i - 1].exit_velocity
+                );
+            }
+        }
     }
 }
