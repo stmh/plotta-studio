@@ -748,6 +748,16 @@ impl AxiDraw {
     /// creating smooth motion with proper acceleration/deceleration.
     /// Motion is executed using SM commands with time-slice interpolation.
     pub fn draw_stroke_with_planning(&mut self, points: &[Point]) -> Result<(), PlotterError> {
+        self.draw_planned_stroke(points, &mut |_| {})
+    }
+
+    /// [`Self::draw_stroke_with_planning`], calling `on_segment_end` with each
+    /// segment's end point once that segment has been sent.
+    fn draw_planned_stroke(
+        &mut self,
+        points: &[Point],
+        on_segment_end: &mut dyn FnMut(Point),
+    ) -> Result<(), PlotterError> {
         if points.len() < 2 {
             return Ok(());
         }
@@ -766,13 +776,15 @@ impl AxiDraw {
 
         // Generate SM commands from the tracked position so rounding errors
         // don't accumulate across segments
-        for planned in crate::motion::generate_stroke_sm_commands(
+        let planned_moves = crate::motion::generate_stroke_sm_commands(
             &segments,
             &profiles,
             self.current_pos,
             motion_config.steps_per_mm,
-        ) {
-            self.execute_sm_planned_move(&planned)?;
+        );
+        for (segment, planned) in segments.iter().zip(&planned_moves) {
+            self.execute_sm_planned_move(planned)?;
+            on_segment_end(segment.end);
         }
 
         Ok(())
@@ -963,15 +975,13 @@ impl AxiDraw {
             let points = opt_stroke.drawn_points();
 
             if self.config.motion_planning_enabled && points.len() >= 2 {
-                // Use motion planning for the entire stroke
-                // Emit events for each point (for progress tracking)
-                for point in points.iter().skip(1) {
+                // Plan the whole stroke; report progress as each segment is sent
+                self.draw_planned_stroke(&points, &mut |position| {
                     on_event(PlotEvent::MoveTo {
-                        position: *point,
+                        position,
                         pen_down: true,
-                    });
-                }
-                self.draw_stroke_with_planning(&points)?;
+                    })
+                })?;
             } else {
                 // Use constant velocity for each segment
                 for point in points.iter().skip(1) {
@@ -1860,6 +1870,35 @@ mod fake_port_tests {
             "closing edge should be planned (SM), not a constant-velocity LM move"
         );
         assert_eq!(plotter.position(), Point::ZERO);
+    }
+
+    #[test]
+    fn pen_down_events_follow_planned_motion() {
+        let (mut plotter, port) = fake_plotter();
+        let written = port.written.clone();
+        let sm_sent = move || {
+            String::from_utf8_lossy(&written.lock().unwrap())
+                .matches("SM,")
+                .count()
+        };
+        let mut sm_counts = Vec::new();
+        plotter
+            .plot_optimized_strokes_with_pause(
+                &[closed_square()],
+                &mut |event| {
+                    if let PlotEvent::MoveTo { pen_down: true, .. } = event {
+                        sm_counts.push(sm_sent());
+                    }
+                },
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(sm_counts.len(), 4, "one event per edge: {sm_counts:?}");
+        assert!(
+            sm_counts.windows(2).all(|w| w[0] < w[1]),
+            "each event should come after its segment was sent: {sm_counts:?}"
+        );
     }
 
     #[test]
