@@ -109,7 +109,7 @@ enum Commands {
         #[arg(long)]
         pen_up_pos: Option<u8>,
 
-        /// Pen raise rate (1-100, default 75, lower=slower)
+        /// Pen raise rate (1-100, default 50, lower=slower)
         #[arg(long)]
         pen_rate_raise: Option<u8>,
 
@@ -167,7 +167,7 @@ enum Commands {
         #[arg(long)]
         pen_up_pos: Option<u8>,
 
-        /// Pen raise rate (1-100, default 75, lower=slower)
+        /// Pen raise rate (1-100, default 50, lower=slower)
         #[arg(long)]
         pen_rate_raise: Option<u8>,
 
@@ -241,7 +241,7 @@ enum Commands {
         #[arg(long)]
         pen_up_pos: Option<u8>,
 
-        /// Pen raise rate (1-100, default 75, lower=slower)
+        /// Pen raise rate (1-100, default 50, lower=slower)
         #[arg(long)]
         pen_rate_raise: Option<u8>,
 
