@@ -852,6 +852,10 @@ fn cmd_plot(
     setup: PlotterSetup,
     skip_confirmation: bool,
 ) -> Result<()> {
+    if let Some(p) = port {
+        validate_port_path(p)?;
+    }
+
     let (drawing, prepared) = prepare_drawing_from_file(file, &config)?;
 
     // Clone stats before moving prepared to the background thread
