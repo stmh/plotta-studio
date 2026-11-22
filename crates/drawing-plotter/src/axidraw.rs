@@ -1048,6 +1048,12 @@ impl AxiDraw {
         self.travel_to(Point::ZERO)?;
         self.disable_motors()?;
 
+        // A cancel requested while the last stroke was drawing is only seen here.
+        if pause_control.is_some_and(|ctrl| ctrl.is_cancelled()) {
+            on_event(PlotEvent::Cancelled);
+            return Ok(());
+        }
+
         let elapsed = plot_start.elapsed();
         log::info!(
             "Plotting completed: {} strokes in {:.1}s ({:.1} strokes/s)",
@@ -1677,5 +1683,170 @@ mod hardware_tests {
         assert!(final_pos.y.abs() < 0.5, "Should be at home Y");
 
         println!("=== Draw Sequence Test PASSED ===");
+    }
+}
+
+/// Tests that drive the plot loop against an in-memory serial port.
+#[cfg(test)]
+mod fake_port_tests {
+    use super::*;
+    use drawing_core::ResolvedStyle;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    /// Serial port that answers every command with `OK` and records what was written.
+    #[derive(Clone, Default)]
+    struct FakePort {
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl std::io::Read for FakePort {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let reply = b"OK\r\n";
+            buf[..reply.len()].copy_from_slice(reply);
+            Ok(reply.len())
+        }
+    }
+
+    impl std::io::Write for FakePort {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.written.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl serialport::SerialPort for FakePort {
+        fn name(&self) -> Option<String> {
+            None
+        }
+        fn baud_rate(&self) -> serialport::Result<u32> {
+            Ok(9600)
+        }
+        fn data_bits(&self) -> serialport::Result<serialport::DataBits> {
+            Ok(serialport::DataBits::Eight)
+        }
+        fn flow_control(&self) -> serialport::Result<serialport::FlowControl> {
+            Ok(serialport::FlowControl::None)
+        }
+        fn parity(&self) -> serialport::Result<serialport::Parity> {
+            Ok(serialport::Parity::None)
+        }
+        fn stop_bits(&self) -> serialport::Result<serialport::StopBits> {
+            Ok(serialport::StopBits::One)
+        }
+        fn timeout(&self) -> Duration {
+            Duration::ZERO
+        }
+        fn set_baud_rate(&mut self, _: u32) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_data_bits(&mut self, _: serialport::DataBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_flow_control(&mut self, _: serialport::FlowControl) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_parity(&mut self, _: serialport::Parity) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_stop_bits(&mut self, _: serialport::StopBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_timeout(&mut self, _: Duration) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_request_to_send(&mut self, _: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_data_terminal_ready(&mut self, _: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn read_clear_to_send(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+        fn read_data_set_ready(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+        fn read_ring_indicator(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_carrier_detect(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+        fn bytes_to_read(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn bytes_to_write(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn clear(&self, _: serialport::ClearBuffer) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn try_clone(&self) -> serialport::Result<Box<dyn serialport::SerialPort>> {
+            Ok(Box::new(self.clone()))
+        }
+        fn set_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn clear_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn fake_plotter() -> (AxiDraw, FakePort) {
+        let port = FakePort::default();
+        // Keep the test fast: no extra servo settle time.
+        let config = PlotConfig {
+            pen_up_delay: 0,
+            pen_down_delay: 0,
+            ..PlotConfig::default()
+        };
+        let plotter = AxiDraw {
+            port: BufReader::new(Box::new(port.clone())),
+            config,
+            current_pos: Point::ZERO,
+            pen_is_down: false,
+        };
+        (plotter, port)
+    }
+
+    fn short_stroke(x: f64) -> OwnedOptimizedStroke {
+        OwnedOptimizedStroke {
+            points: vec![Point::new(x, 0.0), Point::new(x + 0.5, 0.0)],
+            style: ResolvedStyle::default(),
+            closed: false,
+            reversed: false,
+        }
+    }
+
+    #[test]
+    fn cancel_during_last_stroke_reports_cancelled() {
+        let (mut plotter, _port) = fake_plotter();
+        let strokes = vec![short_stroke(0.0), short_stroke(1.0)];
+        let ctrl = PauseControl::new();
+        let mut events = Vec::new();
+
+        plotter
+            .plot_optimized_strokes_with_pause(
+                &strokes,
+                &mut |event| {
+                    if let PlotEvent::StrokeStart { index: 1, .. } = event {
+                        ctrl.cancel();
+                    }
+                    events.push(event);
+                },
+                Some(&ctrl),
+            )
+            .unwrap();
+
+        assert!(
+            matches!(events.last(), Some(PlotEvent::Cancelled)),
+            "last event should be Cancelled, got {:?}",
+            events.last()
+        );
+        assert!(!events.iter().any(|e| matches!(e, PlotEvent::Completed)));
     }
 }
