@@ -308,3 +308,30 @@ fn test_import_clipped_svg_diagonal_lines() {
     // Entry point: approximately (50.5, 50.5)
     // Exit point: approximately (149.5, 149.5)
 }
+
+#[test]
+fn test_import_gradient_stroke_warns_and_falls_back_to_default_color() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <defs>
+            <linearGradient id="grad"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient>
+            <pattern id="pat" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="red"/></pattern>
+        </defs>
+        <line x1="0" y1="0" x2="100" y2="100" stroke="url(#grad)" stroke-width="3"/>
+        <line x1="0" y1="100" x2="100" y2="0" stroke="url(#pat)"/>
+    </svg>"##;
+
+    let result = import_svg_string(svg).unwrap();
+    let ids: Vec<&str> = result
+        .warnings
+        .iter()
+        .filter_map(|w| match w {
+            ImportWarning::GradientIgnored { id } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids, ["grad", "pat"]);
+
+    let style = &result.drawing.elements[0].style;
+    assert_eq!(style.stroke_color, Some(drawing_core::Color::BLACK));
+    assert_eq!(style.stroke_width, Some(3.0));
+}

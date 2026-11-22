@@ -51,7 +51,7 @@ pub(super) fn convert_group(
                 }
             }
             Node::Path(path) => {
-                if let Some(element) = convert_path(path, options, for_clip_path) {
+                if let Some(element) = convert_path(path, options, warnings, for_clip_path) {
                     elements.push(element);
                 }
             }
@@ -109,6 +109,7 @@ fn convert_clip_path(
 fn convert_path(
     path: &usvg::Path,
     options: &ImportOptions,
+    warnings: &mut Vec<ImportWarning>,
     for_clip_path: bool,
 ) -> Option<Element> {
     // For clip paths, always import the geometry regardless of stroke/fill
@@ -136,7 +137,7 @@ fn convert_path(
     let style = if for_clip_path {
         Style::new(options.default_stroke_width, options.default_stroke_color)
     } else if let Some(stroke) = path.stroke() {
-        let color = extract_paint_color(stroke.paint(), options);
+        let color = extract_paint_color(stroke.paint(), options, warnings);
         let width = stroke.width().get() as f64;
         Style::new(width, color)
     } else {
@@ -205,15 +206,22 @@ fn convert_path_data(segments: impl Iterator<Item = TinyPathSegment>) -> Path {
 }
 
 /// Extract color from usvg Paint
-fn extract_paint_color(paint: &usvg::Paint, options: &ImportOptions) -> Color {
-    match paint {
-        usvg::Paint::Color(c) => Color::rgb(c.red, c.green, c.blue),
-        usvg::Paint::LinearGradient(_) | usvg::Paint::RadialGradient(_) => {
-            // Use default color for gradients
-            options.default_stroke_color
-        }
-        usvg::Paint::Pattern(_) => options.default_stroke_color,
-    }
+///
+/// Gradient and pattern paints fall back to the default stroke color and
+/// emit a `GradientIgnored` warning.
+fn extract_paint_color(
+    paint: &usvg::Paint,
+    options: &ImportOptions,
+    warnings: &mut Vec<ImportWarning>,
+) -> Color {
+    let id = match paint {
+        usvg::Paint::Color(c) => return Color::rgb(c.red, c.green, c.blue),
+        usvg::Paint::LinearGradient(g) => g.id(),
+        usvg::Paint::RadialGradient(g) => g.id(),
+        usvg::Paint::Pattern(p) => p.id(),
+    };
+    warnings.push(ImportWarning::GradientIgnored { id: id.to_string() });
+    options.default_stroke_color
 }
 
 /// Convert usvg Transform to our Affine

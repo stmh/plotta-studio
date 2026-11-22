@@ -30,7 +30,7 @@ pub enum ImportWarning {
     TextConversionFailed { text: String, reason: String },
     /// A clip-path was skipped
     ClipPathSkipped { id: String, reason: String },
-    /// A gradient was ignored
+    /// A gradient or pattern stroke paint was replaced by the default stroke color
     GradientIgnored { id: String },
 }
 
