@@ -1,5 +1,6 @@
 //! Configuration for plotting
 
+use crate::error::PlotterError;
 use crate::motion::{
     MotionConfig, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_ACCEL_PEN_UP, DEFAULT_JUNCTION_DEVIATION,
 };
@@ -199,6 +200,23 @@ impl PlotConfig {
     /// Total time to wait after pen down (servo move + optional delay)
     pub fn pen_down_total_time(&self) -> u32 {
         self.pen_down_move_time() + self.pen_down_delay
+    }
+
+    /// Reject speeds and accelerations that are not positive, finite numbers.
+    pub fn validate(&self) -> Result<(), PlotterError> {
+        for (name, value) in [
+            ("pen_down_speed", self.pen_down_speed),
+            ("pen_up_speed", self.pen_up_speed),
+            ("max_acceleration", self.max_acceleration),
+            ("pen_up_acceleration", self.pen_up_acceleration),
+        ] {
+            if !(value.is_finite() && value > 0.0) {
+                return Err(PlotterError::InvalidConfig(format!(
+                    "{name} must be a positive number, got {value}"
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Create a MotionConfig for pen-down (drawing) moves from this PlotConfig.

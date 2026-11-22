@@ -20,6 +20,9 @@ pub enum PlotterError {
     #[error("Plotter error: {0}")]
     Device(String),
 
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

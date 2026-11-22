@@ -64,3 +64,18 @@ fn plot_without_terminal_fails_before_connecting() {
     assert!(stderr.contains("terminal"), "stderr: {stderr}");
     assert!(!stderr.contains("Connection error"), "stderr: {stderr}");
 }
+
+#[test]
+fn plot_rejects_non_positive_speeds() {
+    let file = sample_drawing("speed");
+    for arg in ["--draw-speed=0", "--travel-speed=-5"] {
+        let out = run_plotta(&["plot", file.to_str().unwrap(), "--yes", arg]);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success());
+        assert!(
+            stderr.contains("must be a positive number"),
+            "stderr: {stderr}"
+        );
+    }
+    let _ = std::fs::remove_file(&file);
+}

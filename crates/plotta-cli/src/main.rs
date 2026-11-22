@@ -86,11 +86,11 @@ enum Commands {
         yes: bool,
 
         /// Drawing speed in mm/s (pen down movement)
-        #[arg(long)]
+        #[arg(long, value_parser = positive_speed)]
         draw_speed: Option<f64>,
 
         /// Travel speed in mm/s (pen up movement)
-        #[arg(long)]
+        #[arg(long, value_parser = positive_speed)]
         travel_speed: Option<f64>,
 
         /// Additional delay after lowering pen (ms)
@@ -144,11 +144,11 @@ enum Commands {
         file: PathBuf,
 
         /// Drawing speed in mm/s (for time estimate)
-        #[arg(long)]
+        #[arg(long, value_parser = positive_speed)]
         draw_speed: Option<f64>,
 
         /// Travel speed in mm/s (for time estimate)
-        #[arg(long)]
+        #[arg(long, value_parser = positive_speed)]
         travel_speed: Option<f64>,
 
         /// Additional delay after lowering pen (ms, for time estimate)
@@ -218,11 +218,11 @@ enum Commands {
         stroke_width: f64,
 
         /// Drawing speed in mm/s (for time estimate)
-        #[arg(long)]
+        #[arg(long, value_parser = positive_speed)]
         draw_speed: Option<f64>,
 
         /// Travel speed in mm/s (for time estimate)
-        #[arg(long)]
+        #[arg(long, value_parser = positive_speed)]
         travel_speed: Option<f64>,
 
         /// Additional delay after lowering pen (ms, for time estimate)
@@ -265,6 +265,14 @@ enum Commands {
         #[arg(long)]
         connect_distance_factor: Option<f64>,
     },
+}
+
+/// Parse a speed in mm/s; must be a positive, finite number
+fn positive_speed(s: &str) -> Result<f64, String> {
+    match s.parse::<f64>() {
+        Ok(v) if v.is_finite() && v > 0.0 => Ok(v),
+        _ => Err(format!("must be a positive number, got '{s}'")),
+    }
 }
 
 /// Build a PlotConfig from optional CLI overrides, using defaults from PlotConfig::default()

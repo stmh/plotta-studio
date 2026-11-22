@@ -184,6 +184,7 @@ impl AxiDraw {
     /// This also configures the servo positions on the EBB to match
     /// the pen_up_pos and pen_down_pos settings.
     pub fn set_config(&mut self, config: PlotConfig) -> Result<(), PlotterError> {
+        config.validate()?;
         self.config = config;
         self.configure_servo_positions()
     }
@@ -523,6 +524,8 @@ impl AxiDraw {
     /// Rate = 2^31 / 25000 * frequency_hz = 85899.3459 * frequency_hz
     /// (25000 Hz = 40μs ISR interval)
     const RATE_FACTOR: f64 = 85899.3459;
+    /// Maximum motor step rate (steps/s), same limit as `motion::MAX_STEP_RATE`
+    const MAX_STEP_RATE_HZ: f64 = crate::motion::MAX_STEP_RATE * 1000.0;
 
     /// Move to a position using the LM (Low-level Move) command
     ///
@@ -560,7 +563,9 @@ impl AxiDraw {
         } else {
             self.config.pen_up_speed
         };
-        let duration_secs = distance / speed;
+        // Stretch the move so neither motor axis exceeds the EBB step-rate limit
+        let max_axis_steps = steps_axis1.abs().max(steps_axis2.abs()) as f64;
+        let duration_secs = (distance / speed).max(max_axis_steps / Self::MAX_STEP_RATE_HZ);
         let duration_ms = (duration_secs * 1000.0) as u32;
         let duration_ms = duration_ms.max(1); // Minimum 1ms
 
@@ -797,51 +802,7 @@ impl AxiDraw {
         &mut self,
         strokes: &[OwnedOptimizedStroke],
     ) -> Result<(), PlotterError> {
-        self.pen_up()?;
-        self.enable_motors()?;
-
-        let use_motion_planning = self.config.motion_planning_enabled;
-
-        for opt_stroke in strokes {
-            if opt_stroke.is_empty() {
-                continue;
-            }
-
-            // Move to stroke start (pen up) - use motion-planned travel when
-            // enabled, so the carriage decelerates to a clean stop before pen-down.
-            self.travel_to(opt_stroke.start())?;
-
-            // Put pen down
-            self.pen_down()?;
-
-            // Draw stroke points in correct order
-            let points: Vec<_> = opt_stroke.points_iter().collect();
-
-            if use_motion_planning && points.len() >= 2 {
-                // Use motion planning for the entire stroke
-                self.draw_stroke_with_planning(&points)?;
-            } else {
-                // Use constant velocity for each segment
-                for point in points.iter().skip(1) {
-                    self.move_to(*point)?;
-                }
-            }
-
-            // Close if needed - for closed strokes, return to the first point we drew
-            // (which is points[0] after collecting from the iterator)
-            if opt_stroke.closed && points.len() > 2 {
-                self.move_to(points[0])?;
-            }
-
-            // Lift pen
-            self.pen_up()?;
-        }
-
-        // Return home (pen up) - use motion-planned travel.
-        self.travel_to(Point::ZERO)?;
-        self.disable_motors()?;
-
-        Ok(())
+        self.plot_optimized_strokes_with_pause(strokes, &mut |_| {}, None)
     }
 
     /// Plot a sequence of strokes (legacy API, no reversal)
@@ -878,6 +839,24 @@ impl AxiDraw {
 
     /// Plot optimized strokes with event callbacks and optional pause control
     pub fn plot_optimized_strokes_with_pause<F>(
+        &mut self,
+        strokes: &[OwnedOptimizedStroke],
+        on_event: &mut F,
+        pause_control: Option<&PauseControl>,
+    ) -> Result<(), PlotterError>
+    where
+        F: FnMut(PlotEvent),
+    {
+        let result = self.plot_strokes_unguarded(strokes, on_event, pause_control);
+        if result.is_err() {
+            // Best effort: get the pen off the paper and release the motors.
+            let _ = self.pen_up_with_force(true);
+            let _ = self.disable_motors();
+        }
+        result
+    }
+
+    fn plot_strokes_unguarded<F>(
         &mut self,
         strokes: &[OwnedOptimizedStroke],
         on_event: &mut F,
@@ -980,8 +959,8 @@ impl AxiDraw {
             // Put pen down
             self.pen_down()?;
 
-            // Draw stroke points in correct order
-            let points: Vec<_> = opt_stroke.points_iter().collect();
+            // Draw stroke points in order; closed strokes end back at the start
+            let points = opt_stroke.drawn_points();
 
             if self.config.motion_planning_enabled && points.len() >= 2 {
                 // Use motion planning for the entire stroke
@@ -1001,22 +980,6 @@ impl AxiDraw {
                         pen_down: true,
                     });
                     self.move_to(*point)?;
-                }
-            }
-
-            // Close if needed - for closed strokes, return to the first point we drew
-            if opt_stroke.closed && points.len() > 2 {
-                on_event(PlotEvent::MoveTo {
-                    position: points[0],
-                    pen_down: true,
-                });
-                if self.config.motion_planning_enabled {
-                    // For closed strokes with motion planning, we need to include
-                    // the closing segment in the motion plan
-                    // For now, just do a simple move
-                    self.move_to(points[0])?;
-                } else {
-                    self.move_to(points[0])?;
                 }
             }
 
@@ -1678,14 +1641,19 @@ mod fake_port_tests {
     use std::time::Duration;
 
     /// Serial port that answers every command with `OK` and records what was written.
+    /// If `fail_on` is set, the first command starting with it gets an error reply.
     #[derive(Clone, Default)]
     struct FakePort {
         written: Arc<Mutex<Vec<u8>>>,
+        fail_on: Arc<Mutex<Option<&'static str>>>,
+        fail_next: Arc<Mutex<bool>>,
     }
 
     impl std::io::Read for FakePort {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            let reply = b"OK\r\n";
+            let mut fail = self.fail_next.lock().unwrap();
+            let reply: &[u8] = if *fail { b"!8 Err\r\n" } else { b"OK\r\n" };
+            *fail = false;
             buf[..reply.len()].copy_from_slice(reply);
             Ok(reply.len())
         }
@@ -1693,6 +1661,11 @@ mod fake_port_tests {
 
     impl std::io::Write for FakePort {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut fail_on = self.fail_on.lock().unwrap();
+            if fail_on.is_some_and(|prefix| buf.starts_with(prefix.as_bytes())) {
+                *fail_on = None;
+                *self.fail_next.lock().unwrap() = true;
+            }
             self.written.lock().unwrap().extend_from_slice(buf);
             Ok(buf.len())
         }
@@ -1852,5 +1825,89 @@ mod fake_port_tests {
             1,
             "touching strokes should be drawn with a single pen-down"
         );
+    }
+
+    fn written(port: &FakePort) -> String {
+        String::from_utf8(port.written.lock().unwrap().clone()).unwrap()
+    }
+
+    fn closed_square() -> OwnedOptimizedStroke {
+        OwnedOptimizedStroke {
+            points: vec![
+                Point::new(0.0, 0.0),
+                Point::new(2.0, 0.0),
+                Point::new(2.0, 2.0),
+                Point::new(0.0, 2.0),
+            ],
+            style: ResolvedStyle::default(),
+            closed: true,
+            reversed: false,
+        }
+    }
+
+    #[test]
+    fn closed_stroke_with_planning_is_fully_planned() {
+        let (mut plotter, port) = fake_plotter();
+        assert!(plotter.config.motion_planning_enabled);
+        plotter.plot_optimized_strokes(&[closed_square()]).unwrap();
+        plotter
+            .plot_optimized_strokes_with_pause(&[closed_square()], &mut |_| {}, None)
+            .unwrap();
+
+        let written = written(&port);
+        assert!(
+            !written.contains("LM,"),
+            "closing edge should be planned (SM), not a constant-velocity LM move"
+        );
+        assert_eq!(plotter.position(), Point::ZERO);
+    }
+
+    #[test]
+    fn move_to_clamps_lm_step_rate() {
+        let (mut plotter, port) = fake_plotter();
+        plotter.config.motion_planning_enabled = false;
+        plotter.config.pen_up_speed = 250.0;
+        // 45-degree move: all steps land on one CoreXY motor axis.
+        plotter.move_to(Point::new(1.0, 1.0)).unwrap();
+
+        let written = written(&port);
+        let lm = written.split('\r').find(|c| c.starts_with("LM,")).unwrap();
+        let fields: Vec<f64> = lm[3..].split(',').map(|f| f.parse().unwrap()).collect();
+        let max_rate = (AxiDraw::RATE_FACTOR * 25_000.0).round();
+        assert!(
+            fields[0] <= max_rate,
+            "rate1 {} over limit in {lm}",
+            fields[0]
+        );
+        assert!(
+            fields[3] <= max_rate,
+            "rate2 {} over limit in {lm}",
+            fields[3]
+        );
+    }
+
+    #[test]
+    fn error_mid_stroke_raises_pen() {
+        let (mut plotter, port) = fake_plotter();
+        // The stroke starts at home, so the first SM command is part of the drawing.
+        *port.fail_on.lock().unwrap() = Some("SM,");
+        let result =
+            plotter.plot_optimized_strokes_with_pause(&[closed_square()], &mut |_| {}, None);
+
+        assert!(result.is_err());
+        let written = written(&port);
+        let last_pen = written.split('\r').rfind(|c| c.starts_with("SP,")).unwrap();
+        assert!(last_pen.starts_with("SP,1,"), "pen left down: {last_pen}");
+        assert!(!plotter.is_pen_down());
+    }
+
+    #[test]
+    fn set_config_rejects_non_positive_speed() {
+        let (mut plotter, _port) = fake_plotter();
+        let config = PlotConfig {
+            pen_down_speed: 0.0,
+            ..PlotConfig::default()
+        };
+        assert!(plotter.set_config(config).is_err());
     }
 }

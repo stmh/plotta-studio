@@ -50,6 +50,8 @@ mod segment;
 mod sm_command;
 
 // Re-export configuration
+#[cfg_attr(not(feature = "hardware"), allow(unused_imports))]
+pub(crate) use config::MAX_STEP_RATE;
 pub use config::{
     MotionConfig, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_ACCEL_PEN_UP, DEFAULT_JUNCTION_DEVIATION,
 };
