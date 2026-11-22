@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use plotta_cli::setup_diagram::{PlotterSetup, SetupDiagram};
 
-/// Maximum allowed drawing file size (10 MB)
+/// Maximum allowed drawing file size (500 MiB)
 const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024;
 /// Maximum allowed number of strokes in a drawing
 const MAX_STROKES: usize = 1_000_000;
