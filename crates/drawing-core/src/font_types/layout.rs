@@ -18,7 +18,17 @@ use crate::style::ResolvedStyle;
 use kurbo::{Point, Rect};
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::BTreeSet;
+use std::sync::Mutex;
+
+/// Returns true the first time it is called for `font_name` in this process.
+fn first_missing_space_warning(font_name: &str) -> bool {
+    static WARNED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+    WARNED
+        .lock()
+        .map(|mut warned| warned.insert(font_name.to_string()))
+        .unwrap_or(false)
+}
 
 /// Convert a Y coordinate from font space (Y-up) to drawing space (Y-down).
 ///
@@ -253,9 +263,6 @@ impl TextRenderer {
         // a 1000 UPM font, which is 25-33% of em.
         let fallback_space_width = metrics.units_per_em / 3.0;
 
-        // Track if we've already warned about missing space glyph for this layout
-        static WARNED_MISSING_SPACE: AtomicBool = AtomicBool::new(false);
-
         // First pass: calculate layout
         for c in text.chars() {
             if c == '\n' {
@@ -269,8 +276,8 @@ impl TextRenderer {
             // Handle space specially - use fallback if font doesn't have space glyph
             if c == ' ' {
                 let space_width = font.glyph(' ').map(|g| g.advance_width).unwrap_or_else(|| {
-                    // Warn once about missing space glyph (helps debug font issues)
-                    if !WARNED_MISSING_SPACE.swap(true, Ordering::Relaxed) {
+                    // Warn once per font about the missing space glyph (helps debug font issues)
+                    if first_missing_space_warning(font.name()) {
                         warn!(
                             "Font '{}' has no space glyph, using fallback width (1/3 em = {:.1} units)",
                             font.name(),
@@ -412,6 +419,13 @@ impl TextRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_missing_space_warning_once_per_font() {
+        assert!(first_missing_space_warning("test-font-a"));
+        assert!(!first_missing_space_warning("test-font-a"));
+        assert!(first_missing_space_warning("test-font-b"));
+    }
 
     #[test]
     fn test_text_options_builder() {
