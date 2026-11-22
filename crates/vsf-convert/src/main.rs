@@ -115,7 +115,8 @@ fn main() -> Result<()> {
         Commands::Minf { input, output } => {
             println!("Converting minf font...");
             let data = match input {
-                Some(s) if s.starts_with('@') => std::fs::read_to_string(&s[1..])?,
+                Some(s) if s.starts_with('@') => std::fs::read_to_string(&s[1..])
+                    .with_context(|| format!("Failed to read {}", &s[1..]))?,
                 Some(s) => s,
                 None => formats::minf::EMBEDDED_DATA.to_string(),
             };
