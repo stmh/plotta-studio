@@ -30,21 +30,14 @@ pub(super) fn convert_group(
                         group.push(child);
                     }
 
-                    let element = if let Some(cp) = g.clip_path() {
-                        if !for_clip_path && options.import_clip_paths {
-                            // Handle clip-path
-                            if let Some(clip_element) = convert_clip_path(cp, options, warnings) {
-                                let mut clip_group = ClipGroup::new(clip_element);
-                                clip_group.push(Element::group(group));
-                                Element::clip_group(clip_group)
-                            } else {
-                                Element::group(group)
-                            }
-                        } else {
-                            Element::group(group)
+                    let element = match g.clip_path() {
+                        Some(cp) if !for_clip_path && options.import_clip_paths => {
+                            let clip_element = convert_clip_path(cp, options, warnings);
+                            let mut clip_group = ClipGroup::new(clip_element);
+                            clip_group.push(Element::group(group));
+                            Element::clip_group(clip_group)
                         }
-                    } else {
-                        Element::group(group)
+                        _ => Element::group(group),
                     };
 
                     elements.push(element);
@@ -61,15 +54,9 @@ pub(super) fn convert_group(
                     reason: "Embedded images are not supported".to_string(),
                 });
             }
-            Node::Text(_text) => {
-                // usvg should convert text to paths, but if we still see a text node
-                // it means conversion wasn't possible
-                warnings.push(ImportWarning::TextConversionFailed {
-                    text: "text element".to_string(),
-                    reason: "Text node found - font may not be available for conversion"
-                        .to_string(),
-                });
-            }
+            // Unreachable: no fonts are loaded, so usvg drops all text before
+            // conversion. Dropped `<text>` is reported from the XML source.
+            Node::Text(_) => {}
         }
     }
 
@@ -77,29 +64,20 @@ pub(super) fn convert_group(
 }
 
 /// Convert a usvg ClipPath to an Element
+///
+/// usvg removes clip paths without geometry together with the content they
+/// clip, so `clip_path` always has at least one shape here.
 fn convert_clip_path(
     clip_path: &usvg::ClipPath,
     options: &ImportOptions,
     warnings: &mut Vec<ImportWarning>,
-) -> Option<Element> {
+) -> Element {
     // Pass `true` for `for_clip_path` to extract geometry without stroke/fill filtering
-    let elements = convert_group(clip_path.root(), options, warnings, true);
-
-    if elements.is_empty() {
-        warnings.push(ImportWarning::ClipPathSkipped {
-            id: clip_path.id().to_string(),
-            reason: "Empty clip path".to_string(),
-        });
-        return None;
-    }
-
-    // Combine all clip elements into a group
     let mut group = Group::new();
-    for element in elements {
+    for element in convert_group(clip_path.root(), options, warnings, true) {
         group.push(element);
     }
-
-    Some(Element::group(group))
+    Element::group(group)
 }
 
 /// Convert a usvg Path to an Element

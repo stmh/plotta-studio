@@ -335,3 +335,43 @@ fn test_import_gradient_stroke_warns_and_falls_back_to_default_color() {
     assert_eq!(style.stroke_color, Some(drawing_core::Color::BLACK));
     assert_eq!(style.stroke_width, Some(3.0));
 }
+
+#[test]
+fn test_import_text_is_dropped_with_warning() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <text x="10" y="20">Hello <tspan>world</tspan></text>
+        <line x1="0" y1="0" x2="100" y2="100" stroke="black"/>
+    </svg>"#;
+
+    let result = import_svg_string(svg).unwrap();
+    assert_eq!(result.drawing.elements.len(), 1);
+    assert_eq!(result.warnings.len(), 1);
+    assert!(matches!(
+        &result.warnings[0],
+        ImportWarning::TextConversionFailed { text, .. } if text == "Hello world"
+    ));
+}
+
+#[test]
+fn test_import_empty_clip_path_drops_clipped_content() {
+    for clip in ["", r#"<text x="0" y="10">clip</text>"#] {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <defs><clipPath id="c">{clip}</clipPath></defs>
+            <g clip-path="url(#c)"><circle cx="50" cy="50" r="20" stroke="black" fill="none"/></g>
+            <line x1="0" y1="0" x2="100" y2="100" stroke="black"/>
+        </svg>"#
+        );
+
+        let result = import_svg_string(&svg).unwrap();
+        assert_eq!(result.drawing.elements.len(), 1, "clip: {clip:?}");
+        assert!(matches!(
+            result.drawing.elements[0].shape,
+            drawing_core::Shape::Path(_)
+        ));
+        assert!(!result
+            .warnings
+            .iter()
+            .any(|w| matches!(w, ImportWarning::ClipPathSkipped { .. })));
+    }
+}
