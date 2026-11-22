@@ -82,9 +82,9 @@ pub use config::PlotConfig;
 pub use error::PlotterError;
 pub use motion::{
     acceleration_to_accel_param, calculate_junction_velocity, generate_sm_commands,
-    velocity_to_rate, LmCommand, MotionConfig, MotionPlanner, MotionProfile, MotionSegment,
-    PlannedMove, SmCommand, SmPlannedMove, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_ACCEL_PEN_UP,
-    DEFAULT_JUNCTION_DEVIATION,
+    generate_stroke_sm_commands, velocity_to_rate, LmCommand, MotionConfig, MotionPlanner,
+    MotionProfile, MotionSegment, PlannedMove, SmCommand, SmPlannedMove, DEFAULT_ACCEL_PEN_DOWN,
+    DEFAULT_ACCEL_PEN_UP, DEFAULT_JUNCTION_DEVIATION,
 };
 pub use optimize::{
     merge_adjacent_strokes, optimize_strokes, optimize_strokes_with_reversal, pen_down_distance,
