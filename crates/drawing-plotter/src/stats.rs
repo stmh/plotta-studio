@@ -71,7 +71,7 @@ use crate::optimize::OwnedOptimizedStroke;
 ///
 /// Takes into account:
 /// - Pen-down drawing speed
-/// - Pen-up travel speed
+/// - Pen-up travel speed (including the return home after the last stroke)
 /// - Pen up/down delays
 /// - Stroke count (for pen transitions)
 /// - Motion planning (acceleration/deceleration) when enabled
@@ -130,6 +130,23 @@ fn estimate_time_with_motion_planning(
 
     let mut current_pos = Point::new(0.0, 0.0);
 
+    // Travel moves start and end at rest and can reach max travel speed
+    let travel_time_ms = |distance: f64| {
+        if distance > 0.01 {
+            MotionProfile::calculate(
+                0.0,
+                0.0,
+                config.pen_up_speed,
+                distance,
+                config.max_acceleration,
+            )
+            .total_time()
+                * 1000.0
+        } else {
+            0.0
+        }
+    };
+
     for stroke in strokes {
         let points: Vec<Point> = stroke.points_iter().collect();
         if points.is_empty() {
@@ -140,18 +157,7 @@ fn estimate_time_with_motion_planning(
         let stroke_end = points[points.len() - 1];
 
         // Calculate travel time to stroke start
-        let travel_distance = (stroke_start - current_pos).length();
-        if travel_distance > 0.01 {
-            // Travel moves: start and end at rest, can reach max travel speed
-            let travel_profile = MotionProfile::calculate(
-                0.0,                 // start at rest
-                0.0,                 // end at rest
-                config.pen_up_speed, // max travel speed
-                travel_distance,
-                config.max_acceleration,
-            );
-            total_travel_time += travel_profile.total_time() * 1000.0;
-        }
+        total_travel_time += travel_time_ms((stroke_start - current_pos).length());
 
         // Calculate drawing time for this stroke using motion planner
         if points.len() >= 2 {
@@ -164,6 +170,9 @@ fn estimate_time_with_motion_planning(
 
         current_pos = stroke_end;
     }
+
+    // Return home after the last stroke
+    total_travel_time += travel_time_ms((Point::ZERO - current_pos).length());
 
     (total_pen_down_time, total_travel_time)
 }
@@ -201,7 +210,7 @@ mod tests {
 
         assert_eq!(stats.stroke_count, 1);
         assert!((stats.pen_down_distance - 100.0).abs() < 0.001);
-        assert!((stats.travel_distance - 0.0).abs() < 0.001); // Starts at origin
+        assert!((stats.travel_distance - 100.0).abs() < 0.001); // Starts at origin, 100 back home
     }
 
     #[test]
@@ -222,7 +231,8 @@ mod tests {
 
         assert_eq!(stats.stroke_count, 2);
         assert!((stats.pen_down_distance - 20.0).abs() < 0.001);
-        assert!((stats.travel_distance - 20.0).abs() < 0.001); // 10 to start + 10 between
+        // 10 to start + 10 between + 40 back home
+        assert!((stats.travel_distance - 60.0).abs() < 0.001);
     }
 
     #[test]
@@ -246,14 +256,46 @@ mod tests {
         };
         let time = estimate_plot_time(&strokes, &config);
 
-        // Should include drawing time + servo timing (rate-adjusted) + settle delay
+        // Should include drawing time + return travel + servo timing (rate-adjusted) + settle delay
         // Drawing: 25mm / 25mm/s = 1000ms
+        // Return home: 25mm / 75mm/s = 333ms
         // Servo timing with both rates at 50:
         //   pen_down (rate=50): 251ms move + 50ms default settle delay = 301ms
         //   pen_up   (rate=50): 251ms move + 0ms delay                = 251ms
-        // Total: ~1552ms
-        assert!(time.as_millis() >= 1510);
-        assert!(time.as_millis() <= 1590);
+        // Total: ~1885ms
+        assert!(time.as_millis() >= 1845);
+        assert!(time.as_millis() <= 1925);
+    }
+
+    #[test]
+    fn test_estimate_plot_time_includes_return_home() {
+        // Drawing (0,0)->(25,0) ends 25mm from home; drawing it the other way
+        // starts 25mm from home and ends there. Both need 25mm of pen-up travel.
+        let away = OwnedOptimizedStroke {
+            points: vec![Point::new(0.0, 0.0), Point::new(25.0, 0.0)],
+            style: ResolvedStyle::default(),
+            closed: false,
+            reversed: false,
+        };
+        let back = OwnedOptimizedStroke {
+            reversed: true,
+            ..away.clone()
+        };
+        for motion_planning_enabled in [false, true] {
+            let config = PlotConfig {
+                motion_planning_enabled,
+                ..PlotConfig::default()
+            };
+            let t_away = estimate_plot_time_optimized(std::slice::from_ref(&away), &config);
+            let t_back = estimate_plot_time_optimized(std::slice::from_ref(&back), &config);
+            assert!(
+                t_away.as_millis().abs_diff(t_back.as_millis()) <= 1,
+                "motion_planning={}: {:?} vs {:?}",
+                motion_planning_enabled,
+                t_away,
+                t_back
+            );
+        }
     }
 
     #[test]

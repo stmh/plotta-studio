@@ -343,7 +343,9 @@ pub fn pen_down_distance(strokes: &[&Stroke]) -> f64 {
 
 /// Calculate total travel distance for optimized strokes (with reversal support)
 ///
-/// This correctly accounts for stroke direction when calculating pen-up travel.
+/// This correctly accounts for stroke direction when calculating pen-up travel,
+/// and includes the final pen-up travel from the last stroke back home to (0,0),
+/// which the plotter performs at the end of every plot.
 pub fn total_travel_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
     let mut total = 0.0;
     let mut pos = Point::ZERO;
@@ -364,7 +366,8 @@ pub fn total_travel_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 
         pos = opt_stroke.end();
     }
 
-    total
+    // Return home after the last stroke
+    total + pos.distance(Point::ZERO)
 }
 
 /// Calculate pen-down distance for optimized strokes
@@ -382,7 +385,8 @@ pub fn pen_down_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
         .sum()
 }
 
-/// Calculate pen-up travel distance for optimized strokes
+/// Calculate pen-up travel distance for optimized strokes, including the
+/// return home after the last stroke
 pub fn travel_distance_optimized(strokes: &[OwnedOptimizedStroke]) -> f64 {
     let total = total_travel_distance_optimized(strokes);
     let pen_down = pen_down_distance_optimized(strokes);
@@ -967,9 +971,9 @@ mod tests {
     #[test]
     fn test_optimize_with_reversal_reduces_travel() {
         // Two strokes where reversal helps
-        // First stroke ends at (100, 0), second stroke ends at (100, 0) but starts at (200, 0)
-        // Without reversal: travel from (100,0) to (200,0) = 100
-        // With reversal: travel from (100,0) to (100,0) = 0
+        // First stroke ends at (100, 0), second stroke ends at (100, 0) but starts at (100, 100)
+        // Without reversal: (100,0) -> (100,100) = 100, plus 100 back home from (100,0) = 200
+        // With reversal: (100,0) -> (100,0) = 0, plus ~141 back home from (100,100)
         let strokes = vec![
             Stroke::line(
                 Point::new(0.0, 0.0),
@@ -977,8 +981,8 @@ mod tests {
                 ResolvedStyle::default(),
             ),
             Stroke::line(
-                Point::new(200.0, 0.0), // Far start
-                Point::new(100.0, 0.0), // Close end (to previous stroke's end)
+                Point::new(100.0, 100.0), // Far start
+                Point::new(100.0, 0.0),   // Close end (to previous stroke's end)
                 ResolvedStyle::default(),
             ),
         ];
