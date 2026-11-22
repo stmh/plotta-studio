@@ -903,7 +903,7 @@ fn cmd_plot(
             .progress_chars("##-"),
     );
     progress.set_message("Plotting");
-    progress.set_prefix(format!("~{} remaining", stats.format_time()));
+    progress.set_prefix(format!("{} remaining", stats.format_time()));
 
     // Enable raw mode for keyboard input
     terminal::enable_raw_mode()?;
