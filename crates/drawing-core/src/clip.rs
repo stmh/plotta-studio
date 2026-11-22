@@ -77,8 +77,10 @@ impl ClipGroup {
         let clip_polygons: Vec<Polygon<f64>> =
             clip_strokes.iter().filter_map(stroke_to_polygon).collect();
 
-        if clip_polygons.is_empty() {
-            return vec![]; // No valid clip region = nothing visible
+        // No valid clip region: nothing is inside it, so a normal clip shows
+        // nothing and an inverted clip shows everything (issue #69).
+        if clip_polygons.is_empty() && !self.invert {
+            return vec![];
         }
 
         // 2. Flatten children
@@ -87,6 +89,10 @@ impl ClipGroup {
             .iter()
             .flat_map(|child| child.flatten_with_inherited(ctx, parent_transform, parent_style))
             .collect();
+
+        if clip_polygons.is_empty() {
+            return child_strokes;
+        }
 
         // 3. Clip each stroke against the union of clip polygons
         child_strokes
@@ -574,6 +580,27 @@ mod tests {
 
         // No valid clip region = nothing visible
         assert!(strokes.is_empty());
+    }
+
+    #[test]
+    fn test_clip_inverted_empty_clip_region_keeps_everything() {
+        // Issue #69: outside of an empty region is everything, so an inverted
+        // clip whose shape has no closed region draws its content unclipped.
+        let ctx = test_ctx();
+
+        let invalid_clip = Element::polyline(vec![Point::new(0.0, 0.0), Point::new(100.0, 100.0)]);
+        let line = Element::polyline(vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]);
+
+        let strokes = Element::clip(invalid_clip)
+            .invert(true)
+            .add(line)
+            .flatten(&ctx);
+
+        assert_eq!(strokes.len(), 1);
+        assert_eq!(
+            strokes[0].points,
+            vec![Point::new(0.0, 50.0), Point::new(100.0, 50.0)]
+        );
     }
 
     #[test]
