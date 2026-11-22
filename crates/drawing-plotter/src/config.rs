@@ -3,6 +3,7 @@
 use crate::error::PlotterError;
 use crate::motion::{
     MotionConfig, DEFAULT_ACCEL_PEN_DOWN, DEFAULT_ACCEL_PEN_UP, DEFAULT_JUNCTION_DEVIATION,
+    STEPS_PER_MM,
 };
 
 /// Servo timing constants from Python AxiDraw driver
@@ -225,7 +226,7 @@ impl PlotConfig {
             max_velocity: self.pen_down_speed,
             max_acceleration: self.max_acceleration,
             junction_deviation: self.junction_deviation,
-            steps_per_mm: 80.0, // AxiDraw constant
+            steps_per_mm: STEPS_PER_MM,
         }
     }
 
@@ -239,7 +240,7 @@ impl PlotConfig {
             max_velocity: self.pen_up_speed,
             max_acceleration: self.pen_up_acceleration,
             junction_deviation: self.junction_deviation,
-            steps_per_mm: 80.0,
+            steps_per_mm: STEPS_PER_MM,
         }
     }
 

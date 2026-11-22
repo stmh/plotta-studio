@@ -38,6 +38,10 @@ pub const MIN_STEP_RATE: f64 = 0.002;
 /// SM command duration will be increased if rate exceeds this.
 pub const MAX_STEP_RATE: f64 = 25.0;
 
+/// AxiDraw steps per mm (16 microsteps * 200 steps/rev / 40 mm per rev).
+/// The single source for converting between mm and motor steps.
+pub(crate) const STEPS_PER_MM: f64 = 80.0;
+
 /// Command buffer lead time (ms)
 /// Sleep for (duration - BUFFER_LEAD_MS) to ensure next command arrives
 /// before current move completes. Matches Python driver's 30ms buffer.
@@ -63,7 +67,7 @@ impl Default for MotionConfig {
             max_velocity: 25.0,                       // mm/s (conservative default)
             max_acceleration: DEFAULT_ACCEL_PEN_DOWN, // mm/s^2 (matches Python driver)
             junction_deviation: DEFAULT_JUNCTION_DEVIATION,
-            steps_per_mm: 80.0, // AxiDraw default
+            steps_per_mm: STEPS_PER_MM,
         }
     }
 }

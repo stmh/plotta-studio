@@ -68,7 +68,7 @@ mod servo_constants {
 
 impl AxiDraw {
     /// Steps per mm (16 microsteps * 200 steps/rev / 40mm per rev)
-    pub const STEPS_PER_MM: f64 = 80.0;
+    pub const STEPS_PER_MM: f64 = crate::motion::STEPS_PER_MM;
 
     // ========================================================================
     // Port Discovery
@@ -1299,6 +1299,15 @@ mod tests {
     fn test_steps_per_mm() {
         // 16 microsteps * 200 steps/rev / 40mm per rev = 80
         assert!((AxiDraw::STEPS_PER_MM - 80.0).abs() < 0.001);
+
+        // Steps are generated from the motion config and converted back with
+        // STEPS_PER_MM, so both must agree.
+        let config = PlotConfig::default();
+        assert_eq!(config.motion_config().steps_per_mm, AxiDraw::STEPS_PER_MM);
+        assert_eq!(
+            config.motion_config_pen_up().steps_per_mm,
+            AxiDraw::STEPS_PER_MM
+        );
     }
 
     #[test]
